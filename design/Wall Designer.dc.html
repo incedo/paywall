@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@500;700&display=swap">
+  <link rel="stylesheet" href="_ds/incedo-crm-design-system-7f42573b-c6a4-427b-95b0-148fe2340bde/colors_and_type.css">
+  <link rel="stylesheet" href="_ds/incedo-crm-design-system-7f42573b-c6a4-427b-95b0-148fe2340bde/ui_kits/crm-web/sub_tokens.css">
+  <script src="_ds/incedo-crm-design-system-7f42573b-c6a4-427b-95b0-148fe2340bde/_ds_bundle.js"></script>
+  <style>
+    body { margin: 0; background: #E9EBEE; }
+  </style>
+</helmet>
+
+<header style="max-width: 1448px; margin: 0 auto; padding: 56px 24px 8px; display: flex; flex-direction: column; gap: 10px">
+  <span style="font: 500 12px/16px Roboto; letter-spacing: 0.2px; color: var(--crm-on-surface-variant)">Incedo CRM · Back-office tool · Design exploration</span>
+  <h1 style="font: 700 30px/38px Roboto; letter-spacing: -0.02em; color: var(--crm-on-background); margin: 0">Wall designer</h1>
+  <p style="font: 400 14px/21px Roboto; color: var(--crm-on-surface-variant); margin: 0; max-width: 800px; text-wrap: pretty">The admin tool that composes, targets and publishes the paywalls and registration walls across all six channels. Two structural directions: a single workspace with live preview, and an overview list with a stepped wizard. Draft → publish, A/B variants and version history included.</p>
+</header>
+
+<section data-screen-label="Variant A — workspace editor" style="max-width: 1448px; margin: 0 auto; padding: 48px 24px 0; display: flex; flex-direction: column; gap: 36px">
+  <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #D3D7DC; padding-top: 20px">
+    <h2 style="font: 600 18px/24px Roboto; color: var(--crm-on-background); margin: 0">Variant A — Workspace editor</h2>
+    <p style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant); margin: 0; max-width: 800px">Everything on one canvas: configuration left, live channel preview centre, targeting and publishing right. Best for admins who iterate on an existing wall.</p>
+  </div>
+
+  <div data-screen-label="Workspace editor" style="display: flex; flex-direction: column; gap: 10px">
+    <x-import component="ChromeWindow" from="./browser-window.jsx" url="crm.incedo.nl/walls/metered-invoices" tabs="{{ tabsDesigner }}" width="{{ wWide }}" height="{{ hEditor }}" hint-size="1400px,880px">
+      <div style="height: 100%; display: flex; background: var(--crm-background); font-family: var(--crm-font-sans); overflow: hidden">
+        <div style="width: 200px; flex-shrink: 0; display: flex; flex-direction: column; gap: 24px; background: var(--crm-surface); border-right: 1px solid var(--crm-divider); padding: 20px 12px">
+          <span style="font: 700 16px/22px Roboto; color: var(--crm-primary); padding: 0 12px">Incedo CRM</span>
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Dashboard</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Contacts</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Companies</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Deals</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Invoices</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Subscriptions</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-primary); background: var(--crm-info-container); padding: 8px 12px; border-radius: var(--crm-radius-md)">Walls</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Tickets</span>
+          </div>
+        </div>
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 56px; padding: 0 20px; background: var(--crm-surface); border-bottom: 1px solid var(--crm-divider); flex-shrink: 0">
+            <div style="display: flex; align-items: center; gap: 8px; min-width: 0">
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">Walls</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">/</span>
+              <span style="font: 500 14px/20px Roboto; color: var(--crm-on-surface)">Metered limit — invoices</span>
+              <span style="font: 500 11px/14px Roboto; color: var(--crm-on-surface-variant); background: var(--crm-surface-variant); border-radius: var(--crm-radius-pill); padding: 3px 10px">Draft</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px">
+              <div style="display: flex; align-items: center; gap: 2px; background: var(--crm-surface-variant); border-radius: var(--crm-radius-pill); padding: 2px">
+                <span style="font: 500 12px/16px Roboto; color: var(--crm-on-background); background: var(--crm-surface); box-shadow: var(--crm-elev-xs); border-radius: var(--crm-radius-pill); padding: 5px 14px">Variant A</span>
+                <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant); padding: 5px 14px">Variant B</span>
+              </div>
+              <span style="font: 500 13px/18px Roboto; color: var(--crm-primary); padding: 0 6px">History</span>
+              <div style="display: flex; align-items: center; justify-content: center; height: 36px; padding: 0 14px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); font: 500 13px/18px Roboto; color: var(--crm-primary)">Save draft</div>
+              <div style="display: flex; align-items: center; justify-content: center; height: 36px; padding: 0 16px; background: var(--crm-primary); border-radius: var(--crm-radius-md); font: 500 13px/18px Roboto; color: var(--crm-on-primary)">Publish</div>
+            </div>
+          </div>
+          <div style="flex: 1; display: flex; min-height: 0">
+            <div style="width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 24px; background: var(--crm-surface); border-right: 1px solid var(--crm-divider); padding: 20px; overflow: hidden">
+              <div style="display: flex; flex-direction: column; gap: 10px">
+                <span style="font: 500 12px/16px Roboto; letter-spacing: 0.2px; color: var(--crm-on-surface-variant)">Wall type</span>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px">
+                  <div style="display: flex; align-items: center; gap: 8px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); padding: 8px 10px"><span style="width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--crm-divider); flex-shrink: 0"></span><span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Hard</span></div>
+                  <div style="display: flex; align-items: center; gap: 8px; border: 2px solid var(--crm-primary); background: var(--crm-info-container); border-radius: var(--crm-radius-md); padding: 7px 9px"><span style="width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--crm-primary); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--crm-primary)"></span></span><span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface)">Metered</span></div>
+                  <div style="display: flex; align-items: center; gap: 8px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); padding: 8px 10px"><span style="width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--crm-divider); flex-shrink: 0"></span><span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Trial</span></div>
+                  <div style="display: flex; align-items: center; gap: 8px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); padding: 8px 10px"><span style="width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--crm-divider); flex-shrink: 0"></span><span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Feature gate</span></div>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px">
+                <span style="font: 500 12px/16px Roboto; letter-spacing: 0.2px; color: var(--crm-on-surface-variant)">Content</span>
+                <div style="display: flex; flex-direction: column; gap: 6px">
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Title</span>
+                  <div style="display: flex; align-items: center; min-height: 36px; padding: 8px 12px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); font: 400 13px/18px Roboto; color: var(--crm-on-surface)">You've reached this month's free limit</div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px">
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Body</span>
+                  <div style="display: flex; padding: 8px 12px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); font: 400 13px/18px Roboto; color: var(--crm-on-surface); min-height: 54px">Pro includes unlimited documents, exports and payment reminders for €10 per user / month.</div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px">
+                  <div style="display: flex; flex-direction: column; gap: 6px">
+                    <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Primary CTA</span>
+                    <div style="display: flex; align-items: center; height: 36px; padding: 0 12px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Upgrade to Pro</div>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 6px">
+                    <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Secondary CTA</span>
+                    <div style="display: flex; align-items: center; height: 36px; padding: 0 12px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Compare plans</div>
+                  </div>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px">
+                <span style="font: 500 12px/16px Roboto; letter-spacing: 0.2px; color: var(--crm-on-surface-variant)">Plans shown</span>
+                <div style="display: flex; flex-direction: column; gap: 6px">
+                  <div style="display: flex; align-items: center; gap: 10px"><span style="width: 16px; height: 16px; border-radius: var(--crm-radius-sm); background: var(--crm-primary); color: var(--crm-on-primary); display: flex; align-items: center; justify-content: center; font: 500 11px/14px Roboto">✓</span><span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface); flex: 1">Free</span></div>
+                  <div style="display: flex; align-items: center; gap: 10px"><span style="width: 16px; height: 16px; border-radius: var(--crm-radius-sm); background: var(--crm-primary); color: var(--crm-on-primary); display: flex; align-items: center; justify-content: center; font: 500 11px/14px Roboto">✓</span><span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface); flex: 1">Pro</span><span style="font: 500 11px/14px Roboto; color: var(--crm-primary); border: 1px solid var(--crm-primary); border-radius: var(--crm-radius-pill); padding: 1px 8px">Highlighted</span></div>
+                  <div style="display: flex; align-items: center; gap: 10px"><span style="width: 16px; height: 16px; border-radius: var(--crm-radius-sm); background: var(--crm-primary); color: var(--crm-on-primary); display: flex; align-items: center; justify-content: center; font: 500 11px/14px Roboto">✓</span><span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface); flex: 1">Business</span></div>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px">
+                <span style="font: 500 12px/16px Roboto; letter-spacing: 0.2px; color: var(--crm-on-surface-variant)">Theme</span>
+                <div style="display: flex; align-items: center; gap: 2px; background: var(--crm-surface-variant); border-radius: var(--crm-radius-pill); padding: 2px; align-self: flex-start">
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-background); background: var(--crm-surface); box-shadow: var(--crm-elev-xs); border-radius: var(--crm-radius-pill); padding: 5px 14px">Light</span>
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant); padding: 5px 14px">Dark</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Meter accent</span>
+                  <div style="display: flex; gap: 8px">
+                    <span style="width: 22px; height: 22px; border-radius: 50%; background: var(--sp-accent-warm); outline: 2px solid var(--crm-primary); outline-offset: 2px"></span>
+                    <span style="width: 22px; height: 22px; border-radius: 50%; background: var(--sp-accent-amber)"></span>
+                    <span style="width: 22px; height: 22px; border-radius: 50%; background: var(--crm-primary)"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 16px 24px 20px; gap: 14px">
+              <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--crm-divider)">
+                <div style="display: flex; gap: 4px">
+                  <span style="font: 500 13px/18px Roboto; color: var(--crm-primary); padding: 8px 14px; border-bottom: 2px solid var(--crm-primary); margin-bottom: -1px">Web</span>
+                  <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 14px">Mobile</span>
+                  <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 14px">Chat</span>
+                  <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 14px">In-product</span>
+                  <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 14px">Email</span>
+                  <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 14px">SMS</span>
+                </div>
+                <span style="font: 400 12px/16px Roboto; color: var(--crm-on-surface-variant); padding-bottom: 8px">Preview · Web · Light · Variant A</span>
+              </div>
+              <div style="flex: 1; display: flex; align-items: center; justify-content: center; background: var(--crm-surface-variant); border-radius: var(--crm-radius-lg); padding: 28px; min-height: 0">
+                <div style="width: 660px; position: relative; background: var(--crm-background); border-radius: var(--crm-radius-md); box-shadow: var(--crm-elev-md); padding: 24px 28px 32px; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+                  <span style="font: 600 16px/24px Roboto; color: var(--crm-on-background)">Invoices</span>
+                  <div style="background: var(--crm-surface); border-radius: var(--crm-radius-md); box-shadow: var(--crm-elev-xs); overflow: hidden">
+                    <div style="display: grid; grid-template-columns: 1.5fr 1fr 0.7fr; gap: 12px; padding: 8px 16px; background: var(--crm-surface-variant)">
+                      <span style="font: 500 11px/14px Roboto; color: var(--crm-on-surface-variant)">Invoice</span>
+                      <span style="font: 500 11px/14px Roboto; color: var(--crm-on-surface-variant)">Amount</span>
+                      <span style="font: 500 11px/14px Roboto; color: var(--crm-on-surface-variant)">Status</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1.5fr 1fr 0.7fr; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--crm-divider); align-items: center">
+                      <span style="font: 400 12px/16px Roboto; color: var(--crm-on-surface)">2026-0142 · Hosting May</span>
+                      <span class="sp-money" style="font: 500 11px/16px 'Roboto Mono'; color: var(--crm-on-surface)">€482.00</span>
+                      <span style="justify-self: start; font: 500 10px/13px Roboto; color: var(--crm-success); background: var(--crm-success-container); border-radius: var(--crm-radius-pill); padding: 2px 8px">Paid</span>
+                    </div>
+                    <div style="filter: blur(3px); opacity: 0.7; display: grid; grid-template-columns: 1.5fr 1fr 0.7fr; gap: 12px; padding: 10px 16px; align-items: center">
+                      <span style="font: 400 12px/16px Roboto; color: var(--crm-on-surface)">2026-0136 · Licences Q2</span>
+                      <span class="sp-money" style="font: 500 11px/16px 'Roboto Mono'; color: var(--crm-on-surface)">€1,240.00</span>
+                      <span style="justify-self: start; font: 500 10px/13px Roboto; color: #B06000; background: var(--crm-warning-container); border-radius: var(--crm-radius-pill); padding: 2px 8px">Open</span>
+                    </div>
+                  </div>
+                  <div style="align-self: center; width: 420px; display: flex; flex-direction: column; gap: 12px; background: var(--crm-surface); border-radius: var(--crm-radius-lg); box-shadow: var(--sp-shadow-float); padding: 20px 24px; margin-top: -8px">
+                    <div style="display: flex; flex-direction: column; gap: 6px">
+                      <div style="display: flex; align-items: center; justify-content: space-between">
+                        <span style="font: 500 11px/14px Roboto; color: var(--crm-on-surface-variant)">Free documents used</span>
+                        <span class="sp-money" style="font: 500 11px/14px 'Roboto Mono'; color: var(--sp-accent-warm)">3 of 3</span>
+                      </div>
+                      <div style="height: 5px; border-radius: var(--crm-radius-pill); background: var(--crm-surface-variant); overflow: hidden"><div style="width: 100%; height: 100%; background: var(--sp-accent-warm)"></div></div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 4px">
+                      <span style="font: 600 15px/21px Roboto; color: var(--crm-on-background)">You've reached this month's free limit</span>
+                      <span style="font: 400 12px/17px Roboto; color: var(--crm-on-surface-variant); text-wrap: pretty">Pro includes unlimited documents, exports and payment reminders for €10 per user / month.</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px">
+                      <span style="display: flex; align-items: center; justify-content: center; height: 32px; padding: 0 14px; background: var(--crm-primary); border-radius: var(--crm-radius-md); font: 500 12px/16px Roboto; color: var(--crm-on-primary)">Upgrade to Pro</span>
+                      <span style="display: flex; align-items: center; justify-content: center; height: 32px; padding: 0 10px; border-radius: var(--crm-radius-md); font: 500 12px/16px Roboto; color: var(--crm-primary)">Compare plans</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 22px; background: var(--crm-surface); border-left: 1px solid var(--crm-divider); padding: 20px; overflow: hidden">
+              <div style="display: flex; flex-direction: column; gap: 10px">
+                <span style="font: 500 12px/16px Roboto; letter-spacing: 0.2px; color: var(--crm-on-surface-variant)">Audience</span>
+                <div style="display: flex; align-items: center; justify-content: space-between; height: 36px; padding: 0 12px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md)">
+                  <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Free plan workspaces</span>
+                  <span style="font: 400 11px/14px Roboto; color: var(--crm-on-surface-variant)">▾</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px">
+                  <div style="display: flex; align-items: center; justify-content: space-between; background: var(--crm-surface-variant); border-radius: var(--crm-radius-md); padding: 8px 12px">
+                    <span style="font: 400 12px/17px Roboto; color: var(--crm-on-surface)">Documents used ≥ 3</span>
+                    <span style="font: 400 12px/16px Roboto; color: var(--crm-on-surface-variant)">✕</span>
+                  </div>
+                  <div style="display: flex; align-items: center; justify-content: space-between; background: var(--crm-surface-variant); border-radius: var(--crm-radius-md); padding: 8px 12px">
+                    <span style="font: 400 12px/17px Roboto; color: var(--crm-on-surface)">Period — calendar month</span>
+                    <span style="font: 400 12px/16px Roboto; color: var(--crm-on-surface-variant)">✕</span>
+                  </div>
+                  <a style="font: 500 12px/17px Roboto; color: var(--crm-link)">Add condition</a>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px">
+                <span style="font: 500 12px/16px Roboto; letter-spacing: 0.2px; color: var(--crm-on-surface-variant)">Channels</span>
+                <div style="display: flex; flex-direction: column; gap: 8px">
+                  <div style="display: flex; align-items: center; justify-content: space-between"><span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Web</span><span style="position: relative; width: 34px; height: 20px; border-radius: var(--crm-radius-pill); background: var(--crm-primary)"><span style="position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: #FFFFFF"></span></span></div>
+                  <div style="display: flex; align-items: center; justify-content: space-between"><span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Mobile app</span><span style="position: relative; width: 34px; height: 20px; border-radius: var(--crm-radius-pill); background: var(--crm-primary)"><span style="position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: #FFFFFF"></span></span></div>
+                  <div style="display: flex; align-items: center; justify-content: space-between"><span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Chat</span><span style="position: relative; width: 34px; height: 20px; border-radius: var(--crm-radius-pill); background: var(--crm-primary)"><span style="position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: #FFFFFF"></span></span></div>
+                  <div style="display: flex; align-items: center; justify-content: space-between"><span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">In-product</span><span style="position: relative; width: 34px; height: 20px; border-radius: var(--crm-radius-pill); background: var(--crm-primary)"><span style="position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: #FFFFFF"></span></span></div>
+                  <div style="display: flex; align-items: center; justify-content: space-between"><span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Email</span><span style="position: relative; width: 34px; height: 20px; border-radius: var(--crm-radius-pill); background: var(--crm-primary)"><span style="position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: #FFFFFF"></span></span></div>
+                  <div style="display: flex; align-items: center; justify-content: space-between"><span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">SMS</span><span style="position: relative; width: 34px; height: 20px; border-radius: var(--crm-radius-pill); background: var(--crm-divider)"><span style="position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #FFFFFF"></span></span></div>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px">
+                <span style="font: 500 12px/16px Roboto; letter-spacing: 0.2px; color: var(--crm-on-surface-variant)">A/B test</span>
+                <div style="display: flex; flex-direction: column; gap: 6px">
+                  <div style="display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); padding: 8px 12px">
+                    <span style="font: 500 12px/17px Roboto; color: var(--crm-on-surface)">Variant A — meter first</span>
+                    <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface-variant)">50%</span>
+                  </div>
+                  <div style="display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); padding: 8px 12px">
+                    <span style="font: 500 12px/17px Roboto; color: var(--crm-on-surface)">Variant B — price first</span>
+                    <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface-variant)">50%</span>
+                  </div>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px">
+                <span style="font: 500 12px/16px Roboto; letter-spacing: 0.2px; color: var(--crm-on-surface-variant)">Version history</span>
+                <div style="display: flex; flex-direction: column; gap: 8px">
+                  <div style="display: flex; align-items: center; gap: 10px">
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--crm-warning); flex-shrink: 0"></span>
+                    <div style="display: flex; flex-direction: column"><span style="font: 500 12px/17px Roboto; color: var(--crm-on-surface)">v3 — draft</span><span style="font: 400 11px/15px Roboto; color: var(--crm-on-surface-variant)">Edited 2 min ago by M. Visser</span></div>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px">
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--crm-success); flex-shrink: 0"></span>
+                    <div style="display: flex; flex-direction: column"><span style="font: 500 12px/17px Roboto; color: var(--crm-on-surface)">v2 — published</span><span style="font: 400 11px/15px Roboto; color: var(--crm-on-surface-variant)">4 Jun 2026 · Restore</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </x-import>
+  </div>
+</section>
+
+
+
+<section data-screen-label="Variant B — list and wizard" style="max-width: 1448px; margin: 0 auto; padding: 48px 24px 0; display: flex; flex-direction: column; gap: 36px">
+  <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #D3D7DC; padding-top: 20px">
+    <h2 style="font: 600 18px/24px Roboto; color: var(--crm-on-background); margin: 0">Variant B — Overview list + wizard</h2>
+    <p style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant); margin: 0; max-width: 800px">Campaign-management style: all walls in one table with status, A/B and conversion; creating or editing opens a five-step wizard. Best when many walls run in parallel.</p>
+  </div>
+
+  <div data-screen-label="Walls overview" style="display: flex; flex-direction: column; gap: 10px">
+    <span style="font: 500 13px/16px Roboto; color: var(--crm-on-background)">B1 · Walls overview</span>
+    <x-import component="ChromeWindow" from="./browser-window.jsx" url="crm.incedo.nl/walls" tabs="{{ tabsWalls }}" width="{{ wWide }}" height="{{ hList }}" hint-size="1400px,620px">
+      <div style="height: 100%; display: flex; background: var(--crm-background); font-family: var(--crm-font-sans); overflow: hidden">
+        <div style="width: 200px; flex-shrink: 0; display: flex; flex-direction: column; gap: 24px; background: var(--crm-surface); border-right: 1px solid var(--crm-divider); padding: 20px 12px">
+          <span style="font: 700 16px/22px Roboto; color: var(--crm-primary); padding: 0 12px">Incedo CRM</span>
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Dashboard</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Contacts</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Companies</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Deals</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Invoices</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Subscriptions</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-primary); background: var(--crm-info-container); padding: 8px 12px; border-radius: var(--crm-radius-md)">Walls</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Tickets</span>
+          </div>
+        </div>
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 28px 32px; gap: 20px">
+          <div style="display: flex; align-items: flex-end; justify-content: space-between">
+            <div style="display: flex; flex-direction: column; gap: 4px">
+              <h1 style="font: 700 24px/32px Roboto; color: var(--crm-on-background); margin: 0">Walls</h1>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">5 walls · 3 live · 1 draft · 1 paused</span>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: center; height: 38px; padding: 0 18px; background: var(--crm-primary); border-radius: var(--crm-radius-md); font: 500 14px/20px Roboto; color: var(--crm-on-primary)">New wall</div>
+          </div>
+          <div style="background: var(--crm-surface); border-radius: var(--crm-radius-md); box-shadow: var(--crm-elev-sm); overflow: hidden">
+            <div style="display: grid; grid-template-columns: 2.2fr 1fr 1.3fr 0.9fr 1fr 0.9fr 0.9fr; gap: 16px; padding: 10px 20px; background: var(--crm-surface-variant)">
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Name</span>
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Type</span>
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Channels</span>
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Status</span>
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">A/B</span>
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Conversion</span>
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Updated</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 2.2fr 1fr 1.3fr 0.9fr 1fr 0.9fr 0.9fr; gap: 16px; padding: 13px 20px; border-bottom: 1px solid var(--crm-divider); align-items: center">
+              <span style="font: 500 14px/20px Roboto; color: var(--crm-on-surface)">Trial expiry — workspace</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">Trial</span>
+              <div style="display: flex; gap: 4px"><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface-variant); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">W</span><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface-variant); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">M</span><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface-variant); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">P</span><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface-variant); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">E</span><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface-variant); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">S</span></div>
+              <span style="justify-self: start; font: 500 12px/16px Roboto; color: var(--crm-success); background: var(--crm-success-container); border-radius: var(--crm-radius-pill); padding: 3px 10px">Live</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">2 variants</span>
+              <span class="sp-money" style="font: 500 13px/18px 'Roboto Mono'; color: var(--crm-on-surface)">4.8%</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">4 Jun</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 2.2fr 1fr 1.3fr 0.9fr 1fr 0.9fr 0.9fr; gap: 16px; padding: 13px 20px; border-bottom: 1px solid var(--crm-divider); align-items: center; background: var(--crm-info-container)">
+              <span style="font: 500 14px/20px Roboto; color: var(--crm-on-surface)">Metered limit — invoices</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">Metered</span>
+              <div style="display: flex; gap: 4px"><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">W</span><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">M</span><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">C</span><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">P</span><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">E</span></div>
+              <span style="justify-self: start; font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant); background: var(--crm-surface); border-radius: var(--crm-radius-pill); padding: 3px 10px">Draft</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">2 variants</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">—</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">Today</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 2.2fr 1fr 1.3fr 0.9fr 1fr 0.9fr 0.9fr; gap: 16px; padding: 13px 20px; border-bottom: 1px solid var(--crm-divider); align-items: center">
+              <span style="font: 500 14px/20px Roboto; color: var(--crm-on-surface)">Feature gate — API access</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">Feature gate</span>
+              <div style="display: flex; gap: 4px"><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface-variant); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">W</span><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface-variant); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">P</span></div>
+              <span style="justify-self: start; font: 500 12px/16px Roboto; color: var(--crm-success); background: var(--crm-success-container); border-radius: var(--crm-radius-pill); padding: 3px 10px">Live</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">—</span>
+              <span class="sp-money" style="font: 500 13px/18px 'Roboto Mono'; color: var(--crm-on-surface)">2.1%</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">28 May</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 2.2fr 1fr 1.3fr 0.9fr 1fr 0.9fr 0.9fr; gap: 16px; padding: 13px 20px; border-bottom: 1px solid var(--crm-divider); align-items: center">
+              <span style="font: 500 14px/20px Roboto; color: var(--crm-on-surface)">Registration — shared documents</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">Registration</span>
+              <div style="display: flex; gap: 4px"><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface-variant); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">W</span><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface-variant); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">M</span><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface-variant); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">C</span></div>
+              <span style="justify-self: start; font: 500 12px/16px Roboto; color: var(--crm-success); background: var(--crm-success-container); border-radius: var(--crm-radius-pill); padding: 3px 10px">Live</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">2 variants</span>
+              <span class="sp-money" style="font: 500 13px/18px 'Roboto Mono'; color: var(--crm-on-surface)">11.4%</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">21 May</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 2.2fr 1fr 1.3fr 0.9fr 1fr 0.9fr 0.9fr; gap: 16px; padding: 13px 20px; align-items: center">
+              <span style="font: 500 14px/20px Roboto; color: var(--crm-on-surface)">Freemium prompt — sidebar</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">Freemium</span>
+              <div style="display: flex; gap: 4px"><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface-variant); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">W</span><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface-variant); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">P</span><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--crm-surface-variant); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 10px/13px Roboto">E</span></div>
+              <span style="justify-self: start; font: 500 12px/16px Roboto; color: #B06000; background: var(--crm-warning-container); border-radius: var(--crm-radius-pill); padding: 3px 10px">Paused</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">—</span>
+              <span class="sp-money" style="font: 500 13px/18px 'Roboto Mono'; color: var(--crm-on-surface)">0.9%</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">14 May</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </x-import>
+  </div>
+
+  <div data-screen-label="Wall wizard" style="display: flex; flex-direction: column; gap: 10px">
+    <span style="font: 500 13px/16px Roboto; color: var(--crm-on-background)">B2 · Wizard — step 2 of 5</span>
+    <x-import component="ChromeWindow" from="./browser-window.jsx" url="crm.incedo.nl/walls/new" tabs="{{ tabsWizard }}" width="{{ wWide }}" height="{{ hWizard }}" hint-size="1400px,860px">
+      <div style="height: 100%; display: flex; background: var(--crm-background); font-family: var(--crm-font-sans); overflow: hidden">
+        <div style="width: 200px; flex-shrink: 0; display: flex; flex-direction: column; gap: 24px; background: var(--crm-surface); border-right: 1px solid var(--crm-divider); padding: 20px 12px">
+          <span style="font: 700 16px/22px Roboto; color: var(--crm-primary); padding: 0 12px">Incedo CRM</span>
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Dashboard</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Contacts</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Companies</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Deals</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Invoices</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Subscriptions</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-primary); background: var(--crm-info-container); padding: 8px 12px; border-radius: var(--crm-radius-md)">Walls</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Tickets</span>
+          </div>
+        </div>
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+          <div style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 32px; background: var(--crm-surface); border-bottom: 1px solid var(--crm-divider); flex-shrink: 0">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">Walls</span>
+              <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">/</span>
+              <span style="font: 500 14px/20px Roboto; color: var(--crm-on-surface)">New wall</span>
+            </div>
+            <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant)">Step 2 of 5</span>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 0; padding: 24px 80px 8px">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="width: 26px; height: 26px; border-radius: 50%; background: var(--crm-primary); color: var(--crm-on-primary); display: flex; align-items: center; justify-content: center; font: 500 12px/16px Roboto">✓</span>
+              <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface)">Type</span>
+            </div>
+            <span style="flex: 1; height: 1px; background: var(--crm-primary); margin: 0 12px"></span>
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--crm-primary); color: var(--crm-primary); display: flex; align-items: center; justify-content: center; font: 500 12px/16px Roboto">2</span>
+              <span style="font: 500 13px/18px Roboto; color: var(--crm-primary)">Content</span>
+            </div>
+            <span style="flex: 1; height: 1px; background: var(--crm-divider); margin: 0 12px"></span>
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--crm-divider); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 12px/16px Roboto">3</span>
+              <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant)">Channels</span>
+            </div>
+            <span style="flex: 1; height: 1px; background: var(--crm-divider); margin: 0 12px"></span>
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--crm-divider); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 12px/16px Roboto">4</span>
+              <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant)">Targeting</span>
+            </div>
+            <span style="flex: 1; height: 1px; background: var(--crm-divider); margin: 0 12px"></span>
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--crm-divider); color: var(--crm-on-surface-variant); display: flex; align-items: center; justify-content: center; font: 500 12px/16px Roboto">5</span>
+              <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant)">Publish</span>
+            </div>
+          </div>
+          <div style="flex: 1; display: grid; grid-template-columns: 480px 1fr; gap: 28px; padding: 20px 40px; min-height: 0">
+            <div style="display: flex; flex-direction: column; gap: 18px; background: var(--crm-surface); border-radius: var(--crm-radius-lg); box-shadow: var(--crm-elev-sm); padding: 28px">
+              <h2 style="font: 600 18px/26px Roboto; color: var(--crm-on-background); margin: 0">Content</h2>
+              <div style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Title</span>
+                <div style="display: flex; align-items: center; min-height: 40px; padding: 9px 12px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); font: 400 14px/20px Roboto; color: var(--crm-on-surface)">You've reached this month's free limit</div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Body</span>
+                <div style="display: flex; padding: 9px 12px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); font: 400 14px/20px Roboto; color: var(--crm-on-surface); min-height: 64px">Pro includes unlimited documents, exports and payment reminders for €10 per user / month.</div>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+                <div style="display: flex; flex-direction: column; gap: 6px">
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Primary CTA</span>
+                  <div style="display: flex; align-items: center; height: 40px; padding: 0 12px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); font: 400 14px/20px Roboto; color: var(--crm-on-surface)">Upgrade to Pro</div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px">
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Secondary CTA</span>
+                  <div style="display: flex; align-items: center; height: 40px; padding: 0 12px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); font: 400 14px/20px Roboto; color: var(--crm-on-surface)">Compare plans</div>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 8px">
+                <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Plans shown</span>
+                <div style="display: flex; gap: 8px">
+                  <span style="display: flex; align-items: center; gap: 6px; font: 500 12px/16px Roboto; color: var(--crm-primary); border: 1px solid var(--crm-primary); background: var(--crm-info-container); border-radius: var(--crm-radius-pill); padding: 5px 12px"><span>✓</span><span>Free</span></span>
+                  <span style="display: flex; align-items: center; gap: 6px; font: 500 12px/16px Roboto; color: var(--crm-primary); border: 1px solid var(--crm-primary); background: var(--crm-info-container); border-radius: var(--crm-radius-pill); padding: 5px 12px"><span>✓</span><span>Pro</span></span>
+                  <span style="display: flex; align-items: center; gap: 6px; font: 500 12px/16px Roboto; color: var(--crm-primary); border: 1px solid var(--crm-primary); background: var(--crm-info-container); border-radius: var(--crm-radius-pill); padding: 5px 12px"><span>✓</span><span>Business</span></span>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px">
+                <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Tone preset</span>
+                <div style="display: flex; align-items: center; gap: 2px; background: var(--crm-surface-variant); border-radius: var(--crm-radius-pill); padding: 2px">
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant); padding: 5px 12px">Neutral</span>
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-background); background: var(--crm-surface); box-shadow: var(--crm-elev-xs); border-radius: var(--crm-radius-pill); padding: 5px 12px">Value-led</span>
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant); padding: 5px 12px">Urgent</span>
+                </div>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px; background: var(--crm-surface-variant); border-radius: var(--crm-radius-lg); padding: 20px 24px; min-height: 0">
+              <div style="display: flex; align-items: center; justify-content: space-between">
+                <div style="display: flex; gap: 6px">
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-primary); background: var(--crm-primary); border-radius: var(--crm-radius-pill); padding: 4px 12px">Web</span>
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant); background: var(--crm-surface); border-radius: var(--crm-radius-pill); padding: 4px 12px">Mobile</span>
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant); background: var(--crm-surface); border-radius: var(--crm-radius-pill); padding: 4px 12px">Chat</span>
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant); background: var(--crm-surface); border-radius: var(--crm-radius-pill); padding: 4px 12px">In-product</span>
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant); background: var(--crm-surface); border-radius: var(--crm-radius-pill); padding: 4px 12px">Email</span>
+                  <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant); background: var(--crm-surface); border-radius: var(--crm-radius-pill); padding: 4px 12px">SMS</span>
+                </div>
+                <span style="font: 400 12px/16px Roboto; color: var(--crm-on-surface-variant)">Live preview</span>
+              </div>
+              <div style="flex: 1; display: flex; align-items: center; justify-content: center">
+                <div style="width: 420px; display: flex; flex-direction: column; gap: 12px; background: var(--crm-surface); border-radius: var(--crm-radius-lg); box-shadow: var(--sp-shadow-float); padding: 22px 26px">
+                  <div style="display: flex; flex-direction: column; gap: 6px">
+                    <div style="display: flex; align-items: center; justify-content: space-between">
+                      <span style="font: 500 11px/14px Roboto; color: var(--crm-on-surface-variant)">Free documents used</span>
+                      <span class="sp-money" style="font: 500 11px/14px 'Roboto Mono'; color: var(--sp-accent-warm)">3 of 3</span>
+                    </div>
+                    <div style="height: 5px; border-radius: var(--crm-radius-pill); background: var(--crm-surface-variant); overflow: hidden"><div style="width: 100%; height: 100%; background: var(--sp-accent-warm)"></div></div>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 4px">
+                    <span style="font: 600 16px/23px Roboto; color: var(--crm-on-background)">You've reached this month's free limit</span>
+                    <span style="font: 400 13px/19px Roboto; color: var(--crm-on-surface-variant); text-wrap: pretty">Pro includes unlimited documents, exports and payment reminders for €10 per user / month.</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px">
+                    <span style="display: flex; align-items: center; justify-content: center; height: 36px; padding: 0 16px; background: var(--crm-primary); border-radius: var(--crm-radius-md); font: 500 13px/18px Roboto; color: var(--crm-on-primary)">Upgrade to Pro</span>
+                    <span style="display: flex; align-items: center; justify-content: center; height: 36px; padding: 0 12px; border-radius: var(--crm-radius-md); font: 500 13px/18px Roboto; color: var(--crm-primary)">Compare plans</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 40px 24px; border-top: 1px solid var(--crm-divider)">
+            <div style="display: flex; align-items: center; justify-content: center; height: 38px; padding: 0 16px; border-radius: var(--crm-radius-md); font: 500 13px/18px Roboto; color: var(--crm-primary)">Back</div>
+            <div style="display: flex; align-items: center; gap: 10px">
+              <div style="display: flex; align-items: center; justify-content: center; height: 38px; padding: 0 16px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); font: 500 13px/18px Roboto; color: var(--crm-primary)">Save draft</div>
+              <div style="display: flex; align-items: center; justify-content: center; height: 38px; padding: 0 20px; background: var(--crm-primary); border-radius: var(--crm-radius-md); font: 500 13px/18px Roboto; color: var(--crm-on-primary)">Continue</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </x-import>
+  </div>
+</section>
+
+<section data-screen-label="Reporting — marketing" style="max-width: 1448px; margin: 0 auto; padding: 48px 24px 96px; display: flex; flex-direction: column; gap: 36px">
+  <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #D3D7DC; padding-top: 20px">
+    <h2 style="font: 600 18px/24px Roboto; color: var(--crm-on-background); margin: 0">03 — Reporting · Marketing</h2>
+    <p style="font: 400 13px/18px Roboto; color: var(--crm-on-surface-variant); margin: 0; max-width: 800px">The numbers behind the walls for the marketing team: volume and conversion over time, the full funnel from impression to payment, channel breakdown and live A/B results.</p>
+  </div>
+
+  <div data-screen-label="Walls reporting dashboard" style="display: flex; flex-direction: column; gap: 10px">
+    <x-import component="ChromeWindow" from="./browser-window.jsx" url="crm.incedo.nl/walls/reporting" tabs="{{ tabsReport }}" width="{{ wWide }}" height="{{ hReport }}" hint-size="1400px,1080px">
+      <div style="height: 100%; display: flex; background: var(--crm-background); font-family: var(--crm-font-sans); overflow: hidden">
+        <div style="width: 200px; flex-shrink: 0; display: flex; flex-direction: column; gap: 24px; background: var(--crm-surface); border-right: 1px solid var(--crm-divider); padding: 20px 12px">
+          <span style="font: 700 16px/22px Roboto; color: var(--crm-primary); padding: 0 12px">Incedo CRM</span>
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Dashboard</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Contacts</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Companies</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Deals</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Invoices</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Subscriptions</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-primary); background: var(--crm-info-container); padding: 8px 12px; border-radius: var(--crm-radius-md)">Walls</span>
+            <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 8px 12px; border-radius: var(--crm-radius-md)">Tickets</span>
+          </div>
+        </div>
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 24px 32px; gap: 18px; overflow: hidden">
+          <div style="display: flex; align-items: flex-end; justify-content: space-between">
+            <div style="display: flex; flex-direction: column; gap: 10px">
+              <h1 style="font: 700 24px/32px Roboto; color: var(--crm-on-background); margin: 0">Walls</h1>
+              <div style="display: flex; gap: 4px; border-bottom: 1px solid var(--crm-divider)">
+                <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface-variant); padding: 6px 14px">Overview</span>
+                <span style="font: 500 13px/18px Roboto; color: var(--crm-primary); padding: 6px 14px; border-bottom: 2px solid var(--crm-primary); margin-bottom: -1px">Reporting</span>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px">
+              <div style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); background: var(--crm-surface)">
+                <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">All walls</span>
+                <span style="font: 400 11px/14px Roboto; color: var(--crm-on-surface-variant)">▾</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); background: var(--crm-surface)">
+                <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Last 30 days</span>
+                <span style="font: 400 11px/14px Roboto; color: var(--crm-on-surface-variant)">▾</span>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: center; height: 36px; padding: 0 14px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); background: var(--crm-surface); font: 500 13px/18px Roboto; color: var(--crm-primary)">Export CSV</div>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px">
+            <div style="display: flex; flex-direction: column; gap: 4px; background: var(--crm-surface); border-radius: var(--crm-radius-md); box-shadow: var(--crm-elev-sm); padding: 16px 20px">
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Impressions</span>
+              <span class="sp-money" style="font: 700 26px/32px 'Roboto Mono'; letter-spacing: -0.01em; color: var(--crm-on-background)">48,200</span>
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-success)">+12% vs previous period</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px; background: var(--crm-surface); border-radius: var(--crm-radius-md); box-shadow: var(--crm-elev-sm); padding: 16px 20px">
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Conversions</span>
+              <span class="sp-money" style="font: 700 26px/32px 'Roboto Mono'; letter-spacing: -0.01em; color: var(--crm-on-background)">2,310</span>
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-success)">+18% vs previous period</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px; background: var(--crm-surface); border-radius: var(--crm-radius-md); box-shadow: var(--crm-elev-sm); padding: 16px 20px">
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Conversion rate</span>
+              <span class="sp-money" style="font: 700 26px/32px 'Roboto Mono'; letter-spacing: -0.01em; color: var(--crm-on-background)">4.8%</span>
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-success)">+0.6 pp vs previous period</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px; background: var(--crm-surface); border-radius: var(--crm-radius-md); box-shadow: var(--crm-elev-sm); padding: 16px 20px">
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">MRR added</span>
+              <span class="sp-money" style="font: 700 26px/32px 'Roboto Mono'; letter-spacing: -0.01em; color: var(--crm-on-background)">€12,440</span>
+              <span style="font: 500 12px/16px Roboto; color: var(--crm-success)">+€1,910 vs previous period</span>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px">
+            <div style="display: flex; flex-direction: column; gap: 14px; background: var(--crm-surface); border-radius: var(--crm-radius-md); box-shadow: var(--crm-elev-sm); padding: 18px 22px">
+              <div style="display: flex; align-items: center; justify-content: space-between">
+                <h3 style="font: 600 15px/22px Roboto; color: var(--crm-on-surface); margin: 0">Conversions per day</h3>
+                <span style="font: 400 12px/16px Roboto; color: var(--crm-on-surface-variant)">13 May – 11 Jun</span>
+              </div>
+              <div style="flex: 1; display: flex; align-items: flex-end; gap: 5px; min-height: 150px; border-bottom: 1px solid var(--crm-divider); padding-bottom: 1px">
+                <div style="flex: 1; height: 34%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 28%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 40%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 36%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 44%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 38%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 52%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 46%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 41%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 55%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 48%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 60%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 44%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 58%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 63%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 50%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 66%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 59%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 71%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 62%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 68%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 75%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 64%; background: var(--crm-primary); opacity: 0.45; border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 79%; background: var(--crm-primary); border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 70%; background: var(--crm-primary); border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 83%; background: var(--crm-primary); border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 76%; background: var(--crm-primary); border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 88%; background: var(--crm-primary); border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 80%; background: var(--crm-primary); border-radius: 2px 2px 0 0"></div>
+                <div style="flex: 1; height: 92%; background: var(--crm-primary); border-radius: 2px 2px 0 0"></div>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between">
+                <span style="font: 400 11px/14px Roboto; color: var(--crm-on-surface-variant)">13 May</span>
+                <span style="font: 400 11px/14px Roboto; color: var(--crm-on-surface-variant)">Last 7 days highlighted</span>
+                <span style="font: 400 11px/14px Roboto; color: var(--crm-on-surface-variant)">11 Jun</span>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 14px; background: var(--crm-surface); border-radius: var(--crm-radius-md); box-shadow: var(--crm-elev-sm); padding: 18px 22px">
+              <h3 style="font: 600 15px/22px Roboto; color: var(--crm-on-surface); margin: 0">Funnel</h3>
+              <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 14px">
+                <div style="display: flex; flex-direction: column; gap: 5px">
+                  <div style="display: flex; align-items: center; justify-content: space-between">
+                    <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Wall shown</span>
+                    <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">48,200</span>
+                  </div>
+                  <div style="height: 10px; border-radius: var(--crm-radius-pill); background: var(--crm-primary)"></div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 5px">
+                  <div style="display: flex; align-items: center; justify-content: space-between">
+                    <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Engaged with CTA</span>
+                    <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">9,640 · 20%</span>
+                  </div>
+                  <div style="height: 10px; border-radius: var(--crm-radius-pill); background: var(--crm-surface-variant); overflow: hidden"><div style="width: 20%; height: 100%; background: var(--crm-primary)"></div></div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 5px">
+                  <div style="display: flex; align-items: center; justify-content: space-between">
+                    <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Plan selected</span>
+                    <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">3,470 · 7.2%</span>
+                  </div>
+                  <div style="height: 10px; border-radius: var(--crm-radius-pill); background: var(--crm-surface-variant); overflow: hidden"><div style="width: 7.2%; height: 100%; background: var(--crm-primary)"></div></div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 5px">
+                  <div style="display: flex; align-items: center; justify-content: space-between">
+                    <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface)">Paid</span>
+                    <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-success)">2,310 · 4.8%</span>
+                  </div>
+                  <div style="height: 10px; border-radius: var(--crm-radius-pill); background: var(--crm-surface-variant); overflow: hidden"><div style="width: 4.8%; height: 100%; background: var(--crm-success)"></div></div>
+                </div>
+              </div>
+              <span style="font: 400 12px/17px Roboto; color: var(--crm-on-surface-variant)">Biggest drop: CTA → plan selection (−64%).</span>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px; flex: 1; min-height: 0">
+            <div style="display: flex; flex-direction: column; background: var(--crm-surface); border-radius: var(--crm-radius-md); box-shadow: var(--crm-elev-sm); overflow: hidden">
+              <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 12px">
+                <h3 style="font: 600 15px/22px Roboto; color: var(--crm-on-surface); margin: 0">By channel</h3>
+                <a style="font: 500 12px/17px Roboto; color: var(--crm-link)">View by wall</a>
+              </div>
+              <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 0.8fr 1fr; gap: 16px; padding: 8px 20px; background: var(--crm-surface-variant)">
+                <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Channel</span>
+                <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Impressions</span>
+                <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Conversions</span>
+                <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">Rate</span>
+                <span style="font: 500 12px/16px Roboto; color: var(--crm-on-surface-variant)">MRR added</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 0.8fr 1fr; gap: 16px; padding: 11px 20px; border-bottom: 1px solid var(--crm-divider); align-items: center">
+                <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface)">Web</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">21,400</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">1,290</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">6.0%</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">€6,880</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 0.8fr 1fr; gap: 16px; padding: 11px 20px; border-bottom: 1px solid var(--crm-divider); align-items: center">
+                <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface)">In-product</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">12,800</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">540</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">4.2%</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">€2,710</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 0.8fr 1fr; gap: 16px; padding: 11px 20px; border-bottom: 1px solid var(--crm-divider); align-items: center">
+                <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface)">Email</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">8,400</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">310</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">3.7%</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">€1,640</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 0.8fr 1fr; gap: 16px; padding: 11px 20px; border-bottom: 1px solid var(--crm-divider); align-items: center">
+                <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface)">Mobile app</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">3,900</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">120</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">3.1%</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">€720</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 0.8fr 1fr; gap: 16px; padding: 11px 20px; border-bottom: 1px solid var(--crm-divider); align-items: center">
+                <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface)">Chat</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">1,200</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">38</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">3.2%</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">€310</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 0.8fr 1fr; gap: 16px; padding: 11px 20px; align-items: center">
+                <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface)">SMS</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">500</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">12</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">2.4%</span>
+                <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">€180</span>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 14px; background: var(--crm-surface); border-radius: var(--crm-radius-md); box-shadow: var(--crm-elev-sm); padding: 18px 22px">
+              <div style="display: flex; flex-direction: column; gap: 2px">
+                <h3 style="font: 600 15px/22px Roboto; color: var(--crm-on-surface); margin: 0">A/B test — running</h3>
+                <span style="font: 400 12px/17px Roboto; color: var(--crm-on-surface-variant)">Metered limit — invoices · 9 days</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 12px">
+                <div style="display: flex; flex-direction: column; gap: 5px">
+                  <div style="display: flex; align-items: center; justify-content: space-between">
+                    <span style="font: 400 13px/18px Roboto; color: var(--crm-on-surface)">Variant A — meter first</span>
+                    <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-on-surface)">4.1%</span>
+                  </div>
+                  <div style="height: 8px; border-radius: var(--crm-radius-pill); background: var(--crm-surface-variant); overflow: hidden"><div style="width: 58%; height: 100%; background: var(--crm-on-surface-variant)"></div></div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 5px">
+                  <div style="display: flex; align-items: center; justify-content: space-between">
+                    <span style="font: 500 13px/18px Roboto; color: var(--crm-on-surface)">Variant B — price first</span>
+                    <span class="sp-money" style="font: 500 12px/16px 'Roboto Mono'; color: var(--crm-success)">5.6%</span>
+                  </div>
+                  <div style="height: 8px; border-radius: var(--crm-radius-pill); background: var(--crm-surface-variant); overflow: hidden"><div style="width: 80%; height: 100%; background: var(--crm-success)"></div></div>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; background: var(--crm-success-container); border-radius: var(--crm-radius-md); padding: 10px 14px">
+                <span style="font: 500 12px/17px Roboto; color: var(--crm-success)">✓</span>
+                <span style="font: 400 12px/17px Roboto; color: var(--crm-on-surface)">Variant B leads with 94% confidence. Significance expected within 3 days.</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px; margin-top: auto">
+                <div style="display: flex; align-items: center; justify-content: center; height: 36px; padding: 0 14px; border: 1px solid var(--crm-divider); border-radius: var(--crm-radius-md); font: 500 13px/18px Roboto; color: var(--crm-primary)">View test</div>
+                <div style="display: flex; align-items: center; justify-content: center; height: 36px; padding: 0 14px; background: var(--crm-primary); border-radius: var(--crm-radius-md); font: 500 13px/18px Roboto; color: var(--crm-on-primary)">Promote B</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </x-import>
+  </div>
+</section></x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      wWide: 1400,
+      hEditor: 880,
+      hList: 620,
+      hWizard: 860,
+      tabsDesigner: [{ title: "Wall designer — Incedo CRM" }],
+      tabsWalls: [{ title: "Walls — Incedo CRM" }],
+      tabsWizard: [{ title: "New wall — Incedo CRM" }],
+      tabsReport: [{ title: "Reporting — Incedo CRM" }],
+      hReport: 1080,
+    };
+  }
+}
+</script>
+</body>
+</html>

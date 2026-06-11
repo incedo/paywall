@@ -37,6 +37,8 @@
   <tr><td>TS-04</td><td class="must">MUST</td><td>The CIAM is the <strong>Ory stack</strong>: Ory Kratos for identity (registration, login, recovery, verification) and Ory Hydra for OAuth2/OIDC token issuance — self-hosted containers in the experiment, swappable for Ory Network in production. All US-* and NFR-20..24 requirements apply to Ory's endpoints (JWKS via Hydra).</td></tr>
   <tr><td>TS-05</td><td class="must">MUST</td><td>Fine-grained authorization uses <strong>Ory Keto</strong> (Zanzibar-style relation tuples) as the grant store behind the FGA requirements of <a href="02-access-control-metering.html">Doc 2 (FGA-*)</a>, accessed through its check/write APIs behind a local interface.</td></tr>
   <tr><td>TS-06</td><td class="should">SHOULD</td><td>The full stack (paywall service, Ory Kratos/Hydra/Keto, database, mock CEP, mailhog) is runnable locally via one <code>docker compose up</code>, plus <code>wrangler dev</code> for the edge Worker (INF-*).</td></tr>
+  <tr><td>TS-07</td><td class="must">MUST</td><td>The web channel for human visitors is a <strong>Kotlin Multiplatform Compose SPA compiled to Wasm</strong>, served as static assets from the edge. The SPA holds no content and makes no access decisions: all article content (teaser or full body) is fetched from origin APIs that enforce AC-01..05 — the premium body is never present in any response to an unentitled request. The admin console (ADM-*) is built from the same Compose source tree. Verified crawlers bypass the SPA entirely (SEO-03).</td></tr>
+  <tr><td>TS-08</td><td class="must">MUST</td><td>A static <strong>no-JS/no-Wasm fallback HTML page</strong> is served with the SPA shell (e.g. <code>&lt;noscript&gt;</code> plus a Wasm-support check): visitors whose browser cannot run the SPA see a styled, branded explanation with a support contact — never a blank page. Enforcement is unaffected: the fallback contains no article content (AC-01, BP-01).</td></tr>
 </table>
 
 <h2>0a. Infrastructure — Cloudflare (INF)</h2>
@@ -65,7 +67,7 @@ Workers themselves (Workers execute JS/WASM).</p>
   <tr><td>API-02</td><td class="must">MUST</td><td>Strategies (hard/metered/freemium/dynamic) implement a common interface (strategy pattern) so new types are pluggable.</td></tr>
   <tr><td>API-03</td><td class="must">MUST</td><td>All configuration (PW-06, EX-02, DY-01 weights, plans PAY-01) lives in versioned config (file or table), hot-reloadable, with validation on load.</td></tr>
   <tr><td>API-04</td><td class="should">SHOULD</td><td>Server-rendered article pages (SSR) so AC-01 truncation and SEO requirements are natural; client-side hydration optional.</td></tr>
-  <tr><td>API-05</td><td class="should">SHOULD</td><td>The decision endpoint responds in &lt; 50 ms p95 (excluding network) so it can sit in the page render path.</td></tr>
+  <tr><td>API-05</td><td class="must">MUST</td><td>The decision endpoint responds in &lt; 50 ms p95 (excluding network) so it can sit in the page render path and inside the edge response budget of NFR-15.</td></tr>
   <tr><td>API-06</td><td class="must">MUST</td><td>Every inbound request carries a <code>channel</code> (<code>web</code> | <code>app</code> | <code>chat</code>), propagated through paywall decisions, offer triggering, and events. The experiment implements <code>web</code>; <code>app</code> and <code>chat</code> must work through the same APIs without code changes (channel as data, not branches).</td></tr>
   <tr><td>API-07</td><td class="must">MUST</td><td><strong>CEP integration:</strong> the CEP engine is reached through a client interface (<code>request_offer(subject, trigger_context)</code> + inbound endpoint for CEP-initiated offers, UP-08). The experiment runs against a mock CEP that serves configurable offers; the real CEP replaces the mock without touching callers (cf. PAY-05).</td></tr>
   <tr><td>API-08</td><td class="should">SHOULD</td><td>The inbound CEP endpoint authenticates requests (shared secret or signature, cf. NFR-03) and is idempotent on <code>offer_id</code> + <code>subject_id</code>.</td></tr>
@@ -98,9 +100,9 @@ grant_meta     (id, subject_id, relation, object, granted_by, reason, expires_at
 <h2>3. SEO &amp; crawlers (SEO)</h2>
 <table class="req">
   <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
-  <tr><td>SEO-01</td><td class="must">MUST</td><td>Gated articles include <a href="https://developers.google.com/search/docs/appearance/structured-data/paywalled-content">paywalled-content structured data</a>: JSON-LD with <code>isAccessibleForFree: false</code> and <code>hasPart</code> marking the gated section — so flexible sampling/full serving to Googlebot is not treated as cloaking.</td></tr>
+  <tr><td>SEO-01</td><td class="must">MUST</td><td>The crawler-served rendering (SEO-03) of gated articles includes <a href="https://developers.google.com/search/docs/appearance/structured-data/paywalled-content">paywalled-content structured data</a>: JSON-LD with <code>isAccessibleForFree: false</code> and <code>hasPart</code> marking the gated section — so flexible sampling/full serving to Googlebot is not treated as cloaking.</td></tr>
   <tr><td>SEO-02</td><td class="must">MUST</td><td>Verified crawlers (reverse-DNS check, not just user agent) receive the full article (MT-05); unverified claimants get the normal gated experience.</td></tr>
-  <tr><td>SEO-03</td><td class="should">SHOULD</td><td>Teaser content is server-rendered and crawlable on every variant so gated pages still rank on the visible portion.</td></tr>
+  <tr><td>SEO-03</td><td class="must">MUST</td><td><strong>Dynamic rendering at the edge:</strong> human visitors receive the Wasm SPA (TS-07); requests flagged as verified crawlers by the Worker (INF-01) are routed to a server-rendered HTML rendering of the article generated at the origin — full body per SEO-02, with SEO-01 structured data and canonical URL identical to the SPA route. Crawlability is provided by this rendering path, not by the SPA.</td></tr>
 </table>
 
 <h2>4. Security (NFR)</h2>
@@ -130,6 +132,7 @@ grant_meta     (id, subject_id, relation, object, granted_by, reason, expires_at
   <tr><td>NFR-12</td><td class="must">MUST</td><td>Automated tests cover the decision matrix: each paywall type × (anonymous, registered, subscriber, expired) × (free, premium) — minimum 32 cases.</td></tr>
   <tr><td>NFR-13</td><td class="should">SHOULD</td><td>Gate component meets WCAG 2.1 AA (focus order, contrast, screen-reader labels).</td></tr>
   <tr><td>NFR-14</td><td class="should">SHOULD</td><td>Structured logs for every paywall decision with correlation IDs, retained ≥ 90 days for experiment analysis.</td></tr>
+  <tr><td>NFR-15</td><td class="must">MUST</td><td><strong>Customer response within 50 ms:</strong> every customer-facing request starts its response within 50 ms p95, measured at the edge (request arrival at the Worker → first response byte). SPA assets and gated/teaser payloads are served from edge cache (INF-03); requests that must reach the origin (access decision, full premium content) consume the API-05 decision budget inside this envelope. Measured continuously and alerted on; budget overruns are a release blocker.</td></tr>
   <tr><td>NFR-15</td><td class="could">COULD</td><td>Feature flag to kill any variant instantly (revert to control) if it misbehaves in production.</td></tr>
 </table>
 
