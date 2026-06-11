@@ -1,0 +1,196 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Incedo CRM Design System — tokens
+   Mirror of designsystem/src/commonMain/kotlin/crm/designsystem/theme/CrmTheme.kt
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Colors — Light (CrmColors default) ────────────────────────── */
+  --crm-primary:            #1A73E8;
+  --crm-primary-variant:    #1557B0;
+  --crm-on-primary:         #FFFFFF;
+
+  --crm-background:         #F8F9FA;
+  --crm-surface:            #FFFFFF;
+  --crm-surface-variant:    #F1F3F4;
+
+  --crm-on-background:      #202124;
+  --crm-on-surface:         #202124;
+  --crm-on-surface-variant: #5F6368;
+
+  --crm-error:              #D93025;
+  --crm-on-error:           #FFFFFF;
+  --crm-success:            #1E8E3E;
+  --crm-warning:            #F9AB00;
+  --crm-info:               #1A73E8;
+  --crm-on-info:            #FFFFFF;
+
+  --crm-link:               #1A73E8;
+  --crm-focus:              #1A73E8;
+  --crm-overlay:            #000000;
+
+  --crm-error-container:    #FCE8E6;
+  --crm-success-container:  #E6F4EA;
+  --crm-warning-container:  #FEF7E0;
+  --crm-info-container:     #E8F0FE;
+
+  --crm-divider:            #DADCE0;
+  --crm-disabled:           #E8EAED;
+  --crm-on-disabled:        #9AA0A6;
+
+  /* ── Typography ─────────────────────────────────────────────────── */
+  --crm-font-sans: "Roboto", "Google Sans", -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Arial, sans-serif;
+  --crm-font-mono: "Roboto Mono", ui-monospace, SFMono-Regular,
+                   Menlo, Consolas, monospace;
+
+  /* ── Spacing (CrmSpacing) ───────────────────────────────────────── */
+  --crm-space-xxs:  2px;
+  --crm-space-xs:   4px;
+  --crm-space-sm:   8px;
+  --crm-space-md:   12px;
+  --crm-space-lg:   16px;
+  --crm-space-xl:   24px;
+  --crm-space-xxl:  32px;
+
+  /* ── Shapes / Radii (CrmShapes) ─────────────────────────────────── */
+  --crm-radius-sm:   4px;
+  --crm-radius-md:   8px;
+  --crm-radius-lg:   12px;
+  --crm-radius-pill: 9999px;
+
+  /* ── Elevation (CrmElevation) ───────────────────────────────────── */
+  --crm-elev-none: none;
+  --crm-elev-xs:   0 1px 1px rgba(60,64,67,0.08), 0 0 1px rgba(60,64,67,0.10);
+  --crm-elev-sm:   0 1px 2px rgba(60,64,67,0.10), 0 1px 3px rgba(60,64,67,0.06);
+  --crm-elev-md:   0 2px 4px rgba(60,64,67,0.10), 0 1px 6px rgba(60,64,67,0.08);
+  --crm-elev-lg:   0 4px 8px rgba(60,64,67,0.12), 0 2px 12px rgba(60,64,67,0.08);
+  --crm-elev-xl:   0 8px 16px rgba(60,64,67,0.14), 0 4px 24px rgba(60,64,67,0.10);
+
+  /* ── Animation (CrmAnimation) ───────────────────────────────────── */
+  --crm-dur-fast:   150ms;
+  --crm-dur-normal: 300ms;
+  --crm-dur-slow:   500ms;
+  --crm-ease:       cubic-bezier(0.4, 0.0, 0.2, 1);
+
+  /* ── Opacity (CrmOpacity) ───────────────────────────────────────── */
+  --crm-opacity-hover:     0.08;
+  --crm-opacity-focus:     0.12;
+  --crm-opacity-pressed:   0.16;
+  --crm-opacity-dragged:   0.24;
+  --crm-opacity-disabled:  0.38;
+  --crm-opacity-overlay:   0.50;
+  --crm-opacity-container: 0.15;
+
+  /* ── Border ────────────────────────────────────────────────────── */
+  --crm-border-thin:    0.5px;
+  --crm-border-default: 1px;
+  --crm-border-thick:   2px;
+
+  /* ── Icon sizes (CrmIconSize) ───────────────────────────────────── */
+  --crm-icon-xs:  12px;
+  --crm-icon-sm:  16px;
+  --crm-icon-md:  20px;
+  --crm-icon-lg:  24px;
+  --crm-icon-xl:  32px;
+  --crm-icon-xxl: 48px;
+
+  /* ── Focus ring ─────────────────────────────────────────────────── */
+  --crm-focus-ring-color:  #1A73E8;
+  --crm-focus-ring-width:  2px;
+  --crm-focus-ring-offset: 2px;
+  --crm-min-touch-target:  48px;
+}
+
+/* ── Dark theme (DarkCrmColors) ──────────────────────────────────── */
+:root.dark,
+[data-theme="dark"] {
+  --crm-primary:            #8AB4F8;
+  --crm-primary-variant:    #669DF6;
+  --crm-on-primary:         #202124;
+
+  --crm-background:         #202124;
+  --crm-surface:            #303134;
+  --crm-surface-variant:    #3C4043;
+
+  --crm-on-background:      #E8EAED;
+  --crm-on-surface:         #E8EAED;
+  --crm-on-surface-variant: #9AA0A6;
+
+  --crm-error:              #F28B82;
+  --crm-on-error:           #202124;
+  --crm-success:            #81C995;
+  --crm-warning:            #FDD663;
+  --crm-info:               #8AB4F8;
+  --crm-on-info:            #202124;
+  --crm-link:               #8AB4F8;
+  --crm-focus:              #8AB4F8;
+
+  --crm-error-container:    #442726;
+  --crm-success-container:  #1E3A2A;
+  --crm-warning-container:  #3E3620;
+  --crm-info-container:     #1E2D3D;
+
+  --crm-divider:            #5F6368;
+  --crm-disabled:           #3C4043;
+  --crm-on-disabled:        #5F6368;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Semantic element styles — these map the token TextStyles from
+   DefaultCrmTypography onto real HTML elements.
+   ───────────────────────────────────────────────────────────────── */
+
+html, body {
+  font-family: var(--crm-font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--crm-on-background);
+  background: var(--crm-background);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, .crm-h1 {
+  font-size: 24px; line-height: 32px; font-weight: 700;
+  color: var(--crm-on-background); margin: 0;
+}
+h2, .crm-h2 {
+  font-size: 20px; line-height: 28px; font-weight: 600;
+  color: var(--crm-on-background); margin: 0;
+}
+h3, .crm-h3 {
+  font-size: 16px; line-height: 24px; font-weight: 600;
+  color: var(--crm-on-surface); margin: 0;
+}
+p, .crm-body {
+  font-size: 14px; line-height: 20px; font-weight: 400;
+  color: var(--crm-on-surface); margin: 0;
+}
+.crm-body-sm {
+  font-size: 12px; line-height: 16px; font-weight: 400;
+  color: var(--crm-on-surface-variant);
+}
+.crm-label {
+  font-size: 12px; line-height: 16px; font-weight: 500;
+  color: var(--crm-on-surface-variant);
+  letter-spacing: 0.2px;
+}
+.crm-caption {
+  font-size: 11px; line-height: 14px; font-weight: 400;
+  color: var(--crm-on-surface-variant);
+}
+.crm-button-text {
+  font-size: 14px; line-height: 20px; font-weight: 500;
+}
+code, .crm-mono { font-family: var(--crm-font-mono); font-size: 13px; }
+
+a { color: var(--crm-link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+*, *::before, *::after { box-sizing: border-box; }
+
+:focus-visible {
+  outline: var(--crm-focus-ring-width) solid var(--crm-focus-ring-color);
+  outline-offset: var(--crm-focus-ring-offset);
+  border-radius: var(--crm-radius-sm);
+}
