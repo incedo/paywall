@@ -37,6 +37,7 @@
   <tr><td>TS-04</td><td class="must">MUST</td><td>The CIAM is the <strong>Ory stack</strong>: Ory Kratos for identity (registration, login, recovery, verification) and Ory Hydra for OAuth2/OIDC token issuance — self-hosted containers in the experiment, swappable for Ory Network in production. All US-* and NFR-20..24 requirements apply to Ory's endpoints (JWKS via Hydra).</td></tr>
   <tr><td>TS-05</td><td class="must">MUST</td><td>Fine-grained authorization uses <strong>Ory Keto</strong> (Zanzibar-style relation tuples) as the grant store behind the FGA requirements of <a href="02-access-control-metering.html">Doc 2 (FGA-*)</a>, accessed through its check/write APIs behind a local interface.</td></tr>
   <tr><td>TS-06</td><td class="should">SHOULD</td><td>The full stack (paywall service, Ory Kratos/Hydra/Keto, database, mock CEP, mailhog) is runnable locally via one <code>docker compose up</code>, plus <code>wrangler dev</code> for the edge Worker (INF-*).</td></tr>
+  <tr><td>TS-07</td><td class="must">MUST</td><td>The web channel for human visitors is a <strong>Kotlin Multiplatform Compose SPA compiled to Wasm</strong>, served as static assets from the edge. The SPA holds no content and makes no access decisions: all article content (teaser or full body) is fetched from origin APIs that enforce AC-01..05 — the premium body is never present in any response to an unentitled request. The admin console (ADM-*) is built from the same Compose source tree. Verified crawlers bypass the SPA entirely (SEO-03).</td></tr>
 </table>
 
 <h2>0a. Infrastructure — Cloudflare (INF)</h2>
@@ -98,9 +99,9 @@ grant_meta     (id, subject_id, relation, object, granted_by, reason, expires_at
 <h2>3. SEO &amp; crawlers (SEO)</h2>
 <table class="req">
   <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
-  <tr><td>SEO-01</td><td class="must">MUST</td><td>Gated articles include <a href="https://developers.google.com/search/docs/appearance/structured-data/paywalled-content">paywalled-content structured data</a>: JSON-LD with <code>isAccessibleForFree: false</code> and <code>hasPart</code> marking the gated section — so flexible sampling/full serving to Googlebot is not treated as cloaking.</td></tr>
+  <tr><td>SEO-01</td><td class="must">MUST</td><td>The crawler-served rendering (SEO-03) of gated articles includes <a href="https://developers.google.com/search/docs/appearance/structured-data/paywalled-content">paywalled-content structured data</a>: JSON-LD with <code>isAccessibleForFree: false</code> and <code>hasPart</code> marking the gated section — so flexible sampling/full serving to Googlebot is not treated as cloaking.</td></tr>
   <tr><td>SEO-02</td><td class="must">MUST</td><td>Verified crawlers (reverse-DNS check, not just user agent) receive the full article (MT-05); unverified claimants get the normal gated experience.</td></tr>
-  <tr><td>SEO-03</td><td class="should">SHOULD</td><td>Teaser content is server-rendered and crawlable on every variant so gated pages still rank on the visible portion.</td></tr>
+  <tr><td>SEO-03</td><td class="must">MUST</td><td><strong>Dynamic rendering at the edge:</strong> human visitors receive the Wasm SPA (TS-07); requests flagged as verified crawlers by the Worker (INF-01) are routed to a server-rendered HTML rendering of the article generated at the origin — full body per SEO-02, with SEO-01 structured data and canonical URL identical to the SPA route. Crawlability is provided by this rendering path, not by the SPA.</td></tr>
 </table>
 
 <h2>4. Security (NFR)</h2>
