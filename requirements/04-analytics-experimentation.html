@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doc 4 — Analytics &amp; Experimentation</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; color: #1a1a2e; line-height: 1.6; }
+  h1 { border-bottom: 3px solid #0f4c81; padding-bottom: .5rem; }
+  h2 { color: #0f4c81; margin-top: 2rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #ccc; padding: .5rem .75rem; text-align: left; vertical-align: top; }
+  th { background: #0f4c81; color: #fff; }
+  tr:nth-child(even) { background: #f4f7fa; }
+  code { background: #eef2f6; padding: .1rem .35rem; border-radius: 3px; font-size: .9em; }
+  pre { background: #eef2f6; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+  .req td:first-child { white-space: nowrap; font-weight: bold; }
+  .must { color: #b00020; font-weight: bold; }
+  .should { color: #b36b00; font-weight: bold; }
+  .could { color: #2e7d32; font-weight: bold; }
+  nav { font-size: .9em; margin-bottom: 1rem; }
+  a { color: #0f4c81; }
+</style>
+</head>
+<body>
+
+<nav><a href="index.html">← Index</a> · Prev: <a href="03-accounts-payments.html">Accounts &amp; Payments</a> · Next: <a href="05-technical-architecture.html">Technical Architecture</a></nav>
+
+<h1>Doc 4 — Analytics &amp; Experimentation</h1>
+<p>The experiment's purpose is to compare paywall strategies. Without solid assignment and
+measurement, the rest of the system produces no learning.</p>
+
+<h2>1. Variant assignment (EX)</h2>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>EX-01</td><td class="must">MUST</td><td>Every visitor is deterministically assigned to one variant via <code>hash(visitor_id + experiment_id) mod weights</code> — stable across visits, no flicker between variants.</td></tr>
+  <tr><td>EX-02</td><td class="must">MUST</td><td>An experiment definition holds: id, name, start/end date, variants (paywall type + configuration, per PW-06), and traffic weights. Stored as configuration, editable without deploy.</td></tr>
+  <tr><td>EX-03</td><td class="must">MUST</td><td>Assignment survives login: the variant follows the visitor when <code>visitor_id</code> is linked to <code>user_id</code> (US-04). On conflict (user seen with two assignments), the earliest assignment wins.</td></tr>
+  <tr><td>EX-04</td><td class="must">MUST</td><td>A holdout/control variant (no paywall changes) can be configured to measure baseline behavior.</td></tr>
+  <tr><td>EX-05</td><td class="should">SHOULD</td><td>A debug override (e.g. query param + staff flag, or a cookie set via internal tool) forces a chosen variant for QA, excluded from analytics.</td></tr>
+</table>
+
+<h2>2. Event tracking (AN)</h2>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>AN-01</td><td class="must">MUST</td><td>Events are logged server-side with: timestamp, <code>visitor_id</code>/<code>user_id</code>, variant, <code>channel</code> (<code>web</code> | <code>app</code> | <code>chat</code>), article_id, event type, and context. No third-party analytics dependency required for core metrics.</td></tr>
+  <tr><td>AN-02</td><td class="must">MUST</td><td>Minimum event set: <code>page_view</code>, <code>article_read</code> (counted read, MT-04), <code>wall_shown</code>, <code>wall_dismissed</code>, <code>gate_cta_click</code>, <code>register_start/complete</code>, <code>checkout_start/complete</code>, <code>login</code>, <code>cancel</code>, and offer-engine events <code>offer_triggered</code>, <code>offer_suppressed</code>, <code>offer_accepted</code>, <code>offer_declined</code> (see <a href="03-accounts-payments.html">UP-04, DN-06</a>) with the full offer object in context.</td></tr>
+  <tr><td>AN-03</td><td class="must">MUST</td><td><code>wall_shown</code> events include the paywall decision context: type, meter state, and (for dynamic) score and threshold (PW-43).</td></tr>
+  <tr><td>AN-04</td><td class="should">SHOULD</td><td>Events are append-only and exportable as CSV/Parquet for offline analysis.</td></tr>
+  <tr><td>AN-05</td><td class="should">SHOULD</td><td>Bot traffic (MT-05) is flagged in events, not silently dropped, so filtering is auditable.</td></tr>
+</table>
+
+<h2>3. Metrics &amp; dashboard (AN)</h2>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>AN-10</td><td class="must">MUST</td><td>A dashboard (internal page) shows per variant: visitors, article reads per visitor, wall events, gate CTR, registrations, checkout starts, conversions, conversion rate (conversions / wall_shown uniques).</td></tr>
+  <tr><td>AN-11</td><td class="must">MUST</td><td>Also per variant: <strong>reach cost</strong> — change in page views and reads vs. control, so conversion gains can be weighed against lost traffic.</td></tr>
+  <tr><td>AN-12</td><td class="should">SHOULD</td><td>Display confidence intervals (e.g. Wilson) on conversion rates; flag when sample size is too small to compare variants.</td></tr>
+  <tr><td>AN-13</td><td class="could">COULD</td><td>Cohort view: conversion and 30-day retention by week of first visit.</td></tr>
+  <tr><td>AN-14</td><td class="should">SHOULD</td><td>Offer performance view: per <code>offer_id</code> — triggered, accepted, declined, suppressed counts and acceptance rate, broken down by channel; for downsells also retained-revenue estimate vs. plain cancellation.</td></tr>
+</table>
+
+<h2>4. Dynamic paywall scoring (DY)</h2>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>DY-01</td><td class="must">MUST</td><td>Phase 1 heuristic score (0–100) computed from: visits in last 30 days, premium reads this month, days since first visit, referrer type (direct/search/social), and registered y/n. Weights in configuration.</td></tr>
+  <tr><td>DY-02</td><td class="must">MUST</td><td>Score thresholds map to decisions: <code>&lt; T_soft</code> → open, <code>T_soft..T_hard</code> → soft gate, <code>≥ T_hard</code> → hard gate. Defaults: 40 / 70.</td></tr>
+  <tr><td>DY-03</td><td class="must">MUST</td><td>Scoring is a pure function of stored engagement data — same input, same score — so decisions are reproducible in analysis.</td></tr>
+  <tr><td>DY-04</td><td class="should">SHOULD</td><td>The scoring interface allows a trained model to replace the heuristic later (phase 2) without changing callers.</td></tr>
+  <tr><td>DY-05</td><td class="could">COULD</td><td>Log counterfactuals: what each other strategy would have decided on the same page view, enabling offline comparison.</td></tr>
+  <tr><td>DY-06</td><td class="should">SHOULD</td><td><strong>External scores as input:</strong> the scoring interface (DY-04) accepts externally supplied scores — e.g. a Likelihood-to-Churn score from the CEP/analytics side (GAP-02). The paywall consumes such scores as inputs; it never defines or computes them.</td></tr>
+</table>
+
+<h2>5. Privacy constraints on analytics</h2>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>AN-20</td><td class="must">MUST</td><td>First-party, functional + analytics data only; consent banner per GDPR/Telecommunicatiewet where required. No data sale, no third-party ad trackers in the experiment.</td></tr>
+  <tr><td>AN-21</td><td class="must">MUST</td><td>Event data is pseudonymous (<code>visitor_id</code>); account deletion (US-07) unlinks or deletes the user's events within 30 days.</td></tr>
+</table>
+
+<nav><a href="index.html">← Index</a> · Prev: <a href="03-accounts-payments.html">Accounts &amp; Payments</a> · Next: <a href="05-technical-architecture.html">Technical Architecture</a></nav>
+
+</body>
+</html>

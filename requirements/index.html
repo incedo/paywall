@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paywall Experiment — Requirements Index</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; color: #1a1a2e; line-height: 1.6; }
+  h1 { border-bottom: 3px solid #0f4c81; padding-bottom: .5rem; }
+  h2 { color: #0f4c81; margin-top: 2rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #ccc; padding: .5rem .75rem; text-align: left; vertical-align: top; }
+  th { background: #0f4c81; color: #fff; }
+  tr:nth-child(even) { background: #f4f7fa; }
+  code { background: #eef2f6; padding: .1rem .35rem; border-radius: 3px; font-size: .9em; }
+  .meta { color: #666; font-size: .9em; }
+  a { color: #0f4c81; }
+  .note { background: #fff8e1; border-left: 4px solid #f0a500; padding: .75rem 1rem; margin: 1rem 0; }
+</style>
+</head>
+<body>
+
+<h1>Paywall Experiment — Requirements</h1>
+<p class="meta">Project: paywall (media company experiment) · Version 1.0 · 2026-06-11</p>
+
+<p>This set of documents specifies the functional and technical requirements for a paywall
+experiment for a media company. The goal of the experiment is to implement and compare
+four paywall models — <strong>hard</strong>, <strong>metered</strong>, <strong>freemium</strong>,
+and <strong>dynamic</strong> — on a single platform, and to measure which converts best.</p>
+
+<h2>Documents</h2>
+<table>
+  <tr><th>Doc</th><th>File</th><th>Contents</th><th>Requirement prefix</th></tr>
+  <tr>
+    <td>1</td>
+    <td><a href="01-paywall-types.html">Paywall Types &amp; Business Rules</a></td>
+    <td>The four paywall models, their behavior, and per-type functional requirements</td>
+    <td><code>PW-*</code></td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td><a href="02-access-control-metering.html">Access Control &amp; Metering</a></td>
+    <td>Enforcement, capability catalogue mapping each access mechanism to its system (progressive registration, adaptive auth, entitlement/partner/ad-gated/data-gated authorisation, IP whitelisting, device limiting), metering &amp; meter management, session management, FGA, leak resistance &amp; bypass defenses</td>
+    <td><code>AC-*</code>, <code>MT-*</code>, <code>FGA-*</code>, <code>PR-*</code>, <code>AA-*</code>, <code>EA-*</code>, <code>PA-*</code>, <code>AG-*</code>, <code>DG-*</code>, <code>IPW-*</code>, <code>DL-*</code>, <code>SM-*</code>, <code>BP-*</code></td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td><a href="03-accounts-payments.html">Accounts, Payments &amp; Subscriptions</a></td>
+    <td>CIAM-delegated identity, plans, checkout, subscription lifecycle, upsell/downsell triggering</td>
+    <td><code>US-*</code>, <code>PAY-*</code>, <code>SUB-*</code>, <code>UP-*</code>, <code>DN-*</code></td>
+  </tr>
+  <tr>
+    <td>4</td>
+    <td><a href="04-analytics-experimentation.html">Analytics &amp; Experimentation</a></td>
+    <td>A/B testing framework, conversion funnel, metrics, dynamic paywall scoring</td>
+    <td><code>AN-*</code>, <code>EX-*</code>, <code>DY-*</code></td>
+  </tr>
+  <tr>
+    <td>5</td>
+    <td><a href="05-technical-architecture.html">Technical Architecture</a></td>
+    <td>Technology stack (Kotlin native, Ory), Cloudflare infrastructure (Workers edge), API design, data model, SEO, security, non-functional requirements</td>
+    <td><code>TS-*</code>, <code>INF-*</code>, <code>API-*</code>, <code>DM-*</code>, <code>SEO-*</code>, <code>NFR-*</code></td>
+  </tr>
+  <tr>
+    <td>6</td>
+    <td><a href="06-competitor-gap-analysis.html">Competitor Gap Analysis</a></td>
+    <td>Feature comparison vs. Zephr, Piano, Poool, Pelcro, Leaky Paywall, Supertab, Memberful, Subscription Genius; gap backlog with decided dispositions</td>
+    <td><code>GAP-*</code></td>
+  </tr>
+  <tr>
+    <td>7</td>
+    <td><a href="07-admin-console.html">Admin Console &amp; Visual Wall Editor</a></td>
+    <td>Access-control/FGA admin UI (no marketing decisioning) and multi-brand visual paywall/registration wall editor</td>
+    <td><code>ADM-*</code></td>
+  </tr>
+</table>
+
+<h2>How to read these documents</h2>
+<p>Every requirement has a unique ID (e.g. <code>MT-03</code>) and a priority:</p>
+<table>
+  <tr><th>Priority</th><th>Meaning</th></tr>
+  <tr><td><strong>MUST</strong></td><td>Required for the experiment to be valid. Build first.</td></tr>
+  <tr><td><strong>SHOULD</strong></td><td>Important, but the experiment can launch without it.</td></tr>
+  <tr><td><strong>COULD</strong></td><td>Nice to have; only if time permits.</td></tr>
+</table>
+
+<div class="note">
+<strong>For the coding phase:</strong> implement in document order. Doc 2 (access control)
+is the core engine; Docs 1 and 3 configure and feed it; Doc 4 measures it; Doc 5 constrains
+how everything is built. Reference requirement IDs in commit messages and code comments.
+</div>
+
+<h2>Scope</h2>
+<p><strong>In scope:</strong> article-level paywall on the web (responsive), four paywall
+strategies selectable per experiment group, anonymous and logged-in metering, mock or sandbox
+payment flow, A/B assignment, and a conversion dashboard.</p>
+<p><strong>In scope (triggering only):</strong> upsell and downsell offer triggering (UP-*/DN-*) —
+channel-aware (<code>web</code>, <code>app</code>, <code>chat</code>), with offer decisions
+delegated to an external CEP engine (mocked in the experiment). The presentation of offers
+(shop-like UI) is a separate feature and out of scope. The experiment implements the
+<code>web</code> channel; APIs must be channel-agnostic so app and chat plug in later.</p>
+<p><strong>Out of paywall scope (owned by adjacent systems):</strong> marketing decisioning,
+journeys, and churn modeling (CEP); coupons, dunning, and billing self-service (subscription
+management system); credential management (CIAM); offer/shop UI; native apps; print bundles;
+real payment provider contracts; ad-tech integration; gift subscriptions. Multi-brand is
+supported for wall rendering and design (Doc 7); the experiment itself runs one brand.</p>
+
+<h2>Glossary</h2>
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td>Entitlement</td><td>A right granted to a user to access content (e.g. "premium", "all-access").</td></tr>
+  <tr><td>Meter</td><td>Counter of free premium articles a visitor has consumed in the current period.</td></tr>
+  <tr><td>Wall event</td><td>The moment the paywall is shown to a visitor instead of (full) content.</td></tr>
+  <tr><td>Gate</td><td>The UI component that blocks content and presents the offer.</td></tr>
+  <tr><td>Variant</td><td>One experiment arm: a paywall type plus its configuration.</td></tr>
+  <tr><td>Conversion</td><td>A visitor completing checkout and becoming a subscriber.</td></tr>
+  <tr><td>Propensity score</td><td>Predicted likelihood that a visitor will subscribe, used by the dynamic paywall.</td></tr>
+  <tr><td>Registration wall</td><td>Gate that requires a free account (no payment) to continue.</td></tr>
+  <tr><td>Upsell</td><td>Offer to move a subject to a higher-value plan (higher tier, or monthly → annual).</td></tr>
+  <tr><td>Downsell</td><td>Retention offer at risk moments (cancel intent, payment failure): lower tier, temporary discount, or pause.</td></tr>
+  <tr><td>Offer engine</td><td>Local component (<code>decide_offer</code>) that queries the CEP, validates the result against guardrails, and returns at most one offer.</td></tr>
+  <tr><td>CEP engine</td><td>External Customer Engagement Platform that holds the offer rules/campaigns and decides which offer to make for a given trigger; mocked during the experiment.</td></tr>
+  <tr><td>Channel</td><td>The touchpoint a subject interacts through: <code>web</code>, <code>app</code>, or <code>chat</code>. Carried on every request, offer, and event.</td></tr>
+  <tr><td>CIAM</td><td>External Customer Identity &amp; Access Management platform (OIDC): the Ory stack — Kratos (identity) + Hydra (token issuance). Owns registration, login, and credentials; issues the JWTs the paywall validates. Self-hosted containers in the experiment.</td></tr>
+  <tr><td>FGA</td><td>Fine-grained authorization: per-subject, per-object access grants (Ory Keto relation tuples) checked after entitlements — lets external engines grant extra access.</td></tr>
+  <tr><td>Grant</td><td>A time-bound FGA tuple giving a subject read access to an article/section/tier, created via the grant API by e.g. the CEP engine or an AI engine.</td></tr>
+  <tr><td>Edge / Worker</td><td>Cloudflare Worker that receives every incoming request: routing, channel detection, cookie issuance, JWT validation, caching. Origin = the Kotlin native services behind it.</td></tr>
+  <tr><td>JWT</td><td>Signed token issued by the CIAM asserting the user's identity (<code>sub</code>) and claims; validated server-side on every identity-bearing request (NFR-20).</td></tr>
+</table>
+
+</body>
+</html>

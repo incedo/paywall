@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doc 2 — Access Control &amp; Metering</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; color: #1a1a2e; line-height: 1.6; }
+  h1 { border-bottom: 3px solid #0f4c81; padding-bottom: .5rem; }
+  h2 { color: #0f4c81; margin-top: 2rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #ccc; padding: .5rem .75rem; text-align: left; vertical-align: top; }
+  th { background: #0f4c81; color: #fff; }
+  tr:nth-child(even) { background: #f4f7fa; }
+  code { background: #eef2f6; padding: .1rem .35rem; border-radius: 3px; font-size: .9em; }
+  pre { background: #eef2f6; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+  .req td:first-child { white-space: nowrap; font-weight: bold; }
+  .must { color: #b00020; font-weight: bold; }
+  .should { color: #b36b00; font-weight: bold; }
+  .could { color: #2e7d32; font-weight: bold; }
+  nav { font-size: .9em; margin-bottom: 1rem; }
+  a { color: #0f4c81; }
+  .note { background: #fff8e1; border-left: 4px solid #f0a500; padding: .75rem 1rem; margin: 1rem 0; }
+</style>
+</head>
+<body>
+
+<nav><a href="index.html">← Index</a> · Prev: <a href="01-paywall-types.html">Paywall Types</a> · Next: <a href="03-accounts-payments.html">Accounts &amp; Payments</a></nav>
+
+<h1>Doc 2 — Access Control &amp; Metering</h1>
+<p>This is the core engine of the experiment: the component that decides, for every article
+request, whether the visitor gets the full article or the gate.</p>
+
+<h2>1. Access decision flow</h2>
+<pre>
+request(article, visitor)
+  → article.content_tier == free?            → FULL CONTENT
+  → visitor has valid entitlement?           → FULL CONTENT      (AC-01..03, EA-*)
+  → partner access (IP allowlist/federation)?→ FULL CONTENT      (PA-*, IPW-*)
+  → FGA grant for (subject, article)?        → FULL CONTENT      (FGA-01..06, AG-*, DG-*)
+  → variant = experiment assignment          (EX-*)
+  → decision = paywall_strategy[variant](visitor, article)
+      hard      → GATE
+      freemium  → GATE
+      metered   → meter not exhausted? count &amp; FULL : GATE
+      dynamic   → score ≥ threshold? GATE : FULL (with floor rule PW-42)
+  → log wall event (AN-*)
+</pre>
+
+<h2>2. Enforcement (AC)</h2>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>AC-01</td><td class="must">MUST</td><td>The access decision is made <strong>server-side</strong>. The full premium article body is never present in the HTML/JSON delivered to an unentitled visitor. Hiding content with CSS/JS only is not acceptable.</td></tr>
+  <tr><td>AC-02</td><td class="must">MUST</td><td>Entitlements are checked on every premium content request against the subscription store (see <a href="03-accounts-payments.html">SUB-*</a>); an expired or canceled subscription loses access at the end of its paid period.</td></tr>
+  <tr><td>AC-03</td><td class="must">MUST</td><td>Entitlement check results may be cached per session for at most 5 minutes to limit latency, but cancellation/expiry must take effect within that window.</td></tr>
+  <tr><td>AC-04</td><td class="must">MUST</td><td>Premium API endpoints (e.g. article JSON) enforce the same rules as HTML pages — no unauthenticated side door.</td></tr>
+  <tr><td>AC-05</td><td class="should">SHOULD</td><td>The teaser fragment (PW-02) is generated server-side from the article body, so the cut-off point cannot be manipulated by the client.</td></tr>
+  <tr><td>AC-06</td><td class="should">SHOULD</td><td>Rate-limit and log suspicious access patterns (e.g. one identity used from many IPs concurrently) for later account-sharing analysis.</td></tr>
+  <tr><td>AC-07</td><td class="must">MUST</td><td>Logged-in identity is established exclusively from a CIAM-issued JWT validated per <a href="05-technical-architecture.html">NFR-20..24</a>. A request with a missing, invalid, or expired token is treated as anonymous (falls back to <code>visitor_id</code> metering) — never as an error page.</td></tr>
+  <tr><td>AC-08</td><td class="must">MUST</td><td>The JWT authenticates <em>who</em> the user is; <em>what they may access</em> (entitlements) is resolved from the local subscription store (AC-02). Entitlement claims inside the token, if present, are advisory only — cancellations must take effect within the AC-03 window regardless of token lifetime.</td></tr>
+</table>
+
+<h2>3. Access capability catalogue — what runs where</h2>
+<p>Access control is more than the paywall gate. The table below maps each capability to the
+system that <strong>owns</strong> it and the systems that support it. Detailed requirements
+follow per capability.</p>
+<table>
+  <tr><th>Capability</th><th>Owner</th><th>Supporting systems</th><th>Reqs</th></tr>
+  <tr><td>Progressive registration</td><td>CIAM (Ory Kratos — flows &amp; traits)</td><td>Paywall/CEP decide <em>when</em> to ask</td><td><code>PR-*</code></td></tr>
+  <tr><td>Adaptive authentication</td><td>CIAM (Kratos MFA / step-up, <code>acr</code> claims)</td><td>Edge supplies risk signals; origin enforces claim checks</td><td><code>AA-*</code></td></tr>
+  <tr><td>Entitlement authorisation</td><td>Paywall origin (subscription store)</td><td>JWT claims as cache (Hydra token hook); edge fast-path</td><td><code>EA-*</code></td></tr>
+  <tr><td>Partner authorisation</td><td>FGA (Ory Keto — membership tuples)</td><td>CIAM federation (external IdP); edge IP detection</td><td><code>PA-*</code></td></tr>
+  <tr><td>Metered authorisation</td><td>Paywall origin (meter engine)</td><td>Edge KV read-through cache (INF-05)</td><td><code>MT-*</code></td></tr>
+  <tr><td>Ad-gated authorisation</td><td>Paywall origin (grant API → FGA)</td><td>CEP triggers the offer; ad provider callback verifies</td><td><code>AG-*</code></td></tr>
+  <tr><td>Data-gated authorisation</td><td>Paywall origin (grant API → FGA)</td><td>CIAM stores the data (traits + consent); CEP triggers</td><td><code>DG-*</code></td></tr>
+  <tr><td>IP whitelisting</td><td>Edge Worker (range matching)</td><td>Origin maps to partner; FGA holds partner subscription</td><td><code>IPW-*</code></td></tr>
+  <tr><td>Device limiting</td><td>CIAM (Kratos session registry)</td><td>Origin enforces at login/refresh; account page UI</td><td><code>DL-*</code></td></tr>
+  <tr><td>Meter management</td><td>Paywall origin (config + admin API)</td><td>—</td><td><code>MT-10..</code></td></tr>
+  <tr><td>Session management</td><td>CIAM (Kratos sessions, Hydra tokens)</td><td>Edge validates JWTs; origin checks revocation for sensitive ops</td><td><code>SM-*</code></td></tr>
+</table>
+
+<h3>3.1 Progressive registration (PR) — CIAM</h3>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>PR-01</td><td class="must">MUST</td><td>Identity data is collected in steps, stored as Kratos identity traits: step 1 = email + password only (US-05); later steps (name, interests, newsletter opt-in) are separate Kratos flows triggered at configured moments — by the paywall (e.g. after Nth read) or by the CEP (trigger context <code>profile_enrichment</code>).</td></tr>
+  <tr><td>PR-02</td><td class="must">MUST</td><td>The registration wall (PW-50) uses step 1 only. Every later step states its purpose and is skippable unless it is the explicit price of a data-gated grant (DG-*).</td></tr>
+  <tr><td>PR-03</td><td class="should">SHOULD</td><td>Profile completeness is exposed (claim or profile API) so the CEP can segment on it; each collected trait carries a consent/purpose record (AN-20).</td></tr>
+</table>
+
+<h3>3.2 Adaptive authentication (AA) — CIAM</h3>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>AA-01</td><td class="must">MUST</td><td>Sensitive operations — payment method change, email/password change, account deletion, user-scoped grant administration — require a step-up authentication level (AAL2: TOTP/WebAuthn/email code via Kratos), asserted by the <code>acr</code>/<code>amr</code> claims and enforced origin-side in the shared middleware (NFR-22).</td></tr>
+  <tr><td>AA-02</td><td class="should">SHOULD</td><td>Risk signals (new device, impossible travel, Cloudflare bot score via INF-09) can force re-authentication at login. Signal evaluation lives in the CIAM login flow, not in paywall code.</td></tr>
+  <tr><td>AA-03</td><td class="must">MUST</td><td><strong>Friction guard:</strong> reading content never requires step-up — AAL1 (password session) is always sufficient for article access. Adaptive auth protects the account, not the content.</td></tr>
+</table>
+
+<h3>3.3 Entitlement authorisation (EA) — origin, with JWT pattern</h3>
+<p><strong>Recommended JWT pattern:</strong> the JWT proves identity; entitlements are data.
+But to avoid a database hit on every request, entitlement claims may ride along in the access
+token as a <em>cache</em>:</p>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>EA-01</td><td class="must">MUST</td><td>The subscription store remains the single authority for entitlements (AC-02/AC-08). Any entitlement representation elsewhere (token claims, edge cache) is derived and disposable.</td></tr>
+  <tr><td>EA-02</td><td class="should">SHOULD</td><td>A Hydra token hook embeds entitlement claims (e.g. <code>ent: ["basic"]</code>, <code>tier</code>) into access tokens at issuance/refresh. If these claims are used in access decisions, access-token TTL must be ≤ the AC-03 freshness window (5 min) — otherwise claims are display-only.</td></tr>
+  <tr><td>EA-03</td><td class="should">SHOULD</td><td>The edge Worker may use valid entitlement claims for the fast path (e.g. routing subscribers past the cached gated rendering); the origin re-derives entitlements for the actual full-content response. Edge trusts claims for routing, origin trusts only the store for serving.</td></tr>
+  <tr><td>EA-04</td><td class="must">MUST</td><td>Subscription changes (upgrade UP-14, cancellation, pause SUB-07) revoke/refresh outstanding tokens where the provider supports it, and in all cases take effect within the AC-03 window via token expiry.</td></tr>
+</table>
+
+<h3>3.4 Partner authorisation (PA) — FGA + CIAM federation</h3>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>PA-01</td><td class="must">MUST</td><td>A partner (company, school, library, telco bundle) is an FGA object holding a partner subscription: Keto tuples model <code>user —member→ partner</code> and <code>partner —subscriber→ tier</code>; the access check resolves transitively, so individual users need no personal subscription.</td></tr>
+  <tr><td>PA-02</td><td class="must">MUST</td><td>Partner users join via (a) CIAM federation — the partner's IdP added as OIDC/SAML provider in Kratos, membership tuple written on first federated login — or (b) IP allowlist (IPW-*). Voucher codes are a COULD.</td></tr>
+  <tr><td>PA-03</td><td class="must">MUST</td><td>Partner offboarding deletes the partner's subscription tuple, which transitively revokes all member access immediately (≤ AC-03 window); membership tuples are also expirable (FGA-02 applies).</td></tr>
+  <tr><td>PA-04</td><td class="should">SHOULD</td><td>Partner usage (reads per partner, unique users) is reported from events for contract management.</td></tr>
+  <tr><td>PA-05</td><td class="must">MUST</td><td><strong>Seat limits:</strong> a partner may carry an optional <code>max_seats</code>; the count of active membership tuples is kept and checked on every membership write — writes beyond the cap are rejected and reported (PA-04). Seat changes are audited (ADM-03).</td></tr>
+</table>
+
+<h3>3.5 Ad-gated authorisation (AG) — grant API + CEP</h3>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>AG-01</td><td class="must">MUST</td><td>The gate may carry an offer of kind <code>access_grant</code> with method <code>rewarded_ad</code> (decided by the CEP, UP-01; rendering out of scope). Completion of the ad is verified <strong>server-side</strong> via a signed callback from the ad provider before any access is granted.</td></tr>
+  <tr><td>AG-02</td><td class="must">MUST</td><td>On verified completion the grant API (FGA-03) issues a short grant — default: the single triggering article, TTL 24 h. Daily cap per subject (default 2 rewarded unlocks/day) enforced by the grant API.</td></tr>
+  <tr><td>AG-03</td><td class="should">SHOULD</td><td>Ad-gated unlocks are logged distinctly (<code>granted_by=ad_gate</code>) so their cannibalization of subscriptions is measurable (AN-14).</td></tr>
+</table>
+
+<h3>3.6 Data-gated authorisation (DG) — grant API + CIAM traits</h3>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>DG-01</td><td class="must">MUST</td><td>The gate may offer access in exchange for data (newsletter opt-in, survey answer, profile trait) — an <code>access_grant</code> offer with method <code>data_exchange</code>, fulfilled as a progressive-registration step (PR-01). The collected data lives in CIAM traits with an explicit consent + purpose record.</td></tr>
+  <tr><td>DG-02</td><td class="must">MUST</td><td>On verified completion the grant API issues the configured grant (default: article or section, TTL 7 days), <code>granted_by=data_gate</code>.</td></tr>
+  <tr><td>DG-03</td><td class="must">MUST</td><td>GDPR constraint: the exchange must be explicit and specific ("your email for this article") — no bundled consent, and withdrawal of consent stops future use of the data but does not retroactively revoke the consumed grant.</td></tr>
+</table>
+
+<h3>3.7 IP whitelisting (IPW) — edge + FGA</h3>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>IPW-01</td><td class="must">MUST</td><td>Partner IP ranges (CIDR) are configuration (API-03). The edge Worker matches the client IP and forwards a <code>partner_id</code> in the trusted context (INF-01/02) — clients cannot inject it.</td></tr>
+  <tr><td>IPW-02</td><td class="must">MUST</td><td>The origin treats a request with <code>partner_id</code> as partner-authorised if the partner's FGA subscription tuple is active (PA-01) — no personal account required. Such reads are metered per partner (PA-04), not per visitor.</td></tr>
+  <tr><td>IPW-03</td><td class="should">SHOULD</td><td>Range changes are audited; overlapping/invalid CIDRs rejected at config load. A range match never <em>reduces</em> access for a visitor who also has a personal entitlement.</td></tr>
+</table>
+
+<h3>3.8 Device limiting (DL) — CIAM sessions + origin enforcement</h3>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>DL-01</td><td class="must">MUST</td><td>A user may have at most <code>max_devices</code> concurrent sessions (config, default 3; per plan tier configurable — e.g. <code>complete</code> 5). A device = one Kratos session with device metadata (user agent, platform, channel).</td></tr>
+  <tr><td>DL-02</td><td class="must">MUST</td><td>Enforcement at session creation (login): exceeding the limit revokes the oldest session (default) or prompts the user to choose. Revoked sessions die at next token refresh (SM-02), i.e. within the access-token TTL.</td></tr>
+  <tr><td>DL-03</td><td class="should">SHOULD</td><td>Concurrent-streaming-style abuse (one session, many IPs — AC-06) is reported, not auto-blocked, in the experiment phase.</td></tr>
+</table>
+
+<h3>3.9 Session management (SM) — CIAM</h3>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>SM-01</td><td class="must">MUST</td><td>Ory Kratos is the session authority; Hydra-issued refresh tokens are bound to a Kratos session. Revoking the session (logout, device limit, admin) invalidates its refresh tokens.</td></tr>
+  <tr><td>SM-02</td><td class="must">MUST</td><td>Refresh-token rotation with reuse detection: a replayed (stolen) refresh token revokes the whole session chain.</td></tr>
+  <tr><td>SM-03</td><td class="must">MUST</td><td>The account page lists active sessions/devices (channel, last seen) with per-session logout and "log out everywhere" (US-07, DL-*).</td></tr>
+  <tr><td>SM-04</td><td class="must">MUST</td><td>Division of labor: the edge validates JWTs statelessly (NFR-20) for content access; <strong>sensitive operations</strong> (AA-01 list) additionally check live session validity against Kratos at the origin — so a revoked session can read for at most the access-token TTL but can never change the account.</td></tr>
+  <tr><td>SM-05</td><td class="should">SHOULD</td><td>Anonymous "sessions" are just the <code>visitor_id</code> cookie (MT-01) — no server-side session object, to keep the anonymous path cheap and cacheable.</td></tr>
+</table>
+
+<h2>4. Visitor identity &amp; metering (MT)</h2>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>MT-01</td><td class="must">MUST</td><td>Anonymous visitors are identified by a first-party cookie containing a random <code>visitor_id</code> (UUID), set on first visit, expiry ≥ 13 months.</td></tr>
+  <tr><td>MT-02</td><td class="must">MUST</td><td>The meter state (count + article IDs read this period) is stored <strong>server-side</strong>, keyed by <code>visitor_id</code> (anonymous) or <code>user_id</code> (logged in). The cookie carries only the identifier.</td></tr>
+  <tr><td>MT-03</td><td class="must">MUST</td><td>On login/registration, the anonymous meter state is merged into the user's meter state (take the union of read articles; count = size of union).</td></tr>
+  <tr><td>MT-04</td><td class="must">MUST</td><td>A read counts toward the meter only when the full article is actually served (not for teaser/gate views, bots, or prefetch requests).</td></tr>
+  <tr><td>MT-05</td><td class="must">MUST</td><td>Known crawler user agents (Googlebot etc.) are exempt from metering and gating per the SEO policy (<a href="05-technical-architecture.html">SEO-*</a>), with verification to prevent UA spoofing.</td></tr>
+  <tr><td>MT-06</td><td class="should">SHOULD</td><td>Meter periods and limits are defined per variant configuration (PW-06), defaulting to calendar month / limit 5.</td></tr>
+  <tr><td>MT-07</td><td class="should">SHOULD</td><td>Cookie deletion resets the anonymous meter — accepted leak. Track the rate of "new" visitors with old browser fingerprint characteristics only in aggregate, for leak estimation; no covert fingerprinting for enforcement.</td></tr>
+  <tr><td>MT-08</td><td class="could">COULD</td><td>Private/incognito detection heuristics may add a soft registration prompt, but must never block free content.</td></tr>
+  <tr><td>MT-09</td><td class="must">MUST</td><td><strong>Cross-channel meter:</strong> the meter is per subject, not per channel — reads on <code>web</code>, <code>app</code>, and <code>chat</code> count against the same meter once the subject is identified (API-06).</td></tr>
+</table>
+
+<h3>4.1 Meter management (MT-10..) — origin admin</h3>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>MT-10</td><td class="must">MUST</td><td>Meter parameters (limit, period, per-variant overrides PW-06/MT-06, registered-visitor bonus PW-25) are managed in configuration (API-03) with validation and audit on change.</td></tr>
+  <tr><td>MT-11</td><td class="must">MUST</td><td>An internal admin API can inspect a subject's meter state (count, articles, period) and reset it — for support and QA (EX-05). Every reset is audited.</td></tr>
+  <tr><td>MT-12</td><td class="should">SHOULD</td><td>Meter changes (config or reset) take effect within the cache windows (AC-03, INF-05) without deploy or cache purge tooling beyond TTL expiry.</td></tr>
+</table>
+
+<h2>5. Fine-grained authorization (FGA)</h2>
+<p>Besides subscription entitlements, individual access can be <strong>granted</strong> by
+external engines — e.g. the CEP engine rewards an engaged reader with three premium articles,
+or an AI engine grants access to one recommended article. Grants are stored as relation tuples
+in the FGA store (<a href="05-technical-architecture.html">Ory Keto, TS-05</a>) and checked in
+the access decision flow after entitlements.</p>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>FGA-01</td><td class="must">MUST</td><td>A grant is a relation tuple: <code>subject</code> (visitor or user) — <code>relation</code> (e.g. <code>reader</code>) — <code>object</code> (a specific <code>article</code>, a <code>section</code>/category, or content <code>tier</code>), with metadata: <code>granted_by</code> (source system), <code>reason</code>, <code>expires_at</code>.</td></tr>
+  <tr><td>FGA-02</td><td class="must">MUST</td><td>Every grant is <strong>time-bound</strong> (<code>expires_at</code> required, max TTL configurable, default 30 days) and revocable; expired tuples are cleaned up and no longer match checks.</td></tr>
+  <tr><td>FGA-03</td><td class="must">MUST</td><td>Grants are written only through a single internal <strong>grant API</strong> — external engines (CEP, AI) never write to the FGA store directly. The API authenticates the calling system (cf. API-08), validates the grant against policy (allowed relations, object types, TTL bounds, max active grants per subject per source, default 10), and logs an <code>access_granted</code> event.</td></tr>
+  <tr><td>FGA-04</td><td class="must">MUST</td><td>The access decision (section 1) calls an FGA <code>check(subject, read, object)</code> after the entitlement check; a positive check serves full content and logs the wall event with outcome <code>fga_grant</code> including <code>granted_by</code> — so CEP- and AI-granted reads are distinguishable in analytics (AN-*).</td></tr>
+  <tr><td>FGA-05</td><td class="must">MUST</td><td>FGA checks respect the latency budget (API-05): results may be cached per subject+object for ≤ 60 s. If the FGA store is unavailable, the decision proceeds <em>without</em> grants (subscription entitlements unaffected) — degraded, never blocking (cf. NFR-11).</td></tr>
+  <tr><td>FGA-06</td><td class="must">MUST</td><td>Grants never grant more than read access to content: checkout, account, subscription, and grant-API operations are out of FGA grant scope (no privilege escalation through a compromised CEP/AI integration).</td></tr>
+  <tr><td>FGA-07</td><td class="should">SHOULD</td><td>Typical grant flows: CEP offer of kind <code>access_grant</code> (extends UP-02 <code>kind</code>) accepted → grant API; AI engine recommendation with access → grant API with <code>granted_by=ai_engine</code> and short TTL (e.g. 72 h).</td></tr>
+  <tr><td>FGA-08</td><td class="should">SHOULD</td><td>Grants per subject are visible on the account page ("You have access to…") and listable via an internal admin/debug endpoint with full audit trail (who granted what, when, why).</td></tr>
+</table>
+
+<h2>6. Leak resistance policy &amp; bypass defenses (BP)</h2>
+<div class="note">
+The experiment accepts that determined users bypass meters (cookie clearing, incognito).
+The design goal is <strong>honest-majority enforcement</strong>: server-side truncation (AC-01)
+guarantees content is never silently exposed; metering leaks are measured (MT-07), not fought
+with privacy-invasive techniques. This keeps the experiment GDPR-clean and the results interpretable.
+</div>
+
+<h3>6.1 Known bypass tactics → defenses</h3>
+<p>Mapping of publicly documented bypass tactics (reader-mode tricks, archive services,
+user-agent spoofing, etc.) to our countermeasures:</p>
+<table>
+  <tr><th>Tactic</th><th>How it works</th><th>Our defense</th><th>Status</th></tr>
+  <tr><td>Reader mode / JS disabling / "bypass" extensions</td><td>Full text is in the DOM, hidden by a JS/CSS overlay; stripping the overlay reveals it</td><td>AC-01: full text never leaves the server for unentitled requests — nothing to reveal (BP-01)</td><td>Defended by design</td></tr>
+  <tr><td>Googlebot/Bingbot user-agent spoofing</td><td>Site serves crawlers full text for SEO; UA header is trivially faked</td><td>SEO-02 + BP-02: crawler verification by reverse DNS / Cloudflare verified-bot signal; UA alone grants nothing</td><td>Defended by design</td></tr>
+  <tr><td>Archive services (Archive.ph, Wayback Machine)</td><td>Archive crawlers snapshot the full page, readers fetch the snapshot</td><td>BP-03: archive crawlers are not on the verified list → they archive only the gated teaser; <code>noarchive</code> signals on premium pages</td><td>Defended by design</td></tr>
+  <tr><td>Incognito / cookie clearing ("the shuffle")</td><td>Resets the anonymous meter identity</td><td>MT-07: accepted, measured leak; mitigations: registration wall variant (PW-50), dynamic floor rule (PW-42)</td><td>Accepted &amp; measured</td></tr>
+  <tr><td>RSS full-text feeds</td><td>Legacy feeds expose the entire article body</td><td>BP-04: feeds carry teaser-only for premium content</td><td>Defended by config</td></tr>
+  <tr><td>Referrer spoofing (fake <code>t.co</code>/Facebook referrer)</td><td>Sites soften the wall for social traffic; Referer header is client-controlled</td><td>BP-05: no access decision ever reads the Referer header; social sampling only via signed share tokens</td><td>Defended by design</td></tr>
+  <tr><td>Shared/cached copies (CDN, Google cache)</td><td>A cache layer holds the full rendering</td><td>INF-03: full premium renderings are <code>private/no-store</code> at every cache layer</td><td>Defended by design</td></tr>
+  <tr><td>Library/partner portals (PressReader etc.)</td><td>Legitimate licensed access</td><td>Not a bypass — this is partner authorisation (PA-*), monetized via partner contracts</td><td>Legitimate channel</td></tr>
+</table>
+
+<h3>6.2 Bypass defense requirements</h3>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>BP-01</td><td class="must">MUST</td><td>The gated rendering is complete and correct <em>without JavaScript</em>: the teaser and gate are server-rendered HTML, and the premium body is absent — not hidden. Disabling JS, reader mode, DOM inspection, or view-source must reveal nothing beyond the teaser (verifies AC-01/AC-05).</td></tr>
+  <tr><td>BP-02</td><td class="must">MUST</td><td>Crawler privileges are granted only on <em>verified</em> identity: Cloudflare verified-bot signal or reverse-DNS + forward-confirm at the edge (INF-01). A spoofed user agent receives the normal gated experience and is flagged in events (AN-05).</td></tr>
+  <tr><td>BP-03</td><td class="must">MUST</td><td>Archive and scraper bots are excluded from the verified-crawler allowlist. Premium pages send <code>noarchive</code> robots signals. The full text served to verified search crawlers is protected by SEO-01 structured data, distinguishing it from cloaking.</td></tr>
+  <tr><td>BP-04</td><td class="must">MUST</td><td>RSS/Atom feeds, sitemaps, push notifications, and any syndication endpoint expose at most the teaser for <code>premium</code> content (extends AC-04 to all output channels).</td></tr>
+  <tr><td>BP-05</td><td class="must">MUST</td><td>The <code>Referer</code> header is never an input to access decisions. If marketing wants social free passes, they are implemented as <strong>signed share tokens</strong>: subscriber-generated, article-scoped, expiring URLs that redeem into an FGA grant (FGA-03, <code>granted_by=share_token</code>, capped per subscriber per month).</td></tr>
+  <tr><td>BP-06</td><td class="should">SHOULD</td><td><strong>Bypass-rate estimation:</strong> a periodic report estimates leakage — e.g. ratio of gated-rendering requests with bypass markers (spoofed UA flags, cookie-reset patterns per MT-07), and spot checks that archive services hold only teasers for sampled premium URLs.</td></tr>
+  <tr><td>BP-07</td><td class="should">SHOULD</td><td>The decision-matrix test suite (NFR-12) includes bypass regression tests: JS-off rendering, spoofed-UA request, spoofed-Referer request, feed content check, and cache-header check on full premium responses.</td></tr>
+</table>
+
+<h2>7. Gate component behavior</h2>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>AC-10</td><td class="must">MUST</td><td>The gate renders inline below the teaser; the page remains navigable (header, footer, related free articles).</td></tr>
+  <tr><td>AC-11</td><td class="must">MUST</td><td>"Log in" on the gate opens the auth flow and, on success with a valid entitlement, reloads the full article in place.</td></tr>
+  <tr><td>AC-12</td><td class="must">MUST</td><td>"Subscribe" leads to checkout (<a href="03-accounts-payments.html">PAY-*</a>) with a return URL back to the gated article.</td></tr>
+  <tr><td>AC-13</td><td class="should">SHOULD</td><td>Soft gates (dynamic variant) are dismissible once per session; dismissal is logged as a wall event with outcome <code>dismissed</code>.</td></tr>
+  <tr><td>AC-14</td><td class="must">MUST</td><td><strong>Consent (cookie) wall step:</strong> the gate can be configured to render a consent-first step where legally required (GAP-08). It is a distinct step, never bundled with payment or data-exchange consent (DG-03), and its outcome feeds the consent state of AN-20. Designed in the wall editor (ADM-11).</td></tr>
+</table>
+
+<nav><a href="index.html">← Index</a> · Prev: <a href="01-paywall-types.html">Paywall Types</a> · Next: <a href="03-accounts-payments.html">Accounts &amp; Payments</a></nav>
+
+</body>
+</html>

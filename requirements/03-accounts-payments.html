@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doc 3 — Accounts, Payments &amp; Subscriptions</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; color: #1a1a2e; line-height: 1.6; }
+  h1 { border-bottom: 3px solid #0f4c81; padding-bottom: .5rem; }
+  h2 { color: #0f4c81; margin-top: 2rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #ccc; padding: .5rem .75rem; text-align: left; vertical-align: top; }
+  th { background: #0f4c81; color: #fff; }
+  tr:nth-child(even) { background: #f4f7fa; }
+  code { background: #eef2f6; padding: .1rem .35rem; border-radius: 3px; font-size: .9em; }
+  .req td:first-child { white-space: nowrap; font-weight: bold; }
+  .must { color: #b00020; font-weight: bold; }
+  .should { color: #b36b00; font-weight: bold; }
+  .could { color: #2e7d32; font-weight: bold; }
+  nav { font-size: .9em; margin-bottom: 1rem; }
+  a { color: #0f4c81; }
+  .note { background: #fff8e1; border-left: 4px solid #f0a500; padding: .75rem 1rem; margin: 1rem 0; }
+</style>
+</head>
+<body>
+
+<nav><a href="index.html">← Index</a> · Prev: <a href="02-access-control-metering.html">Access Control</a> · Next: <a href="04-analytics-experimentation.html">Analytics</a></nav>
+
+<h1>Doc 3 — Accounts, Payments &amp; Subscriptions</h1>
+
+<div class="note">
+<strong>Experiment scope:</strong> payments run against a sandbox/mock provider (e.g. Stripe
+test mode). The flow must be production-shaped so conversion measurement is realistic, but no
+real money moves.
+</div>
+
+<h2>1. User accounts &amp; identity (US / CIAM)</h2>
+<div class="note">
+<strong>Architecture:</strong> identity is managed by an external <strong>CIAM</strong>
+(Customer Identity &amp; Access Management) platform speaking OIDC/OAuth&nbsp;2 — the
+<strong>Ory stack</strong> (Kratos + Hydra; see <a href="05-technical-architecture.html">TS-04</a>). The CIAM owns
+registration, login, password reset, and credential storage, and issues <strong>JWT tokens</strong>.
+The paywall side never handles passwords; it validates JWTs (see
+<a href="05-technical-architecture.html">NFR-20..24</a>) and maps the token subject to a local
+user record. In the experiment Ory runs as self-hosted containers (TS-06), swappable for
+Ory Network in production.
+</div>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>US-01</td><td class="must">MUST</td><td>Registration, login, logout, and password reset are delegated to the CIAM via OIDC Authorization Code flow with PKCE. The paywall never sees or stores credentials. Email verification is enforced by the CIAM before the account is usable (<code>email_verified</code> claim).</td></tr>
+  <tr><td>US-02</td><td class="must">MUST</td><td>After OIDC login the application maintains its session via the CIAM-issued tokens: short-lived access token (≤ 15 min) plus refresh token; "remember me" persistence (default 30 days) is implemented through refresh-token lifetime, not long-lived access tokens.</td></tr>
+  <tr><td>US-03</td><td class="must">MUST</td><td>A local <code>user</code> record is created/updated on first login, keyed by the immutable CIAM <code>sub</code> claim — local <code>user_id</code> maps 1:1 to <code>ciam_sub</code>. Email is mirrored for display/notifications but the CIAM is the source of truth.</td></tr>
+  <tr><td>US-04</td><td class="must">MUST</td><td>On registration or login, the anonymous <code>visitor_id</code> is linked to the <code>user_id</code> and meter state is merged (MT-03); the experiment variant assignment carries over (EX-03).</td></tr>
+  <tr><td>US-05</td><td class="should">SHOULD</td><td>The CIAM registration form asks only for email and password — every extra field measurably reduces conversion.</td></tr>
+  <tr><td>US-06</td><td class="could">COULD</td><td>Social login (Google/Apple) enabled as identity providers in the CIAM — no paywall-side changes.</td></tr>
+  <tr><td>US-07</td><td class="must">MUST</td><td>Account page where the user can view/cancel their subscription, manage credentials (deep link to CIAM self-service), and delete their account (GDPR) — deletion removes the local record and triggers deletion in the CIAM.</td></tr>
+  <tr><td>US-08</td><td class="must">MUST</td><td>All channels (<code>web</code>, <code>app</code>, <code>chat</code>) authenticate against the same CIAM realm, so one identity and one subscription work across channels (API-06).</td></tr>
+  <tr><td>US-09</td><td class="should">SHOULD</td><td>Logout revokes the refresh token at the CIAM and clears the local session; access tokens are left to expire (≤ 15 min exposure).</td></tr>
+</table>
+
+<h2>2. Plans &amp; offers (PAY)</h2>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>PAY-01</td><td class="must">MUST</td><td>Two tiers — <code>basic</code> (digital articles) and <code>complete</code> (articles + extras such as puzzles/podcasts/e-paper) — each in monthly and annual billing (4 plans total), defined as configuration with price, period, currency, tier rank, and entitlement granted.</td></tr>
+  <tr><td>PAY-01a</td><td class="must">MUST</td><td>Tiers have an explicit <code>rank</code> (basic=1, complete=2) so upsell/downsell logic (UP-*/DN-*) can reason about "higher" and "lower" plans generically.</td></tr>
+  <tr><td>PAY-02</td><td class="must">MUST</td><td>Introductory offer support: e.g. first month €1, then full price. Offer shown on the gate must match checkout exactly.</td></tr>
+  <tr><td>PAY-03</td><td class="must">MUST</td><td>Checkout completes in ≤ 3 steps from gate click: (1) account (skip if logged in), (2) plan + payment details, (3) confirmation.</td></tr>
+  <tr><td>PAY-04</td><td class="must">MUST</td><td>After successful checkout the user is returned to the article that triggered the gate, now unlocked (AC-12).</td></tr>
+  <tr><td>PAY-05</td><td class="must">MUST</td><td>Payment provider integration is behind an interface so the sandbox provider can be swapped for a real one without touching paywall logic.</td></tr>
+  <tr><td>PAY-06</td><td class="should">SHOULD</td><td>Support iDEAL and credit card as payment method options in the (sandbox) flow, reflecting the Dutch market.</td></tr>
+  <tr><td>PAY-07</td><td class="should">SHOULD</td><td>Failed payments show a clear retry path without losing entered data.</td></tr>
+</table>
+
+<h2>3. Subscription lifecycle (SUB)</h2>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>SUB-01</td><td class="must">MUST</td><td>A subscription record has: <code>user_id</code>, <code>plan_id</code>, <code>status</code> (<code>active</code>, <code>past_due</code>, <code>canceled</code>, <code>expired</code>), <code>current_period_end</code>, and the entitlement it grants.</td></tr>
+  <tr><td>SUB-02</td><td class="must">MUST</td><td>Status transitions are driven by provider webhooks (payment succeeded/failed, subscription canceled) and processed idempotently.</td></tr>
+  <tr><td>SUB-03</td><td class="must">MUST</td><td>Cancellation is effective at period end: status <code>canceled</code> retains access until <code>current_period_end</code>, then becomes <code>expired</code> (AC-02).</td></tr>
+  <tr><td>SUB-04</td><td class="must">MUST</td><td>Online self-service cancellation in at most 2 clicks from the account page — no retention call, no dark patterns (legal requirement in NL/EU).</td></tr>
+  <tr><td>SUB-05</td><td class="should">SHOULD</td><td>A <code>past_due</code> grace period of 7 days with access retained, during which payment retry emails are sent (sandbox: logged, not sent).</td></tr>
+  <tr><td>SUB-06</td><td class="could">COULD</td><td>Cancel-flow survey (one optional question: reason for leaving) logged for analysis.</td></tr>
+</table>
+
+<h2>4. Upsell &amp; downsell triggering (UP / DN)</h2>
+<div class="note">
+<strong>Scope:</strong> this section specifies <em>triggering and offer-selection logic only</em>.
+Presentation (banners, modals, offer pages) is a separate shop-like feature and out of scope here.
+The engine emits an <code>offer</code> object; how it is rendered is decided later.
+<br><br>
+<strong>Architecture:</strong> offer decisions come from an external <strong>CEP engine</strong>
+(Customer Engagement Platform). The paywall side sends trigger events with full context
+(including <strong>channel</strong>: <code>web</code>, <code>app</code>, <code>chat</code>) and
+enforces/executes the offers the CEP returns. Local code provides the interface, guardrails,
+and a fallback — not the offer rules themselves.
+</div>
+
+<h3>4.1 Offer engine</h3>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>UP-01</td><td class="must">MUST</td><td>A single entry point <code>decide_offer(subject, trigger_context) → offer | none</code> is the only way callers obtain offers. The trigger context contains at minimum: <code>trigger</code> (<code>checkout</code>, <code>account_view</code>, <code>cancel_intent</code>, <code>payment_failed</code>, <code>gate_shown</code>), <code>channel</code> (<code>web</code> | <code>app</code> | <code>chat</code>), current plan, and variant. At most one offer is returned.</td></tr>
+  <tr><td>UP-01a</td><td class="must">MUST</td><td>Internally, <code>decide_offer</code> calls the CEP engine with subject + trigger context and returns the CEP's decision after local validation (UP-09). The CEP client sits behind an interface (like PAY-05) with a mock implementation for the experiment.</td></tr>
+  <tr><td>UP-02</td><td class="must">MUST</td><td>An offer object contains: <code>offer_id</code>, <code>kind</code> (<code>upsell</code> | <code>downsell</code> | <code>access_grant</code>, see <a href="02-access-control-metering.html">FGA-07</a>), <code>from_plan</code>, <code>to_plan</code>, optional <code>discount</code> (percent or fixed, duration in periods), optional <code>pause</code> (months), <code>valid_until</code>, <code>trigger</code>, <code>channels</code> (channels the offer may be presented on), and <code>source</code> (CEP campaign/rule reference).</td></tr>
+  <tr><td>UP-02a</td><td class="must">MUST</td><td>An offer is only returned to a caller whose request channel is in the offer's <code>channels</code> list; otherwise it is suppressed with reason <code>channel_mismatch</code>.</td></tr>
+  <tr><td>UP-03</td><td class="must">MUST</td><td>Offer rules (trigger → eligibility → offer) live in the CEP engine. Local configuration (API-03) holds only: guardrail parameters (UP-05, DN-05), channel definitions, CEP endpoint/timeout, and an optional static fallback offer per trigger.</td></tr>
+  <tr><td>UP-04</td><td class="must">MUST</td><td>Every evaluation is logged as an event (<a href="04-analytics-experimentation.html">AN-02</a>): <code>offer_triggered</code> with the offer, or <code>offer_suppressed</code> with the reason (ineligible, capped, none matched, <code>channel_mismatch</code>, <code>cep_timeout</code>, <code>cep_error</code>, <code>guardrail_rejected</code>). Both include the channel.</td></tr>
+  <tr><td>UP-05</td><td class="must">MUST</td><td>Frequency capping: the same subject is not offered the same <code>offer_id</code> again within a configurable cooldown (default 30 days) after declining it. The cap is cross-channel: a decline on <code>app</code> also suppresses the offer on <code>web</code> and <code>chat</code>.</td></tr>
+  <tr><td>UP-06</td><td class="should">SHOULD</td><td>Offers are variant-aware: the variant is passed to the CEP in the trigger context so upsell/downsell strategies are A/B-testable (EX-02) and consistent with the paywall experiment.</td></tr>
+  <tr><td>UP-07</td><td class="must">MUST</td><td><strong>CEP resilience:</strong> if the CEP does not respond within the configured timeout (default 300 ms) or errors, <code>decide_offer</code> returns the static fallback offer if configured, else <code>none</code>. A CEP failure must never block or delay checkout, cancellation, or page render (cf. NFR-11).</td></tr>
+  <tr><td>UP-08</td><td class="should">SHOULD</td><td><strong>CEP-initiated offers:</strong> the CEP may push offers for asynchronous channels (e.g. <code>chat</code>, email) referencing a <code>subject_id</code>. These enter through the same validation (UP-09) and logging (UP-04) path before being stored as pending offers for that subject + channel.</td></tr>
+  <tr><td>UP-09</td><td class="must">MUST</td><td><strong>Local guardrails:</strong> every CEP offer is validated locally before use: plans exist, tier transition is coherent with <code>rank</code> (PAY-01a), discount within configured bounds, frequency caps (UP-05, DN-05) respected, cancellation never blocked (DN-02). Offers failing validation are suppressed with reason <code>guardrail_rejected</code>.</td></tr>
+</table>
+
+<h3>4.2 Upsell triggers</h3>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>UP-10</td><td class="must">MUST</td><td><strong>Checkout, billing period:</strong> a subject checking out a monthly plan triggers an annual-plan offer for the same tier (showing the savings).</td></tr>
+  <tr><td>UP-11</td><td class="must">MUST</td><td><strong>Checkout, tier:</strong> a subject checking out <code>basic</code> triggers a <code>complete</code> offer at a configurable add-on price.</td></tr>
+  <tr><td>UP-12</td><td class="must">MUST</td><td><strong>Active subscriber, tier:</strong> a <code>basic</code> subscriber hitting content/features that require <code>complete</code> entitlement triggers a tier-upgrade offer instead of a plain "no access" response.</td></tr>
+  <tr><td>UP-13</td><td class="should">SHOULD</td><td><strong>Engagement-based:</strong> a <code>basic</code> monthly subscriber whose engagement score (DY-01 input data) exceeds a configurable threshold for 2 consecutive months triggers an annual or <code>complete</code> offer via <code>account_view</code> context.</td></tr>
+  <tr><td>UP-14</td><td class="must">MUST</td><td>Upgrade execution: tier or period change is prorated by the payment provider, entitlement updates immediately, and the subscription record keeps its history (SUB-01).</td></tr>
+</table>
+
+<h3>4.3 Downsell triggers</h3>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>DN-01</td><td class="must">MUST</td><td><strong>Cancel intent:</strong> when a subscriber starts the cancel flow (SUB-04), <code>decide_offer</code> is called with trigger <code>cancel_intent</code>. The CEP campaign is expected to follow the precedence: (1) lower tier (<code>complete</code>→<code>basic</code>), (2) temporary discount (e.g. 50% for 3 months), (3) pause (1–3 months). At most one offer is returned (UP-01) and it must pass local guardrails (UP-09).</td></tr>
+  <tr><td>DN-02</td><td class="must">MUST</td><td>The downsell offer never blocks cancellation: declining must complete the cancellation in the same flow, preserving the 2-click guarantee of SUB-04.</td></tr>
+  <tr><td>DN-03</td><td class="must">MUST</td><td><strong>Payment failure:</strong> after the grace period (SUB-05) and before expiry, a <code>payment_failed</code> trigger may offer a cheaper plan instead of losing the subscriber.</td></tr>
+  <tr><td>DN-04</td><td class="must">MUST</td><td>Downgrade execution: lower tier takes effect at the next billing date (no mid-period loss of paid features); pause sets status <code>paused</code> with access off and billing suspended, auto-resuming after the pause.</td></tr>
+  <tr><td>DN-05</td><td class="must">MUST</td><td>A subject can accept at most one retention (discount/pause) offer per rolling 12 months — no repeated cancel-to-get-discount farming.</td></tr>
+  <tr><td>DN-06</td><td class="should">SHOULD</td><td>Acceptance and decline of each offer are logged (<code>offer_accepted</code> / <code>offer_declined</code>) with the offer object, so retention value per offer type is measurable (AN-10).</td></tr>
+</table>
+
+<h3>4.4 Subscription status addition</h3>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>SUB-07</td><td class="must">MUST</td><td><code>status</code> (SUB-01) gains the value <code>paused</code>; AC-02 treats <code>paused</code> as no access. Scheduled resume re-activates billing and entitlement.</td></tr>
+</table>
+
+<h2>5. Transactional email (sandbox: log only)</h2>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>US-10</td><td class="should">SHOULD</td><td>Emails for: verification, password reset, purchase confirmation, payment failure, cancellation confirmation. In the experiment these are written to a mail log / mailhog instance.</td></tr>
+</table>
+
+<nav><a href="index.html">← Index</a> · Prev: <a href="02-access-control-metering.html">Access Control</a> · Next: <a href="04-analytics-experimentation.html">Analytics</a></nav>
+
+</body>
+</html>
