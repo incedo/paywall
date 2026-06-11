@@ -179,6 +179,29 @@ fun CrmCheckRow(text: String) {
     }
 }
 
+/** Selectable pill chip, e.g. channel toggles. */
+@Composable
+fun CrmToggleChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(CrmTheme.shapes.pill)
+            .background(if (selected) CrmTheme.colors.infoContainer else CrmTheme.colors.surfaceVariant)
+            .border(
+                CrmBorder.default,
+                if (selected) CrmTheme.colors.primary else CrmTheme.colors.divider,
+                CrmTheme.shapes.pill,
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = CrmTheme.spacing.md, vertical = CrmTheme.spacing.xs),
+    ) {
+        CrmText(
+            label,
+            style = CrmTheme.typography.label,
+            color = if (selected) CrmTheme.colors.primary else CrmTheme.colors.onSurfaceVariant,
+        )
+    }
+}
+
 /** Labelled single/multi-line text input. */
 @Composable
 fun CrmTextField(

@@ -1,7 +1,6 @@
 package nl.incedo.paywall.screens
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +13,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.unit.dp
 import nl.incedo.paywall.model.WallDefinition
+import nl.incedo.paywall.model.WallType
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
 import nl.incedo.paywall.ui.CrmDivider
@@ -38,9 +38,13 @@ private val invoices = listOf(
     Invoice("2026-0117 · Onboarding", "19 Apr 2026", "€750.00", paid = true),
 )
 
-/** Soft wall — metered limit over a blurred invoice list (design 01-C). */
+/**
+ * Soft wall — gate over partially gated content (design 01-C). Renders the
+ * metered, freemium and dynamic strategies; the gate copy comes from the
+ * structured [WallDefinition] (ADM-11), strategy context from the type.
+ */
 @Composable
-fun MeteredWall(definition: WallDefinition) {
+fun ContentGateWall(definition: WallDefinition) {
     val freeLimit = 3
 
     Column(
@@ -120,14 +124,24 @@ private fun GateCard(definition: WallDefinition, used: Int, limit: Int) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
         ) {
-            CrmUsageMeter("Free documents used", used, limit, modifier = Modifier.widthIn(max = 320.dp))
+            if (definition.type == WallType.Metered) {
+                CrmUsageMeter("Free documents used", used, limit, modifier = Modifier.widthIn(max = 320.dp))
+            }
             CrmText(definition.title, style = CrmTheme.typography.h3)
             CrmText(definition.body, color = CrmTheme.colors.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md)) {
                 CrmPrimaryButton(definition.primaryCta)
                 CrmSecondaryButton(definition.secondaryCta)
             }
-            CrmText("Your limit resets on 1 July.", style = CrmTheme.typography.caption, color = CrmTheme.colors.onSurfaceVariant)
+            val note = when (definition.type) {
+                WallType.Metered -> "Your limit resets on 1 July."
+                WallType.Freemium -> "Premium content — always gated on Free."
+                WallType.Dynamic -> "Shown when the propensity score is above the threshold."
+                WallType.Hard -> null
+            }
+            if (note != null) {
+                CrmText(note, style = CrmTheme.typography.caption, color = CrmTheme.colors.onSurfaceVariant)
+            }
         }
     }
 }

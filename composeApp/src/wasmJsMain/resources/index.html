@@ -5,10 +5,57 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Incedo — Customer portal</title>
     <style>
+        /* CrmTheme tokens — mirror of _ds/colors_and_type.css */
+        :root {
+            --crm-primary: #1A73E8;
+            --crm-background: #F8F9FA;
+            --crm-surface: #FFFFFF;
+            --crm-on-background: #202124;
+            --crm-on-surface-variant: #5F6368;
+            --crm-divider: #DADCE0;
+        }
         html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+        body {
+            font-family: "Roboto", "Google Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+            font-size: 14px; line-height: 20px;
+            color: var(--crm-on-background);
+            background: var(--crm-background);
+            -webkit-font-smoothing: antialiased;
+        }
+        .fallback {
+            display: flex; align-items: center; justify-content: center;
+            height: 100%; padding: 24px; box-sizing: border-box;
+        }
+        .fallback-card {
+            background: var(--crm-surface);
+            border: 1px solid var(--crm-divider);
+            border-radius: 12px;
+            padding: 32px; max-width: 480px;
+        }
+        .fallback-card h1 { font-size: 24px; line-height: 32px; font-weight: 700; margin: 0 0 8px; }
+        .fallback-card .brand { color: var(--crm-primary); font-size: 16px; font-weight: 600; margin-bottom: 24px; }
+        .fallback-card p { margin: 0 0 12px; color: var(--crm-on-surface-variant); }
+        .fallback-card a { color: var(--crm-primary); text-decoration: none; }
+        .fallback-card a:hover { text-decoration: underline; }
     </style>
     <script type="application/javascript" src="composeApp.js"></script>
 </head>
 <body>
+<!--
+    No-JS / no-Wasm fallback (TS-08): the application is a Compose/Wasm SPA;
+    without JavaScript and WebAssembly nothing renders, so this static page
+    explains the situation. Enforcement is unaffected — content only exists
+    behind entitlement-checked APIs (AC-01, BP-01).
+-->
+<noscript>
+    <div class="fallback">
+        <div class="fallback-card">
+            <div class="brand">Incedo</div>
+            <h1>JavaScript and WebAssembly are required</h1>
+            <p>This application runs in your browser using WebAssembly. Enable JavaScript, or use a browser that supports WebAssembly, to continue.</p>
+            <p>Need help? <a href="mailto:support@incedo.nl">Contact support</a></p>
+        </div>
+    </div>
+</noscript>
 </body>
 </html>

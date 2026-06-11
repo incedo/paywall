@@ -22,8 +22,10 @@ A working Compose Multiplatform scaffold (Kotlin 2.2.21, Compose Multiplatform 1
 - `theme/CrmTheme.kt` — 1:1 Compose port of the design-system tokens (colors light/dark, typography, spacing, shapes, borders). Components read tokens only; hard-coded hex/dp is banned per the design system.
 - `ui/Components.kt` — atoms: buttons, card, tag, divider, segmented toggle, usage meter, text field, avatar.
 - `model/WallDefinition.kt` — the structured wall definition (ADM-11).
-- `designer/WallDesignerScreen.kt` — visual wall editor, workspace variant (design "Wall Designer", variant A): config panel left, live preview right.
-- `screens/` — gate renderers used as the live preview: hard wall (pricing table) and metered wall (blurred list + gate with usage meter), both driven by `WallDefinition`, with light/dark preview theming.
+- `designer/WallsOverviewScreen.kt` — walls overview table (design variant B1): status, channels, A/B, conversion; click a row to edit.
+- `designer/WallDesignerScreen.kt` — visual wall editor, workspace variant (design variant A): configuration left, live preview centre (web/mobile, light/dark), targeting & publishing (audience, channels, A/B, version history) right.
+- `screens/` — gate renderers used as the live preview, driven by `WallDefinition`: hard wall (pricing table) and the content gate (blurred list + gate card) covering the metered, freemium and dynamic strategies (PW-*).
+- `wasmJsMain/resources/index.html` — SPA shell including the styled no-JS/no-Wasm fallback page (TS-08).
 
 ## Run
 

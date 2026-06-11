@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import nl.incedo.paywall.designer.WallDesignerScreen
+import nl.incedo.paywall.designer.WallsOverviewScreen
 import nl.incedo.paywall.model.WallDefinition
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmAvatar
@@ -29,6 +30,7 @@ import nl.incedo.paywall.ui.CrmText
 @Composable
 fun App() {
     var definition by remember { mutableStateOf(WallDefinition()) }
+    var openWallName by remember { mutableStateOf<String?>(null) }
 
     CrmTheme {
         Column(
@@ -38,10 +40,22 @@ fun App() {
         ) {
             AdminTopBar()
             CrmDivider()
-            WallDesignerScreen(
-                definition = definition,
-                onDefinitionChange = { definition = it },
-            )
+            val wallName = openWallName
+            if (wallName == null) {
+                WallsOverviewScreen(
+                    onOpenWall = { wall ->
+                        definition = definition.copy(type = wall.type, channels = wall.channels)
+                        openWallName = wall.name
+                    },
+                )
+            } else {
+                WallDesignerScreen(
+                    wallName = wallName,
+                    definition = definition,
+                    onDefinitionChange = { definition = it },
+                    onBack = { openWallName = null },
+                )
+            }
         }
     }
 }

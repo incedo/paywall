@@ -2,21 +2,28 @@ package nl.incedo.paywall.designer
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import nl.incedo.paywall.model.Channel
 import nl.incedo.paywall.model.WallDefinition
 import nl.incedo.paywall.model.WallType
-import nl.incedo.paywall.screens.MeteredWall
+import nl.incedo.paywall.screens.ContentGateWall
 import nl.incedo.paywall.screens.PricingWall
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
@@ -26,19 +33,26 @@ import nl.incedo.paywall.ui.CrmSecondaryButton
 import nl.incedo.paywall.ui.CrmSegmentedToggle
 import nl.incedo.paywall.ui.CrmTag
 import nl.incedo.paywall.ui.CrmText
+import nl.incedo.paywall.ui.CrmTextButton
 import nl.incedo.paywall.ui.CrmTextField
+import nl.incedo.paywall.ui.CrmToggleChip
 
 /**
  * Visual wall editor, workspace variant (ADM-11/12 · design "Wall Designer", variant A):
- * configuration left, live preview rendered from the structured [WallDefinition] right.
+ * configuration left, live preview rendered from the structured [WallDefinition] centre,
+ * targeting and publishing right.
  */
 @Composable
 fun WallDesignerScreen(
+    wallName: String,
     definition: WallDefinition,
     onDefinitionChange: (WallDefinition) -> Unit,
+    onBack: () -> Unit,
 ) {
+    var mobilePreview by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.fillMaxWidth()) {
-        DesignerToolbar()
+        DesignerToolbar(wallName, onBack)
         CrmDivider()
         Row(modifier = Modifier.fillMaxWidth()) {
             ConfigPanel(
@@ -51,8 +65,18 @@ fun WallDesignerScreen(
             )
             PreviewPanel(
                 definition = definition,
+                mobilePreview = mobilePreview,
+                onPreviewDeviceChange = { mobilePreview = it },
                 modifier = Modifier
                     .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(CrmTheme.spacing.xl),
+            )
+            PublishPanel(
+                definition = definition,
+                onDefinitionChange = onDefinitionChange,
+                modifier = Modifier
+                    .width(300.dp)
                     .verticalScroll(rememberScrollState())
                     .padding(CrmTheme.spacing.xl),
             )
@@ -61,7 +85,7 @@ fun WallDesignerScreen(
 }
 
 @Composable
-private fun DesignerToolbar() {
+private fun DesignerToolbar(wallName: String, onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -70,7 +94,8 @@ private fun DesignerToolbar() {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
     ) {
-        CrmText("Walls / Metered limit — invoices", style = CrmTheme.typography.h3)
+        CrmTextButton("Walls", onClick = onBack)
+        CrmText("/ $wallName", style = CrmTheme.typography.h3)
         CrmTag("Draft", CrmTheme.colors.surfaceVariant, CrmTheme.colors.onSurfaceVariant)
         Row(modifier = Modifier.weight(1f)) {}
         CrmSecondaryButton("Save draft")
@@ -86,11 +111,15 @@ private fun ConfigPanel(
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg)) {
         CrmText("Wall type", style = CrmTheme.typography.label, color = CrmTheme.colors.onSurfaceVariant)
-        CrmSegmentedToggle(
-            options = WallType.entries.map { it.label },
-            selectedIndex = WallType.entries.indexOf(definition.type),
-            onSelect = { onDefinitionChange(definition.copy(type = WallType.entries[it])) },
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
+            WallType.entries.forEach { type ->
+                CrmToggleChip(
+                    label = type.label,
+                    selected = definition.type == type,
+                    onClick = { onDefinitionChange(definition.copy(type = type)) },
+                )
+            }
+        }
 
         CrmText("Content", style = CrmTheme.typography.h3)
         CrmTextField("Title", definition.title, { onDefinitionChange(definition.copy(title = it)) })
@@ -108,25 +137,125 @@ private fun ConfigPanel(
 }
 
 @Composable
-private fun PreviewPanel(definition: WallDefinition, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md)) {
-        CrmText(
-            "Preview · Web · ${if (definition.darkPreview) "Dark" else "Light"} · ${definition.type.label}",
-            style = CrmTheme.typography.label,
-            color = CrmTheme.colors.onSurfaceVariant,
-        )
-        CrmTheme(darkTheme = definition.darkPreview) {
-            CrmCard {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(CrmTheme.shapes.lg)
-                        .background(CrmTheme.colors.background),
-                ) {
-                    when (definition.type) {
-                        WallType.Hard -> PricingWall(definition)
-                        WallType.Metered -> MeteredWall(definition)
+private fun PreviewPanel(
+    definition: WallDefinition,
+    mobilePreview: Boolean,
+    onPreviewDeviceChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CrmText(
+                "Preview · ${if (mobilePreview) "Mobile" else "Web"} · " +
+                    "${if (definition.darkPreview) "Dark" else "Light"} · ${definition.type.label}",
+                style = CrmTheme.typography.label,
+                color = CrmTheme.colors.onSurfaceVariant,
+            )
+            CrmSegmentedToggle(
+                options = listOf("Web", "Mobile"),
+                selectedIndex = if (mobilePreview) 1 else 0,
+                onSelect = { onPreviewDeviceChange(it == 1) },
+            )
+        }
+        Box(modifier = Modifier.widthIn(max = if (mobilePreview) 400.dp else 880.dp)) {
+            CrmTheme(darkTheme = definition.darkPreview) {
+                CrmCard {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(CrmTheme.shapes.lg)
+                            .background(CrmTheme.colors.background),
+                    ) {
+                        when (definition.type) {
+                            WallType.Hard -> PricingWall(definition)
+                            else -> ContentGateWall(definition)
+                        }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PublishPanel(
+    definition: WallDefinition,
+    onDefinitionChange: (WallDefinition) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg)) {
+        CrmText("Audience", style = CrmTheme.typography.h3)
+        Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
+            listOf("Free plan workspaces", "Documents used ≥ 3", "Period — calendar month").forEach {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CrmText(it, style = CrmTheme.typography.bodySmall, color = CrmTheme.colors.onSurfaceVariant)
+                    CrmText("✕", style = CrmTheme.typography.bodySmall, color = CrmTheme.colors.onDisabled)
+                }
+            }
+            CrmTextButton("Add condition")
+        }
+        CrmDivider()
+
+        CrmText("Channels", style = CrmTheme.typography.h3)
+        Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
+            Channel.entries.chunked(2).forEach { rowChannels ->
+                Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
+                    rowChannels.forEach { channel ->
+                        CrmToggleChip(
+                            label = channel.label,
+                            selected = channel in definition.channels,
+                            onClick = {
+                                val channels = if (channel in definition.channels) {
+                                    definition.channels - channel
+                                } else {
+                                    definition.channels + channel
+                                }
+                                onDefinitionChange(definition.copy(channels = channels))
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        CrmDivider()
+
+        CrmText("A/B test", style = CrmTheme.typography.h3)
+        Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
+            listOf("Variant A — meter first" to "50%", "Variant B — price first" to "50%").forEach { (name, weight) ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    CrmText(name, style = CrmTheme.typography.bodySmall, color = CrmTheme.colors.onSurfaceVariant)
+                    CrmText(weight, style = CrmTheme.typography.bodySmall, color = CrmTheme.colors.onSurface)
+                }
+            }
+        }
+        CrmDivider()
+
+        CrmText("Version history", style = CrmTheme.typography.h3)
+        Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm)) {
+            Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xxs)) {
+                CrmText("v3 — draft", style = CrmTheme.typography.bodySmall)
+                CrmText("Edited 2 min ago by M. Visser", style = CrmTheme.typography.caption, color = CrmTheme.colors.onSurfaceVariant)
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xxs)) {
+                CrmText("v2 — published", style = CrmTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm)) {
+                    CrmText("4 Jun 2026", style = CrmTheme.typography.caption, color = CrmTheme.colors.onSurfaceVariant)
+                    CrmText("Restore", style = CrmTheme.typography.caption, color = CrmTheme.colors.link)
                 }
             }
         }
