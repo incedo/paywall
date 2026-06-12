@@ -15,6 +15,18 @@ Paywall experiment for a media company — see [`requirements/`](requirements/in
 
 The whole stack stays Kotlin: Compose Multiplatform on the client, Kotlin/GraalVM native for the backend (TS-01), shared models (e.g. `WallDefinition`) publishable as a KMP library consumed by both.
 
+## What's in `shared/`
+
+The domain core (pure Kotlin, KMP: `jvm` + `wasmJs`), per `architecture/`:
+
+- `core/` — `DomainEvent` (tagged, DCB), `EventStore` port with `EventQuery`/`AppendCondition`, in-memory adapter
+- `access/AccessDecisionEngine.kt` — the Doc 2 §1 decision flow as a pure function: free → entitled → grant → strategy (hard/metered/freemium/dynamic incl. PW-42 floor rule)
+- `metering/` — `MeterDecision` (PW-20/21), `RecordArticleReadHandler` (DCB append condition, 3 retries per Q-7)
+- `entitlements/`, `grants/` — decision models fed by integration events (external subscription administration; Keto-backed FGA)
+- `experiments/VariantAssigner.kt` — deterministic FNV-1a assignment (EX-01)
+
+Tests: `./gradlew :shared:jvmTest` — includes the **NFR-12 decision matrix** (4 types × 4 visitor states × 2 tiers = 32 cases) plus unit suites per decision model, concurrency-retry and event-store contract tests.
+
 ## What's in `composeApp/`
 
 A working Compose Multiplatform scaffold (Kotlin 2.2.21, Compose Multiplatform 1.9.3) with targets `wasmJs` (web) and `jvm` (desktop):
