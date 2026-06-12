@@ -1,7 +1,7 @@
 # Storybook Story + Scenario Specifications
 
 **Status**: AGREED  
-**Last Updated**: 2026-04-16  
+**Last Updated**: 2026-06-12  
 **Depends On**: testing.md, ../design-system.md, ../forms-pattern.md, specs/architecture/testing/compose_storybook_requirements.md, specs/architecture/testing/storybook_controls_and_responsive_specs.md
 
 ---
@@ -9,16 +9,16 @@
 # Storybook Story
 
 **Status**: AGREED  
-**Last Updated**: 2026-04-16  
+**Last Updated**: 2026-06-12  
 **Depends On**: specs/architecture/testing/compose_storybook_requirements.md, specs/architecture/testing/storybook_controls_and_responsive_specs.md
 
 ---
 
 ## 1. Overview
 
-A **Story** is the primary domain concept of the CRM Storybook / Component Workbench. It represents a named, discoverable, design-system-aligned renderable UI artifact that can be explored independently from the full application runtime.
+A **Story** is the primary domain concept of the paywall platform's Storybook / Component Workbench. It represents a named, discoverable, design-system-aligned renderable UI artifact that can be explored independently from the full application runtime.
 
-A Story exists to make UI behavior explicit and testable. It is used by engineers, QA, and design stakeholders to browse components and screens, inspect variants, validate responsive behavior, and ensure alignment with the CRM design system.
+A Story exists to make UI behavior explicit and testable. It is used by engineers, QA, and design stakeholders to browse components and screens — from a single `CrmTag` or `CrmUsageMeter` up to the pricing wall plan cards, the metered gate, and the walls overview table — inspect variants, validate responsive behavior, and ensure alignment with the platform's design system.
 
 ---
 
@@ -27,7 +27,7 @@ A Story exists to make UI behavior explicit and testable. It is used by engineer
 | Value Object | Type | Validation | Notes |
 |-------------|------|------------|-------|
 | StoryId | `@JvmInline value class` | Non-blank UUID or stable slug | Typed identifier |
-| StoryKey | `@JvmInline value class` | Non-blank, unique, kebab-case or namespaced | Stable external key, e.g. `button/primary/default` |
+| StoryKey | `@JvmInline value class` | Non-blank, unique, kebab-case or namespaced | Stable external key, e.g. `walls/pricing/plan-card` |
 | StoryTitle | `@JvmInline value class` | 1..120 chars | Human-readable title |
 | StoryDescription | `@JvmInline value class` | max 2000 chars | Optional detailed description |
 | StoryGroupId | `@JvmInline value class` | Non-blank | Group reference |
@@ -166,13 +166,13 @@ Command arrives
 - **Request Body**:
   ```json
   {
-    "storyId": "story-button-primary-default",
-    "storyKey": "buttons/primary/default",
-    "title": "Primary Button / Default",
+    "storyId": "story-pricing-wall-plan-card",
+    "storyKey": "walls/pricing/plan-card",
+    "title": "Pricing Wall / Plan Card",
     "type": "COMPONENT",
-    "groupId": "buttons",
-    "owner": "designsystem-core",
-    "renderContractRef": "storybook.buttons.primary.default",
+    "groupId": "walls",
+    "owner": "paywall-designsystem-core",
+    "renderContractRef": "nl.incedo.paywall.storybook.walls.pricing.planCard",
     "lifecycle": "ACTIVE",
     "coverageScope": "ALL",
     "tags": ["mobile", "tablet", "desktop", "web"]
@@ -352,7 +352,7 @@ Command arrives
 # Storybook Scenario
 
 **Status**: AGREED  
-**Last Updated**: 2026-04-16  
+**Last Updated**: 2026-06-12  
 **Depends On**: specs/architecture/testing/storybook_story_and_scenario_specs.md, specs/architecture/testing/storybook_controls_and_responsive_specs.md
 
 ---
@@ -361,7 +361,7 @@ Command arrives
 
 A **Scenario** defines a specific renderable state of a Story. It models a named configuration of UI inputs, fake data, environment assumptions, and expected responsive behavior so that teams can inspect and validate the exact situation being presented.
 
-Scenarios exist because a Story without state variation is incomplete. They make loading, success, error, empty, long-content, accessibility-sensitive, and responsive-specific conditions explicit and reusable.
+Scenarios exist because a Story without state variation is incomplete. They make loading, success, error, empty, long-content, accessibility-sensitive, and responsive-specific conditions explicit and reusable — e.g. a walls overview with no walls yet ("No walls yet"), a metered gate at "3 of 3" with "You've reached this month's free limit", a gate loading invoice rows, or a gate render failure falling back to its error state.
 
 ---
 
@@ -370,7 +370,7 @@ Scenarios exist because a Story without state variation is incomplete. They make
 | Value Object | Type | Validation | Notes |
 |-------------|------|------------|-------|
 | ScenarioId | `@JvmInline value class` | Non-blank UUID or stable slug | Typed identifier |
-| ScenarioKey | `@JvmInline value class` | Non-blank, unique within Story | Stable scenario key, e.g. `loading`, `error`, `long-content` |
+| ScenarioKey | `@JvmInline value class` | Non-blank, unique within Story | Stable scenario key, e.g. `loading`, `error`, `limit-reached` |
 | ScenarioTitle | `@JvmInline value class` | 1..120 chars | Human-readable title |
 | ScenarioDescription | `@JvmInline value class` | max 2000 chars | Optional description |
 | StoryRef | `@JvmInline value class` | Existing StoryId | Parent story reference |
@@ -504,14 +504,14 @@ Command arrives
 - **Request Body**:
   ```json
   {
-    "scenarioId": "button-primary-loading",
-    "scenarioKey": "loading",
-    "title": "Loading",
-    "type": "LOADING",
+    "scenarioId": "metered-gate-limit-reached",
+    "scenarioKey": "limit-reached",
+    "title": "Limit reached (3 of 3)",
+    "type": "EDGE_CASE",
     "lifecycle": "ACTIVE",
-    "presetRef": "preset.button.primary.loading",
+    "presetRef": "preset.gates.metered.limit-reached",
     "environmentRef": "env.default",
-    "controlsRef": "controls.button.primary"
+    "controlsRef": "controls.gates.metered"
   }
   ```
 - **Success Response** (201): Created event confirmation + generated ID
@@ -539,7 +539,7 @@ Command arrives
 - **Request Body**:
   ```json
   {
-    "presetRef": "preset.button.primary.loading"
+    "presetRef": "preset.gates.metered.limit-reached"
   }
   ```
 - **Success Response** (200): Linked confirmation
@@ -561,7 +561,7 @@ Command arrives
 - **Request Body**:
   ```json
   {
-    "controlsRef": "controls.button.primary"
+    "controlsRef": "controls.gates.metered"
   }
   ```
 - **Success Response** (200): Linked confirmation
@@ -572,7 +572,7 @@ Command arrives
 - **Request Body**:
   ```json
   {
-    "expectationRef": "responsive.button.primary.loading"
+    "expectationRef": "responsive.gates.metered.limit-reached"
   }
   ```
 - **Success Response** (200): Updated confirmation
@@ -583,7 +583,7 @@ Command arrives
 - **Request Body**:
   ```json
   {
-    "note": "On phone compact width the secondary label must wrap instead of truncate.",
+    "note": "On phone compact width the usage meter label (\"3 of 3 free articles\") must wrap instead of truncate.",
     "authorRole": "QA"
   }
   ```

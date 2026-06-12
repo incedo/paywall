@@ -1,4 +1,4 @@
-# CRM Storybook / Component Workbench — Spec Index
+# Paywall Storybook / Component Workbench — Spec Index
 
 This document maps the storybook specification to its actual files.
 
@@ -45,11 +45,11 @@ testing.md (master)
 
 The Component Workbench is a **derived artifact** of the design system:
 - Every token category (colors, typography, spacing, etc.) gets a token showcase story
-- Every component gets stories for each variant + state scenarios
-- Responsive behavior is verified against the design system's breakpoint tokens
-- Themes are tested against the design system's CrmDesignTheme bundles
+- Every component gets stories for each variant + state scenarios (e.g. `CrmUsageMeter` at 0/3, 2/3, and 3/3 of the metered limit; `CrmToggleChip` channel selections)
+- Responsive behavior is verified against the design system's breakpoint tokens (gate components at mobile widths, the wall designer's 3-column workspace collapsing)
+- Themes are tested against the design system's `CrmTheme` bundles — the same light/dark pair the designer's live preview switches between
 
-The design system defines **what** components look like. The workbench verifies and documents **how** they look in practice.
+The design system defines **what** components look like. The workbench verifies and documents **how** they look in practice — from a single `CrmTag` up to the full pricing wall and content gate renderers (PW-*) and the wall designer screens (ADM-11/12).
 
 ## Current Implementation Status
 

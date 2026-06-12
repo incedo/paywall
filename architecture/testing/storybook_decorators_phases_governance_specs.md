@@ -1,7 +1,7 @@
 # Storybook Decorators + Phases + Governance Specifications
 
 **Status**: AGREED  
-**Last Updated**: 2026-04-16  
+**Last Updated**: 2026-06-12  
 **Depends On**: testing.md, ../design-system.md, specs/architecture/testing/compose_storybook_requirements.md, specs/architecture/testing/storybook_story_and_scenario_specs.md, specs/architecture/testing/storybook_controls_and_responsive_specs.md
 
 ---
@@ -9,16 +9,16 @@
 # Storybook Decorators
 
 **Status**: AGREED  
-**Last Updated**: 2026-04-16  
+**Last Updated**: 2026-06-12  
 **Depends On**: specs/architecture/testing/storybook_story_and_scenario_specs.md, specs/architecture/testing/storybook_controls_and_responsive_specs.md, ../design-system.md
 
 ---
 
 ## 1. Overview
 
-A **Decorator** defines a reusable runtime wrapper around a Story or Scenario preview in the CRM Storybook / Component Workbench. Decorators provide the surrounding environment needed to render UI correctly without depending on the full production runtime.
+A **Decorator** defines a reusable runtime wrapper around a Story or Scenario preview in the paywall platform's Storybook / Component Workbench. Decorators provide the surrounding environment needed to render UI correctly without depending on the full production runtime.
 
-Decorators exist to make preview environments explicit and reusable. They allow stories and scenarios to be rendered with a controlled theme, locale, surface, navigation shell, dependency scope, density profile, or preview frame so that teams can validate UI behavior under consistent conditions.
+Decorators exist to make preview environments explicit and reusable. They allow stories and scenarios to be rendered with a controlled theme, locale, surface, navigation shell, dependency scope, density profile, or preview frame so that teams can validate UI behavior under consistent conditions — e.g. the same light/dark `CrmTheme` pair the wall designer's live preview toggles between (ADM-12), or a phone device frame matching the designer's web/mobile preview.
 
 ---
 
@@ -266,14 +266,14 @@ Command arrives
 # Storybook Phases
 
 **Status**: AGREED  
-**Last Updated**: 2026-04-16  
+**Last Updated**: 2026-06-12  
 **Depends On**: specs/architecture/testing/compose_storybook_requirements.md, specs/architecture/testing/storybook_story_and_scenario_specs.md, specs/architecture/testing/storybook_controls_and_responsive_specs.md, specs/architecture/testing/storybook_decorators_phases_governance_specs.md
 
 ---
 
 ## 1. Overview
 
-The **Phases** specification defines the intended capability rollout for the CRM Storybook / Component Workbench. It converts roadmap items into explicit, governable capability increments rather than informal backlog notes.
+The **Phases** specification defines the intended capability rollout for the paywall platform's Storybook / Component Workbench. It converts roadmap items into explicit, governable capability increments rather than informal backlog notes.
 
 Phases exist to give the platform a controlled maturity path. They help engineering and architecture teams track what is mandatory for initial delivery and what becomes available in later increments.
 
@@ -404,14 +404,14 @@ Phases exist to give the platform a controlled maturity path. They help engineer
 # Storybook Governance
 
 **Status**: AGREED  
-**Last Updated**: 2026-04-16  
+**Last Updated**: 2026-06-12  
 **Depends On**: specs/architecture/testing/storybook_story_and_scenario_specs.md, specs/architecture/testing/storybook_controls_and_responsive_specs.md, specs/architecture/testing/storybook_decorators_phases_governance_specs.md, testing.md
 
 ---
 
 ## 1. Overview
 
-The **Governance** specification defines lifecycle ownership, quality gates, and acceptance policies for the CRM Storybook / Component Workbench. It ensures that the workbench remains a trusted engineering asset rather than a loosely curated demo catalog.
+The **Governance** specification defines lifecycle ownership, quality gates, and acceptance policies for the paywall platform's Storybook / Component Workbench. It ensures that the workbench remains a trusted engineering asset rather than a loosely curated demo catalog.
 
 Governance exists to enforce consistency, ownership, and quality over time. It provides the bridge between architectural intent, test evidence, lifecycle maturity, and operational maintainability.
 
