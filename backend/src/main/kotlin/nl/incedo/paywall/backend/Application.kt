@@ -33,8 +33,11 @@ import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.ExperimentId
 import nl.incedo.paywall.core.PlanId
 import nl.incedo.paywall.core.SubscriptionId
+import nl.incedo.paywall.core.GrantId
 import nl.incedo.paywall.entitlements.EntitlementGranted
 import nl.incedo.paywall.entitlements.EntitlementRevoked
+import nl.incedo.paywall.grants.GrantIssued
+import nl.incedo.paywall.grants.GrantRevoked
 import nl.incedo.paywall.core.SubjectId
 import nl.incedo.paywall.core.UserId
 import nl.incedo.paywall.core.VisitorId
@@ -232,6 +235,33 @@ fun Application.module(
                 EntitlementRevoked(
                     subjectId = SubjectId(change.subjectId),
                     subscriptionRef = SubscriptionId(change.subscriptionRef),
+                )
+            }
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to event::class.simpleName))
+        }
+        // FGA grant management (FGA-03): issue/revoke article-scoped grants —
+        // day/week passes carry TTL = pass duration (PW-08). All writes are
+        // events, hence audited by construction (ADM-03).
+        post("/api/v1/grants") {
+            val change = call.receive<GrantChangeRequest>()
+            if (change.grantId.isBlank() || change.subjectId.isBlank() || change.articleId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "grantId, subjectId and articleId are required"))
+                return@post
+            }
+            val event = if (change.active) {
+                GrantIssued(
+                    grantId = GrantId(change.grantId),
+                    subjectId = SubjectId(change.subjectId),
+                    articleId = ArticleId(change.articleId),
+                    grantedBy = change.grantedBy,
+                    expiresAtEpochMs = change.expiresAtEpochMs,
+                )
+            } else {
+                GrantRevoked(
+                    grantId = GrantId(change.grantId),
+                    subjectId = SubjectId(change.subjectId),
+                    articleId = ArticleId(change.articleId),
                 )
             }
             eventStore.append(listOf(event), condition = null)

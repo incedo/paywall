@@ -84,6 +84,22 @@ data class EntitlementChangeRequest(
     val active: Boolean = true,
 )
 
+/**
+ * Grant management payload (FGA-03): article-scoped access independent of
+ * subscriptions — day/week passes with TTL (PW-08), share-token redemptions
+ * (BP-05), support grants. `active = false` revokes.
+ */
+@Serializable
+data class GrantChangeRequest(
+    val grantId: String,
+    val subjectId: String,
+    val articleId: String,
+    /** e.g. "day_pass", "share_token", "ad_gated", "support" */
+    val grantedBy: String = "support",
+    val expiresAtEpochMs: Long? = null,
+    val active: Boolean = true,
+)
+
 @Serializable
 data class DecideResponse(
     /** "full" or "gate" — the premium body itself never travels with a gate decision (AC-01). */
