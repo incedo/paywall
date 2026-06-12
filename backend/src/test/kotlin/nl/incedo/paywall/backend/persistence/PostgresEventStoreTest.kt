@@ -32,6 +32,10 @@ import nl.incedo.paywall.metering.MeterIncremented
 import nl.incedo.paywall.metering.MeterPeriod
 import nl.incedo.paywall.metering.meterTag
 import nl.incedo.paywall.metering.MeterReset
+import nl.incedo.paywall.walls.WallConfig
+import nl.incedo.paywall.walls.WallConfigChanged
+import nl.incedo.paywall.walls.WallCreated
+import nl.incedo.paywall.walls.WallPublished
 
 /**
  * Integration tests for the PostgreSQL event store (Q-1). They run against
@@ -109,6 +113,24 @@ class PostgresEventStoreTest {
 
         val stored = store.query(EventQuery(setOf("subject:${subject.value}", meterTag(subject, period)))).events
         assertEquals(events, stored)
+    }
+
+    @Test
+    fun wallEventsRoundTripThroughJsonb() = runTest {
+        val store = storeOrSkip() ?: return@runTest
+        val wallId = nl.incedo.paywall.core.WallId("pg-wall-${System.nanoTime()}")
+        val config = WallConfig(
+            name = "Metered limit — invoices", wallType = "metered",
+            title = "You've reached this month's free limit", body = "Pro includes unlimited documents.",
+            primaryCta = "Upgrade to Pro", secondaryCta = "Compare plans", channels = setOf("web", "email"),
+        )
+        val events = listOf(
+            WallCreated(wallId, config, actor = "m.visser"),
+            WallConfigChanged(wallId, config.copy(title = "New title"), actor = "m.visser"),
+            WallPublished(wallId, actor = "m.visser"),
+        )
+        store.append(events, condition = null)
+        assertEquals(events, store.query(EventQuery(setOf("wall:${wallId.value}"))).events)
     }
 
     @Test

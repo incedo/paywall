@@ -4,6 +4,7 @@ import nl.incedo.paywall.access.AccessDecision
 import nl.incedo.paywall.access.AccessDecisionEngine
 import nl.incedo.paywall.access.AccessRequest
 import nl.incedo.paywall.access.Article
+import nl.incedo.paywall.access.StrategyConfig
 import nl.incedo.paywall.access.Subject
 import nl.incedo.paywall.accounts.IdentityLinkDecision
 import nl.incedo.paywall.accounts.IdentityLinked
@@ -38,7 +39,13 @@ class AccessService(
     private val currentPeriod: () -> MeterPeriod,
 ) {
 
-    data class Outcome(val decision: AccessDecision, val variant: Variant, val meterUsedAfter: Int)
+    data class Outcome(
+        val decision: AccessDecision,
+        val variant: Variant,
+        val meterUsedAfter: Int,
+        /** The resolved meter limit for metered variants (PW-22/23 indicator). */
+        val meterLimit: Int? = null,
+    )
 
     suspend fun decide(subject: Subject, article: Article, channel: String = "web"): Outcome {
         val variant = VariantAssigner.assign(subject.visitorId, experiment)
@@ -106,7 +113,11 @@ class AccessService(
         }
 
         logWallEvent(subject, article, variant, channel, decision, now)
-        return Outcome(decision, variant, usedAfter)
+
+        val meterLimit = (variant.strategy as? StrategyConfig.Metered)?.let { strategy ->
+            if (subject.registered) strategy.registeredLimit ?: strategy.limit else strategy.limit
+        }
+        return Outcome(decision, variant, usedAfter, meterLimit)
     }
 
     /**

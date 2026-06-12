@@ -85,6 +85,36 @@ data class WallResponse(
     val lastEditedBy: String,
 )
 
+/** ADM-04 subject inspector: everything support/QA needs about one subject. */
+@Serializable
+data class SubjectInspectorResponse(
+    val subjectId: String,
+    /** Assigned variant (EX-01) — only for visitor subjects. */
+    val variant: String? = null,
+    val meterPeriod: String,
+    val meterUsed: Int,
+    val entitled: Boolean,
+    val liveGrants: List<String>,
+    val linkedSubjects: List<String>,
+    val recentWallEvents: List<InspectorWallEvent>,
+)
+
+@Serializable
+data class InspectorWallEvent(
+    val type: String,
+    val articleId: String? = null,
+    val variant: String,
+    val channel: String,
+    val occurredAtEpochMs: Long,
+)
+
+/** ADM-04: meter reset is a support action — audited with actor and reason. */
+@Serializable
+data class MeterResetRequest(
+    val actor: String,
+    val reason: String,
+)
+
 @Serializable
 data class VariantStatsResponse(
     val variant: String,
@@ -163,6 +193,8 @@ data class DecideResponse(
     val wallType: String? = null,
     val meterUsed: Int? = null,
     val meterLimit: Int? = null,
+    /** PW-23: one credit remaining — show the soft registration/subscribe banner. */
+    val nudge: Boolean = false,
 ) {
     companion object {
         fun from(outcome: AccessService.Outcome): DecideResponse = when (val d = outcome.decision) {
@@ -171,6 +203,9 @@ data class DecideResponse(
                 reason = d.reason.name.lowercase(),
                 variant = outcome.variant.name,
                 meterUsed = outcome.meterUsedAfter,
+                meterLimit = outcome.meterLimit,
+                // PW-23: soft banner when exactly one free credit remains
+                nudge = outcome.meterLimit?.let { it - outcome.meterUsedAfter == 1 } ?: false,
             )
             is AccessDecision.Gated -> DecideResponse(
                 access = "gate",

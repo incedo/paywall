@@ -51,6 +51,8 @@ import nl.incedo.paywall.core.port.EventQuery
 import nl.incedo.paywall.experiments.ExperimentDefinition
 import nl.incedo.paywall.experiments.Variant
 import nl.incedo.paywall.experiments.VariantAssigner
+import nl.incedo.paywall.metering.MeterDecision
+import nl.incedo.paywall.metering.meterTag
 
 /**
  * Default experiment (EX-02): the four strategies of Doc 1 at equal weight.
@@ -307,6 +309,88 @@ fun Application.module(
             val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
                 ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wall id required"))
             call.respondSaveResult(wallService.publish(WallId(id), actor = "console"))
+        }
+        // ADM-04: subject inspector — meter state, entitlements, identity
+        // links and recent wall events for one person, plus the audited
+        // meter-reset support action.
+        get("/api/v1/admin/subjects/{subjectId}") {
+            val subjectParam = call.parameters["subjectId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subject id required"))
+            val subjectId = SubjectId(subjectParam)
+            val period = currentPeriod()
+
+            val baseEvents = eventStore.query(
+                EventQuery(setOf("subject:${subjectId.value}", meterTag(subjectId, period))),
+            ).events
+            val links = nl.incedo.paywall.accounts.IdentityLinkDecision().also { it.applyAll(baseEvents) }
+            val allSubjects = links.linkedSubjects(setOf(subjectId))
+            val events = if (allSubjects == setOf(subjectId)) {
+                baseEvents
+            } else {
+                eventStore.query(
+                    EventQuery(
+                        allSubjects.flatMap { listOf("subject:${it.value}", meterTag(it, period)) }.toSet(),
+                    ),
+                ).events
+            }
+
+            val now = System.currentTimeMillis()
+            val meter = MeterDecision(period).also { it.applyAll(events) }
+            val entitlement = nl.incedo.paywall.entitlements.EntitlementDecision().also { it.applyAll(events) }
+            // Live grant ids across the linked subjects (FGA-08 browse)
+            val grantExpiry = mutableMapOf<String, Long?>()
+            events.forEach { event ->
+                when (event) {
+                    is GrantIssued -> grantExpiry[event.grantId.value] = event.expiresAtEpochMs
+                    is GrantRevoked -> grantExpiry.remove(event.grantId.value)
+                    else -> {}
+                }
+            }
+            val liveGrants = grantExpiry.filterValues { it == null || it > now }.keys.sorted()
+            val recent = events.filterIsInstance<WallEventRecorded>().takeLast(20).map {
+                InspectorWallEvent(
+                    type = it.eventType.name.lowercase(),
+                    articleId = it.articleId?.value,
+                    variant = it.variant,
+                    channel = it.channel,
+                    occurredAtEpochMs = it.occurredAtEpochMs,
+                )
+            }
+            val variant = subjectId.value.removePrefix("visitor:")
+                .takeIf { it != subjectId.value } // only visitor subjects carry an assignment
+                ?.let { VariantAssigner.assign(VisitorId(it), defaultExperiment).name }
+            call.respond(
+                SubjectInspectorResponse(
+                    subjectId = subjectId.value,
+                    variant = variant,
+                    meterPeriod = period.value,
+                    meterUsed = meter.used,
+                    entitled = entitlement.hasValidEntitlement(now),
+                    liveGrants = liveGrants,
+                    linkedSubjects = allSubjects.map { it.value }.sorted(),
+                    recentWallEvents = recent,
+                ),
+            )
+        }
+        post("/api/v1/admin/subjects/{subjectId}/meter-reset") {
+            val subjectParam = call.parameters["subjectId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subject id required"))
+            val request = call.receive<MeterResetRequest>()
+            if (request.actor.isBlank() || request.reason.isBlank()) {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "actor and reason are required (audited action)"))
+            }
+            eventStore.append(
+                listOf(
+                    nl.incedo.paywall.metering.MeterReset(
+                        subjectId = SubjectId(subjectParam),
+                        period = currentPeriod(),
+                        actor = request.actor,
+                        reason = request.reason,
+                    ),
+                ),
+                condition = null,
+            )
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "MeterReset"))
         }
         // Experiment dashboard numbers (AN-10): per-variant funnel stats,
         // rebuilt from the wall-event stream (projection — DM-04/DM-08).
