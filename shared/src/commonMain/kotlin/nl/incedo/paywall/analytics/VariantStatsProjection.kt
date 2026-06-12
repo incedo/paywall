@@ -45,7 +45,7 @@ class VariantStatsProjection {
         if (event !is WallEventRecorded) return
         val acc = byVariant.getOrPut(event.variant) { Accumulator() }
         acc.visitors.add(event.subjectId)
-        when (event.type) {
+        when (event.eventType) {
             WallEventType.ARTICLE_READ -> acc.articleReads += 1
             WallEventType.WALL_SHOWN -> {
                 acc.wallsShown += 1

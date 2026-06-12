@@ -38,7 +38,7 @@ enum class WallEventType {
  */
 @Serializable
 data class WallEventRecorded(
-    val type: WallEventType,
+    val eventType: WallEventType,
     val subjectId: SubjectId,
     val variant: String,
     val channel: String,

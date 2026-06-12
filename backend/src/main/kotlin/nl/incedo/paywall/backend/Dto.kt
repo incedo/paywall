@@ -11,6 +11,36 @@ data class DecideRequest(
     val articleId: String,
     /** "free" or "premium" (PW-01). */
     val tier: String,
+    /** API-06: web | app | chat. */
+    val channel: String = "web",
+)
+
+/**
+ * Client-originated funnel event (AN-02 subset). The variant is resolved
+ * server-side (EX-01) — never trusted from the client.
+ */
+@Serializable
+data class ClientEventRequest(
+    val type: String,
+    val visitorId: String,
+    val userId: String? = null,
+    val articleId: String? = null,
+    val channel: String = "web",
+    val context: Map<String, String> = emptyMap(),
+)
+
+@Serializable
+data class VariantStatsResponse(
+    val variant: String,
+    val visitors: Int,
+    val articleReads: Int,
+    val wallsShown: Int,
+    val gateCtaClicks: Int,
+    val gateCtr: Double,
+    val registrations: Int,
+    val checkoutStarts: Int,
+    val conversions: Int,
+    val conversionRate: Double,
 )
 
 /**

@@ -6,6 +6,8 @@ import nl.incedo.paywall.access.AccessRequest
 import nl.incedo.paywall.access.Article
 import nl.incedo.paywall.access.Subject
 import nl.incedo.paywall.accounts.IdentityLinkDecision
+import nl.incedo.paywall.analytics.WallEventRecorded
+import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.cep.CepAdviceDecision
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.SubjectId
@@ -37,7 +39,7 @@ class AccessService(
 
     data class Outcome(val decision: AccessDecision, val variant: Variant, val meterUsedAfter: Int)
 
-    suspend fun decide(subject: Subject, article: Article): Outcome {
+    suspend fun decide(subject: Subject, article: Article, channel: String = "web"): Outcome {
         val variant = VariantAssigner.assign(subject.visitorId, experiment)
         val period = currentPeriod()
         val now = clock()
@@ -87,7 +89,54 @@ class AccessService(
                 .handle(RecordArticleRead(subject.subjectId, article.id, period))
             usedAfter += 1
         }
+
+        logWallEvent(subject, article, variant, channel, decision, now)
         return Outcome(decision, variant, usedAfter)
+    }
+
+    /**
+     * AN-01/02: server-side funnel logging. A gate logs WALL_SHOWN with the
+     * decision context (AN-03); a counted read logs ARTICLE_READ (MT-04 —
+     * teaser/gate views never count as reads).
+     */
+    private suspend fun logWallEvent(
+        subject: Subject,
+        article: Article,
+        variant: Variant,
+        channel: String,
+        decision: AccessDecision,
+        now: Long,
+    ) {
+        val event = when (decision) {
+            is AccessDecision.Gated -> WallEventRecorded(
+                eventType = WallEventType.WALL_SHOWN,
+                subjectId = subject.subjectId,
+                variant = variant.name,
+                channel = channel,
+                occurredAtEpochMs = now,
+                articleId = article.id,
+                context = buildMap {
+                    put("wallType", variant.name)
+                    decision.meterUsed?.let { put("meterUsed", it.toString()) }
+                    decision.meterLimit?.let { put("meterLimit", it.toString()) }
+                },
+            )
+            is AccessDecision.Full ->
+                if (decision.countsTowardMeter) {
+                    WallEventRecorded(
+                        eventType = WallEventType.ARTICLE_READ,
+                        subjectId = subject.subjectId,
+                        variant = variant.name,
+                        channel = channel,
+                        occurredAtEpochMs = now,
+                        articleId = article.id,
+                        context = mapOf("reason" to decision.reason.name.lowercase()),
+                    )
+                } else {
+                    null // entitled/grant/free full reads are page views, not funnel reads
+                }
+        }
+        if (event != null) eventStore.append(listOf(event), condition = null)
     }
 
     private fun queryTags(subjects: Set<SubjectId>, article: Article, period: MeterPeriod): Set<String> =

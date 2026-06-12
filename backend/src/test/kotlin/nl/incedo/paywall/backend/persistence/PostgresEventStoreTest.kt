@@ -9,6 +9,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import nl.incedo.paywall.accounts.IdentityLinked
+import nl.incedo.paywall.analytics.WallEventRecorded
+import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.accounts.IdentityUnlinked
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
@@ -93,6 +95,15 @@ class PostgresEventStoreTest {
             CepGateAdviceWithdrawn(subject),
             IdentityLinked(subject, SubjectId("user:u-roundtrip"), cause = "login"),
             IdentityUnlinked(subject, SubjectId("user:u-roundtrip"), reason = "support correction"),
+            WallEventRecorded(
+                eventType = WallEventType.WALL_SHOWN,
+                subjectId = subject,
+                variant = "metered",
+                channel = "web",
+                occurredAtEpochMs = 4L,
+                articleId = ArticleId("a-1"),
+                context = mapOf("meterUsed" to "5"),
+            ),
         )
         store.append(events, condition = null)
 

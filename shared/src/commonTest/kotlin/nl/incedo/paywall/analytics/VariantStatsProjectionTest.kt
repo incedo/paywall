@@ -15,7 +15,7 @@ class VariantStatsProjectionTest {
         visitor: String,
         variant: String = "metered",
     ) = WallEventRecorded(
-        type = type,
+        eventType = type,
         subjectId = SubjectId.of(VisitorId(visitor)),
         variant = variant,
         channel = "web",
