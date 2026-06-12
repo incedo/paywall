@@ -1,14 +1,16 @@
 # K8s Local Development — Rancher Desktop with WASM
 
 **Status**: AGREED
-**Last Updated**: 2026-04-09
+**Last Updated**: 2026-06-12
 **Depends On**: architecture/tech-stack.md, architecture/auth.md
 
 ---
 
+> **Production target note**: Per requirements Doc 5 (INF-*), the production target is **Cloudflare** — Workers at the edge, with services running as containers behind them. This document describes the **cluster-shaped reference deployment** used for development. The deployable artifacts are the same in both: a static Wasm bundle for the SPA/admin console and a containerized Ktor origin for the paywall backend.
+
 ## 1. Overview
 
-Local Kubernetes development uses **Rancher Desktop** with WASM support enabled. This deploys the full CRM stack (backend, frontend, Ory, PostgreSQL) into a local K8s cluster — the same way it runs in production, but with dev-friendly defaults.
+Local Kubernetes development uses **Rancher Desktop** with WASM support enabled. This deploys the full paywall stack (backend, frontend, Ory, PostgreSQL) into a local K8s cluster — the same way it runs in the cluster-shaped reference environment, but with dev-friendly defaults.
 
 ### Why K8s Locally (not just Docker Compose)?
 - **Parity**: Catch K8s-specific issues early (networking, DNS, config, probes)
@@ -32,11 +34,11 @@ Local Kubernetes development uses **Rancher Desktop** with WASM support enabled.
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐  │
 │  │  Ingress (Traefik)                       :80 / :443        │  │
-│  │    crm.local/*        → frontend-svc                       │  │
-│  │    crm.local/api/*    → backend-svc                        │  │
-│  │    auth.crm.local/*   → hydra-public-svc                   │  │
-│  │    id.crm.local/*     → kratos-public-svc                  │  │
-│  │    login.crm.local/*  → kratos-ui-svc                      │  │
+│  │    paywall.local/*        → frontend-svc                    │  │
+│  │    paywall.local/api/*    → backend-svc                     │  │
+│  │    auth.paywall.local/*   → hydra-public-svc                │  │
+│  │    id.paywall.local/*     → kratos-public-svc               │  │
+│  │    login.paywall.local/*  → kratos-ui-svc                   │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │                                                                  │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
@@ -59,7 +61,7 @@ Local Kubernetes development uses **Rancher Desktop** with WASM support enabled.
 │  │  └─────────────┘  └───────────────┘                          │
 │  └───────────────────────────────────────────────────────────┘  │
 │                                                                  │
-│  Namespace: crm-dev                                              │
+│  Namespace: paywall-dev                                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -67,15 +69,15 @@ Local Kubernetes development uses **Rancher Desktop** with WASM support enabled.
 
 ## 3. Namespace & Hosts
 
-All resources deploy into namespace `crm-dev`. Local DNS via `/etc/hosts`:
+All resources deploy into namespace `paywall-dev`. Local DNS via `/etc/hosts`:
 
 ```
 # Add to /etc/hosts (or use Rancher Desktop's built-in DNS)
-127.0.0.1  crm.local
-127.0.0.1  auth.crm.local
-127.0.0.1  id.crm.local
-127.0.0.1  login.crm.local
-127.0.0.1  mail.crm.local
+127.0.0.1  paywall.local
+127.0.0.1  auth.paywall.local
+127.0.0.1  id.paywall.local
+127.0.0.1  login.paywall.local
+127.0.0.1  mail.paywall.local
 ```
 
 ---
@@ -102,7 +104,7 @@ k8s/
       mailslurper-deployment.yaml
       mailslurper-service.yaml
       oidc-client-job.yaml           # Job: register OIDC client + seed admin
-    crm/
+    paywall/
       backend-deployment.yaml        # JVM Ktor (Option A)
       backend-service.yaml
       frontend-deployment.yaml       # Nginx + WASM static assets
@@ -111,7 +113,7 @@ k8s/
   local/                             # Local overlay (Rancher Desktop specific)
     kustomization.yaml               # Patches for local dev
     ingress.yaml                     # Traefik IngressRoute
-    crm/
+    paywall/
       backend-wasm-deployment.yaml   # WASM runtime (Option B — experimental)
       backend-wasm-runtimeclass.yaml # RuntimeClass for spin/wasmEdge
 ```
@@ -136,8 +138,8 @@ handler: spin
 spec:
   runtimeClassName: wasmtime-spin-v2
   containers:
-    - name: crm-backend-wasm
-      image: crm-backend:wasm
+    - name: paywall-backend-wasm
+      image: paywall-backend:wasm
       # WASM binary compiled from Kotlin → WASM
 ```
 
@@ -160,38 +162,38 @@ A single script deploys everything to the local cluster.
 ./k8s/deploy-local.sh
 
 # 3. Wait for all pods to be ready
-kubectl -n crm-dev get pods -w
+kubectl -n paywall-dev get pods -w
 
-# 4. Access the CRM
-open http://crm.local
-# Login: admin@crm.local / Admin123!
+# 4. Access the paywall platform
+open http://paywall.local
+# Login: admin@paywall.local / Admin123!
 ```
 
 ### Iterative Development
 ```bash
 # Rebuild and redeploy just the backend
 ./gradlew :backend:jibDockerBuild   # Build container image
-kubectl -n crm-dev rollout restart deployment/crm-backend
+kubectl -n paywall-dev rollout restart deployment/paywall-backend
 
 # Rebuild and redeploy just the frontend
 ./gradlew :frontend:wasmJsBrowserDistribution
-docker build -t crm-frontend:dev -f frontend/Dockerfile .
-kubectl -n crm-dev rollout restart deployment/crm-frontend
+docker build -t paywall-frontend:dev -f frontend/Dockerfile .
+kubectl -n paywall-dev rollout restart deployment/paywall-frontend
 
 # View logs
-kubectl -n crm-dev logs -f deployment/crm-backend
-kubectl -n crm-dev logs -f deployment/crm-frontend
+kubectl -n paywall-dev logs -f deployment/paywall-backend
+kubectl -n paywall-dev logs -f deployment/paywall-frontend
 ```
 
 ### Switching Between Option A and Option B
 ```bash
 # Use JVM backend (default, stable)
-kubectl -n crm-dev scale deployment/crm-backend --replicas=1
-kubectl -n crm-dev scale deployment/crm-backend-wasm --replicas=0
+kubectl -n paywall-dev scale deployment/paywall-backend --replicas=1
+kubectl -n paywall-dev scale deployment/paywall-backend-wasm --replicas=0
 
 # Try WASM backend (experimental)
-kubectl -n crm-dev scale deployment/crm-backend --replicas=0
-kubectl -n crm-dev scale deployment/crm-backend-wasm --replicas=1
+kubectl -n paywall-dev scale deployment/paywall-backend --replicas=0
+kubectl -n paywall-dev scale deployment/paywall-backend-wasm --replicas=1
 ```
 
 ---
@@ -199,11 +201,11 @@ kubectl -n crm-dev scale deployment/crm-backend-wasm --replicas=1
 ## 8. Completion Criteria
 
 - [ ] All K8s manifests are valid (`kubectl apply --dry-run=client`)
-- [ ] `deploy-local.sh` brings up all services in crm-dev namespace
+- [ ] `deploy-local.sh` brings up all services in paywall-dev namespace
 - [ ] PostgreSQL StatefulSet persists data across restarts
 - [ ] Ory Kratos + Hydra initialize and pass health checks
 - [ ] OIDC client registration Job completes successfully
-- [ ] Seed admin user can log in via login.crm.local
+- [ ] Seed admin user can log in via login.paywall.local
 - [ ] Ingress routes correctly: `/api/*` → backend, `/*` → frontend
 - [ ] Backend pod starts and connects to PostgreSQL + Ory
 - [ ] Frontend pod serves WASM assets
