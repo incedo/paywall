@@ -11,6 +11,7 @@ import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
@@ -475,6 +476,35 @@ fun Application.module(
             }
             eventStore.append(listOf(event), condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to event::class.simpleName))
+        }
+        // AN-04: the wall-event stream is exportable for offline analysis.
+        // CSV here; Parquet via the warehouse pipeline later. `since` pages
+        // by store position so exports can run incrementally.
+        get("/api/v1/export/wall-events.csv") {
+            val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0L
+            val result = eventStore.query(EventQuery(wallEventShardTags(), since = since))
+            val rows = result.events.filterIsInstance<WallEventRecorded>()
+            val csv = buildString {
+                appendLine("occurred_at_epoch_ms,type,subject_id,variant,channel,article_id,context")
+                rows.forEach { event ->
+                    val context = event.context.entries.joinToString(";") { "${it.key}=${it.value}" }
+                    appendLine(
+                        listOf(
+                            event.occurredAtEpochMs.toString(),
+                            event.eventType.name.lowercase(),
+                            event.subjectId.value,
+                            event.variant,
+                            event.channel,
+                            event.articleId?.value ?: "",
+                            context,
+                        ).joinToString(",") { field ->
+                            if ("," in field || "\"" in field) "\"${field.replace("\"", "\"\"")}\"" else field
+                        },
+                    )
+                }
+            }
+            call.response.headers.append("X-Export-Position", result.position.toString())
+            call.respondText(csv, io.ktor.http.ContentType.Text.CSV)
         }
         // Integration inbound (MT-13): consent-based identity link signals —
         // login (US-04), newsletter tokens, share tokens (BP-05), extra devices.
