@@ -349,7 +349,7 @@ data class WallFormState(
     val name: String = "",
     val headline: String = "",
     val ctaText: String = "",
-    val subscriptionPlanId: String? = null,
+    val promotedPlanId: String? = null,  // plan in the external subscription administration the wall promotes
     val errors: Map<String, String> = emptyMap(), // field → error message
     val isSubmitting: Boolean = false,
     val isValid: Boolean = false,
@@ -483,10 +483,8 @@ frontend/                                # Platform-specific entry points
           WallListScreen.kt
           WallDetailScreen.kt
           WallFormScreen.kt
-        subscriptions/
-          SubscriptionListScreen.kt
-          SubscriptionDetailScreen.kt
-          SubscriptionFormScreen.kt
+        entitlements/
+          EntitlementInspectorScreen.kt  # read-only entitlement lookup per subject (ADM-04)
         experiments/
           ExperimentBoardScreen.kt
           ExperimentDetailScreen.kt
@@ -509,9 +507,9 @@ frontend/                                # Platform-specific entry points
           WallListIntent.kt
           WallListEffect.kt
           WallListStateHolder.kt
-        subscriptions/
-          SubscriptionListState.kt
-          SubscriptionListStateHolder.kt
+        entitlements/
+          EntitlementInspectorState.kt
+          EntitlementInspectorStateHolder.kt
         experiments/
           ExperimentBoardState.kt
           ExperimentBoardStateHolder.kt
@@ -526,7 +524,7 @@ frontend/                                # Platform-specific entry points
       api/                               # Outbound adapter (HTTP client)
         ApiClient.kt
         WallApi.kt
-        SubscriptionApi.kt
+        EntitlementApi.kt
         ExperimentApi.kt
         AnalyticsApi.kt
         AuthApi.kt

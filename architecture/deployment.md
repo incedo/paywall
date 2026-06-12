@@ -6,7 +6,7 @@
 
 ---
 
-> **Production target note**: Per requirements Doc 5 (INF-*), the production target is **Cloudflare** — Workers at the edge, with services running as containers behind them. This document describes the **cluster-shaped reference deployment** used for development. The deployable artifacts are the same in both: a static Wasm bundle for the SPA/admin console and a containerized Ktor origin for the paywall backend.
+> **Deployment target note**: The base target deployment is what requirements Doc 5 (INF-*) describes: **Cloudflare** — Workers at the edge, with the services running as containers behind them. The Kubernetes setup in this document is a possible **additional** deployment target that may be added later (and doubles as the cluster-shaped development reference). The deployable artifacts are identical in both: a static Wasm bundle for the SPA/admin console and a containerized Ktor origin for the paywall backend — a K8s cluster can also serve as the origin *behind* Cloudflare (via Cloudflare Tunnel / Load Balancer), so the two targets compose rather than compete.
 
 ## 1. Overview
 

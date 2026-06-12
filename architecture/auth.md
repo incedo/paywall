@@ -219,7 +219,7 @@ Kratos identity schema: `docker/ory/kratos/identity.schema.json`.
 }
 ```
 
-`UserRole` lives in `shared/src/commonMain/kotlin/nl/incedo/paywall/account/domain/UserRole.kt`. `PaywallPrincipal` (backend) reads the role from the JWT claim; `SubscriberRoleUpgradeReactor` transitions READER → SUBSCRIBER on `SubscriptionActivated` by calling `KratosAdminPort.updateRole`.
+`UserRole` lives in `shared/src/commonMain/kotlin/nl/incedo/paywall/account/domain/UserRole.kt`. `PaywallPrincipal` (backend) reads the role from the JWT claim; `SubscriberRoleUpgradeReactor` transitions READER → SUBSCRIBER on `EntitlementGranted` (ingested from the external subscription administration) by calling `KratosAdminPort.updateRole`.
 
 The staff roles VIEWER / OPERATOR / ADMIN gate the admin console (ADM-05); admin-console access additionally requires an AAL2 step-up (second factor via Kratos) on top of the password session — the role claim alone is not sufficient. READER / SUBSCRIBER are end-user roles on the public site. Anonymous visitors carry only a `visitor_id` and have no Kratos identity until they register; the `visitor_id` → `sub` link is established at first login (US-04, MT-03).
 

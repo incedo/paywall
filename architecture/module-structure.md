@@ -72,7 +72,9 @@ The key architectural principles:
 
 **Build target**: `commonMain` → compiles to both `jvm` and `wasmJs`
 
-This module contains the **domain** (events, commands, queries, value objects, decision models, ports) and the **application layer** (command handlers, query handlers, projections, read model shapes).
+This module contains the **domain** (events, commands, queries, value objects, decision models, ports) and the **application layer** (command handlers, query handlers, projections, read model shapes), organized by bounded context: walls, entitlements (enforcement; synced from the external subscription administration), experiments, analytics, and accounts.
+
+> **Context boundary**: Subscription administration is an **external system**. The paywall's responsibility is (1) enforcing access and (2) activating/showing paywalls to drive conversion toward a subscription. It only **consumes** entitlement changes from the external subscription administration via integration events. Conversion steps (checkout_start/complete) are recorded as analytics events (AN-02) — checkout itself is a handoff to the external system, not owned here.
 
 ### Directory Layout
 
@@ -93,9 +95,10 @@ shared/
             WallConfigChanged.kt
             WallPublished.kt
             WallArchived.kt
-          subscription/
-            SubscriptionActivated.kt
-            SubscriptionCanceled.kt
+          entitlement/                     # Integration events ingested from the external
+                                           # subscription administration (AC-02/AC-08, EA-*)
+            EntitlementGranted.kt
+            EntitlementRevoked.kt
             GrantIssued.kt
             GrantRevoked.kt
           experiment/
@@ -119,9 +122,9 @@ shared/
             UpdateWallConfig.kt
             PublishWall.kt
             ArchiveWall.kt
-          subscription/
-            ActivateSubscription.kt
-            CancelSubscription.kt
+          entitlement/
+            RecordEntitlementChange.kt     # Ingestion: handled by the sync adapter receiving
+                                           # webhooks/feeds from the external subscription system
             IssueGrant.kt
             RevokeGrant.kt
           experiment/
@@ -144,9 +147,9 @@ shared/
           wall/
             GetWall.kt
             ListWalls.kt
-          subscription/
-            GetSubscription.kt
-            ListSubscriptions.kt
+          entitlement/
+            GetEntitlements.kt             # Per subject
+            ListEntitlements.kt
           experiment/
             GetExperiment.kt
             ListExperiments.kt
@@ -164,7 +167,7 @@ shared/
           ExperimentId.kt
           VisitorId.kt
           UserId.kt                        # Maps to Ory `sub` claim
-          SubscriptionId.kt
+          SubscriptionId.kt                # Reference to the external subscription administration's id
           GrantId.kt
           ArticleId.kt
           Email.kt                         # Validated email format
@@ -177,7 +180,7 @@ shared/
 
         decision/                          # DECISION MODELS — ephemeral, built per command
           WallDecisionModel.kt             # Does wall exist? Current status/config?
-          SubscriptionDecisionModel.kt     # Active? Which plan/entitlements?
+          EntitlementDecision.kt           # valid entitlement for subject? (AC-02)
           ExperimentDecisionModel.kt       # Running? Valid weight change?
           GrantDecisionModel.kt            # Grant exists? Already revoked? (FGA-*)
           AccountDecisionModel.kt          # Linked? Current role?
@@ -192,7 +195,7 @@ shared/
 
         validation/                        # PURE VALIDATION FUNCTIONS
           WallValidation.kt
-          SubscriptionValidation.kt
+          EntitlementValidation.kt
           ExperimentValidation.kt
           AccountValidation.kt
           ValidationResult.kt             # sealed: Valid | Invalid(errors: List<ValidationError>)
@@ -202,28 +205,28 @@ shared/
       application/
         command/                            # COMMAND HANDLERS — orchestrate writes
           WallCommandHandler.kt
-          SubscriptionCommandHandler.kt
+          EntitlementCommandHandler.kt     # Ingests entitlement changes from the external system
           ExperimentCommandHandler.kt
           AnalyticsCommandHandler.kt
           AccountCommandHandler.kt
 
         query/                             # QUERY HANDLERS — orchestrate reads
           WallQueryHandler.kt
-          SubscriptionQueryHandler.kt
+          EntitlementQueryHandler.kt
           ExperimentQueryHandler.kt
           AnalyticsQueryHandler.kt
           AccountQueryHandler.kt
 
         projection/                        # EVENT → READ MODEL transformations
           WallProjection.kt
-          SubscriptionProjection.kt
+          EntitlementProjection.kt
           ExperimentProjection.kt
           WallEventProjection.kt
           AccountProjection.kt
 
         readmodel/                         # READ MODEL SHAPES (query-optimized)
           WallView.kt                      # Denormalized: includes active experiment name
-          SubscriptionView.kt              # Includes: plan name, entitlement count, grants
+          EntitlementView.kt               # Subject, plan, validity, source
           ExperimentView.kt                # Includes: wall name, variants, weights
           ExperimentResultsView.kt         # Variants grouped with conversion metrics (EX-*)
           WallEventView.kt                 # Includes: wall + article names
@@ -234,7 +237,7 @@ shared/
       domain/
         decision/
           WallDecisionModelTest.kt
-          SubscriptionDecisionModelTest.kt
+          EntitlementDecisionTest.kt
           ExperimentDecisionModelTest.kt
           MeterLimitDecisionTest.kt
           ActiveExperimentDecisionTest.kt
@@ -245,18 +248,18 @@ shared/
           TagTest.kt
         validation/
           WallValidationTest.kt
-          SubscriptionValidationTest.kt
+          EntitlementValidationTest.kt
           ExperimentValidationTest.kt
       application/
         command/
           WallCommandHandlerTest.kt
-          SubscriptionCommandHandlerTest.kt
+          EntitlementCommandHandlerTest.kt
           ExperimentCommandHandlerTest.kt
           AnalyticsCommandHandlerTest.kt
           AccountCommandHandlerTest.kt
         projection/
           WallProjectionTest.kt
-          SubscriptionProjectionTest.kt
+          EntitlementProjectionTest.kt
           ExperimentProjectionTest.kt
 ```
 
@@ -308,7 +311,8 @@ backend/
         inbound/                           # DRIVING ADAPTERS — trigger commands/queries
           rest/
             WallController.kt              # fun Route.wallRoutes(handler, queryHandler)
-            SubscriptionController.kt
+            EntitlementController.kt       # Read-only lookups + inbound sync/webhook endpoint
+                                           # from the external subscription administration
             ExperimentController.kt
             AnalyticsController.kt
             AuthController.kt
@@ -317,7 +321,7 @@ backend/
               request/
                 CreateWallRequest.kt       # REST-specific shapes
                 UpdateWallConfigRequest.kt
-                ActivateSubscriptionRequest.kt
+                EntitlementChangeRequest.kt # Inbound integration payload
                 DefineExperimentRequest.kt
                 RecordArticleReadRequest.kt
                 LoginRequest.kt
@@ -325,7 +329,7 @@ backend/
                 ChangeRoleRequest.kt
               response/
                 WallResponse.kt            # From WallView read model
-                SubscriptionResponse.kt
+                EntitlementResponse.kt
                 ExperimentResponse.kt
                 WallEventResponse.kt
                 AccountResponse.kt
@@ -349,7 +353,7 @@ backend/
             PostgresReadModelStore.kt      # implements ReadModelStore
             table/
               WallsReadTable.kt            # Denormalized wall view
-              SubscriptionsReadTable.kt
+              EntitlementsReadTable.kt
               ExperimentsReadTable.kt
               WallEventsReadTable.kt
               AccountsReadTable.kt
@@ -373,7 +377,7 @@ backend/
       adapter/
         inbound/rest/
           WallControllerTest.kt            # Ktor testApplication integration tests
-          SubscriptionControllerTest.kt
+          EntitlementControllerTest.kt
           ExperimentControllerTest.kt
           AnalyticsControllerTest.kt
           AuthControllerTest.kt
@@ -523,10 +527,9 @@ frontend/
             WallsOverviewScreen.kt         # Uses CrmDataTable, CrmSearchBar (ADM-*)
             WallDesignerScreen.kt          # Uses CrmSurface, CrmTag, CrmFormSection
             WallFormScreen.kt              # Uses CrmInputField, CrmSelectField
-          subscriptions/
-            SubscriptionListScreen.kt
-            SubscriptionDetailScreen.kt
-            PlanFormScreen.kt
+          entitlements/
+            SubjectInspectorScreen.kt      # Subject lookup in admin console (ADM-04)
+            EntitlementPanel.kt            # Read-only entitlement inspection per subject
           experiments/
             ExperimentBoardScreen.kt       # Uses CrmKanbanBoard, CrmDealCard (EX-*)
             ExperimentDetailScreen.kt
@@ -549,9 +552,9 @@ frontend/
             WallsOverviewIntent.kt         # Sealed interface of intents
             WallsOverviewEffect.kt         # Side effects (navigation, snackbar)
             WallsOverviewStateHolder.kt    # StateFlow + intent handling
-          subscriptions/
-            SubscriptionListState.kt
-            SubscriptionListStateHolder.kt
+          entitlements/
+            EntitlementPanelState.kt
+            EntitlementPanelStateHolder.kt
           experiments/
             ExperimentBoardState.kt
             ExperimentBoardStateHolder.kt
@@ -566,7 +569,7 @@ frontend/
         api/                               # Outbound adapter — HTTP client
           ApiClient.kt                     # Ktor HttpClient setup (expect/actual per platform)
           WallApi.kt                       # suspend fun listWalls(), createWall(), etc.
-          SubscriptionApi.kt
+          EntitlementApi.kt
           ExperimentApi.kt
           AnalyticsApi.kt
           AuthApi.kt

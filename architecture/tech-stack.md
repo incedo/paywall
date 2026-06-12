@@ -8,7 +8,7 @@
 
 ## 1. Overview
 
-This spec documents the technology choices for the paywall platform and the rationale behind each decision. It also captures open architectural questions that need resolution before implementation begins. It is adapted from the CRM reference architecture: the core principles, technology decisions, and structure are carried over unchanged, with examples rewritten for the paywall domain (walls, metering, experiments, subscriptions).
+This spec documents the technology choices for the paywall platform and the rationale behind each decision. It also captures open architectural questions that need resolution before implementation begins. It is adapted from the CRM reference architecture: the core principles, technology decisions, and structure are carried over unchanged, with examples rewritten for the paywall domain (walls, metering, experiments, entitlements). Subscription administration itself is an external system: the paywall enforces access and drives conversion toward a subscription; it consumes entitlement changes, it does not manage subscriptions.
 
 ---
 
@@ -71,7 +71,7 @@ Compose Multiplatform provides a declarative UI framework that compiles to WASM 
 
 Ktor is a Kotlin-native, coroutine-based HTTP server. It's lightweight and modular — you install only the plugins you need.
 
-> **Production target note**: Requirements Doc 5 (TS-01, INF-*) targets GraalVM native binaries deployed behind Cloudflare Workers for production. The JVM/Kubernetes setup described in this reference architecture is the development-shaped reference. Because the hexagonal core has zero infrastructure dependencies, the two deployment shapes remain interchangeable.
+> **Deployment target note**: The base target deployment is what requirements Doc 5 (TS-01, INF-*) describes: GraalVM native binaries behind Cloudflare Workers. The JVM/Kubernetes setup in this reference architecture is the development-shaped reference and a possible later additional target. Because the hexagonal core has zero infrastructure dependencies, the deployment shapes remain interchangeable.
 
 ### Plugins to Use
 | Plugin | Purpose |
@@ -326,7 +326,7 @@ PostgreSQL is used for read model tables (projections). These are denormalized, 
 | Table | Projected From | Purpose |
 |-------|---------------|---------|
 | `walls_view` | WallCreated, WallConfigChanged, WallArchived | Wall list + designer detail queries (ADM-*) |
-| `subscriptions_view` | SubscriptionActivated, SubscriptionCanceled, GrantIssued, GrantRevoked | Plan/entitlement list + detail queries (SUB-*, FGA-*) |
+| `entitlements_view` | EntitlementGranted, EntitlementRevoked, GrantIssued, GrantRevoked | Entitlement lookup for access decisions (AC-02, EA-*, FGA-*); entitlement events are ingested from the external subscription administration |
 | `experiments_view` | ExperimentDefined, VariantWeightChanged, ExperimentEnded | Experiment list + variant queries (EX-*) |
 | `wall_events_view` | WallShown, GateCtaClicked | Wall analytics timeline queries |
 | `accounts_view` | AccountLinked, AccountDeleted | Account management queries (Ory `sub`-mapped) |
@@ -339,7 +339,7 @@ Read model tables can be **dropped and rebuilt** from the event store at any tim
 
 Two deployment models are under consideration. Both will be fully specified and the decision will be made during spec elaboration.
 
-> **Production target note**: Per requirements Doc 5 (TS-01, INF-*), production targets GraalVM native binaries running behind Cloudflare Workers. The JVM/K8s setup below is the development-shaped reference deployment; the hexagonal core keeps the two interchangeable.
+> **Deployment target note**: The base target per requirements Doc 5 (TS-01, INF-*) is GraalVM native binaries behind Cloudflare Workers. The JVM/K8s setup below is the development-shaped reference and a possible later additional target; the hexagonal core keeps the shapes interchangeable.
 
 ### Option A: Conventional (JVM Backend + Static WASM Frontend)
 

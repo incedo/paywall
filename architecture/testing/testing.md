@@ -142,7 +142,7 @@ specs/features/                          # Gherkin .feature files (co-located wi
   walls.feature
   metering.feature
   experiments.feature
-  subscriptions.feature
+  entitlements.feature                   # Entitlement ingest from the external subscription administration + enforcement
   auth.feature
   decision-matrix.feature                # Cross-entity flow: paywall type × visitor state × content tier (NFR-12)
 
@@ -152,7 +152,7 @@ backend/src/test/kotlin/nl/incedo/paywall/backend/
       WallSteps.kt                      # Step definitions for wall scenarios
       MeteringSteps.kt
       ExperimentSteps.kt
-      SubscriptionSteps.kt
+      EntitlementSteps.kt
       AuthSteps.kt
       CommonSteps.kt                    # Shared steps (authentication, assertions)
     CucumberRunner.kt                   # JUnit5 Cucumber runner
@@ -381,7 +381,7 @@ e2e/
     walls.spec.ts                    # Wall designer + publish flows
     metering.spec.ts                 # Metered gate flows
     experiments.spec.ts              # A/B variant assignment flows
-    subscriptions.spec.ts            # Checkout + entitlement flows
+    conversion.spec.ts               # Checkout handoff to the external subscription administration + entitlement flows
     dashboard.spec.ts                # Console dashboard rendering
   fixtures/
     auth.fixture.ts                  # Login helper, authenticated context
@@ -399,7 +399,7 @@ e2e/
 | **Edit Wall** | Open wall → change gate copy in designer → save → changes persisted, live preview updates |
 | **Publish Wall** | Open wall → click publish → confirm diff → status badge flips to Published |
 | **Metered Gate** | Visit articles as anonymous reader → usage meter counts up → gate appears at the limit with "You've reached this month's free limit" |
-| **Subscribe** | Hit gate → click "Upgrade to Pro" → checkout → premium article fully visible |
+| **Convert** | Hit gate → click "Upgrade to Pro" → checkout handoff to the external subscription administration → entitlement ingested → premium article fully visible |
 | **Variant Assignment** | Same visitor revisits → same variant rendered (EX-01, no flicker) |
 | **Role-Based Access** | Login as EDITOR → publish action hidden. Login as ADMIN → publish action visible |
 | **OIDC Flow** | Full redirect → Kratos login → Hydra token → console authenticated |

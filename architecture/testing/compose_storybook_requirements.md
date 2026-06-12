@@ -108,7 +108,7 @@ A story group represents a logical catalog grouping such as:
 - Screens
 - Experimental
 
-Feature-level screen stories are additionally grouped by domain: Walls, Metering, Experiments, Subscriptions.
+Feature-level screen stories are additionally grouped by domain: Walls, Metering, Experiments, Entitlements.
 
 ### 4.3 Story Decorator
 
@@ -325,7 +325,7 @@ A recommended initial decomposition is:
   - foundation stories
   - component stories
 - `feature-<x>-stories`
-  - per-feature screen and component stories, e.g. `feature-walls-stories`, `feature-metering-stories`, `feature-experiments-stories`, `feature-subscriptions-stories`
+  - per-feature screen and component stories, e.g. `feature-walls-stories`, `feature-metering-stories`, `feature-experiments-stories`, `feature-entitlements-stories`
 
 ### 7.2 Story Rendering Boundary
 
