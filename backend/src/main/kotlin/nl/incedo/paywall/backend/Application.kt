@@ -39,9 +39,12 @@ import nl.incedo.paywall.entitlements.EntitlementGranted
 import nl.incedo.paywall.entitlements.EntitlementRevoked
 import nl.incedo.paywall.grants.GrantIssued
 import nl.incedo.paywall.grants.GrantRevoked
+import nl.incedo.paywall.walls.WallConfig
+import nl.incedo.paywall.walls.WallView
 import nl.incedo.paywall.core.SubjectId
 import nl.incedo.paywall.core.UserId
 import nl.incedo.paywall.core.VisitorId
+import nl.incedo.paywall.core.WallId
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
 import nl.incedo.paywall.core.port.EventStore
 import nl.incedo.paywall.core.port.EventQuery
@@ -76,6 +79,29 @@ val clientEventTypes: Map<String, WallEventType> = mapOf(
     "login" to WallEventType.LOGIN,
     "cancel" to WallEventType.CANCEL,
 )
+
+private fun WallView.toResponse() = WallResponse(
+    id = id.value,
+    name = config.name,
+    wallType = config.wallType,
+    title = config.title,
+    body = config.body,
+    primaryCta = config.primaryCta,
+    secondaryCta = config.secondaryCta,
+    channels = config.channels,
+    status = status,
+    version = version,
+    lastEditedBy = lastEditedBy,
+)
+
+private suspend fun io.ktor.server.application.ApplicationCall.respondSaveResult(result: WallService.SaveResult) {
+    when (result) {
+        is WallService.SaveResult.Saved -> respond(result.view.toResponse())
+        is WallService.SaveResult.NotFound -> respond(HttpStatusCode.NotFound, mapOf("error" to "unknown wall"))
+        is WallService.SaveResult.VersionConflict ->
+            respond(HttpStatusCode.Conflict, mapOf("error" to "version conflict", "currentVersion" to result.current.toString()))
+    }
+}
 
 /** PW-24: meter period is the calendar month in Europe/Amsterdam. */
 fun currentPeriod() = nl.incedo.paywall.metering.MeterPeriod(
@@ -240,6 +266,47 @@ fun Application.module(
                 condition = null,
             )
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to type.name))
+        }
+        // Wall designer API (ADM-01/02/11): wall definitions as structured
+        // content, versioned via events, optimistic concurrency per ADM-06.
+        val wallService = WallService(eventStore)
+        get("/api/v1/walls") {
+            call.respond(wallService.list().map { it.toResponse() })
+        }
+        get("/api/v1/walls/{id}") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wall id required"))
+            val view = wallService.get(WallId(id))
+                ?: return@get call.respond(HttpStatusCode.NotFound, mapOf("error" to "unknown wall"))
+            call.respond(view.toResponse())
+        }
+        post("/api/v1/walls/{id}") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wall id required"))
+            val request = call.receive<SaveWallRequest>()
+            if (request.name.isBlank() || request.title.isBlank()) {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "name and title are required"))
+            }
+            if (request.wallType !in setOf("hard", "metered", "freemium", "dynamic")) {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wallType must be hard|metered|freemium|dynamic"))
+            }
+            val config = WallConfig(
+                name = request.name, wallType = request.wallType, title = request.title,
+                body = request.body, primaryCta = request.primaryCta,
+                secondaryCta = request.secondaryCta, channels = request.channels,
+            )
+            val wallId = WallId(id)
+            val result = if (wallService.get(wallId) == null) {
+                wallService.create(wallId, config, request.actor)
+            } else {
+                wallService.update(wallId, config, request.actor, request.expectedVersion)
+            }
+            call.respondSaveResult(result)
+        }
+        post("/api/v1/walls/{id}/publish") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wall id required"))
+            call.respondSaveResult(wallService.publish(WallId(id), actor = "console"))
         }
         // Experiment dashboard numbers (AN-10): per-variant funnel stats,
         // rebuilt from the wall-event stream (projection — DM-04/DM-08).
