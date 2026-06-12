@@ -1,7 +1,7 @@
 # Module Structure — DDD Hexagonal + CQRS + DCB
 
 **Status**: AGREED
-**Last Updated**: 2026-04-09
+**Last Updated**: 2026-06-12
 **Depends On**: architecture/tech-stack.md
 
 ---
@@ -80,7 +80,7 @@ This module contains the **domain** (events, commands, queries, value objects, d
 shared/
   build.gradle.kts
   src/
-    commonMain/kotlin/crm/
+    commonMain/kotlin/nl/incedo/paywall/
 
       ── DOMAIN LAYER ──────────────────────────────────────────
 
@@ -88,90 +88,101 @@ shared/
         event/                             # DOMAIN EVENTS — source of truth
           DomainEvent.kt                   # sealed interface
           EventMetadata.kt                 # id, timestamp, tags, position
-          contact/
-            ContactCreated.kt
-            ContactUpdated.kt
-            ContactDeleted.kt
-          company/
-            CompanyCreated.kt
-            CompanyUpdated.kt
-            CompanyDeleted.kt
-          deal/
-            DealCreated.kt
-            DealStageChanged.kt
-            DealClosed.kt
-          activity/
-            ActivityCreated.kt
-            ActivityCompleted.kt
-          user/
-            UserCreated.kt
-            UserAuthenticated.kt
-            UserDeactivated.kt
-            PasswordChanged.kt
+          wall/
+            WallCreated.kt
+            WallConfigChanged.kt
+            WallPublished.kt
+            WallArchived.kt
+          subscription/
+            SubscriptionActivated.kt
+            SubscriptionCanceled.kt
+            GrantIssued.kt
+            GrantRevoked.kt
+          experiment/
+            ExperimentDefined.kt
+            VariantWeightChanged.kt
+            ExperimentEnded.kt
+          analytics/
+            WallShown.kt
+            GateCtaClicked.kt
+            MeterIncremented.kt
+            MeterReset.kt
+          account/
+            AccountLinked.kt
+            AccountAuthenticated.kt
+            AccountDeleted.kt
+            RoleChanged.kt
 
         command/                            # COMMANDS — intent to change state
-          contact/
-            CreateContact.kt
-            UpdateContact.kt
-            DeleteContact.kt
-          company/
-            CreateCompany.kt
-            UpdateCompany.kt
-            DeleteCompany.kt
-          deal/
-            CreateDeal.kt
-            UpdateDeal.kt
-            ChangeDealStage.kt
-            CloseDeal.kt
-          activity/
-            CreateActivity.kt
-            CompleteActivity.kt
-          user/
-            CreateUser.kt
+          wall/
+            CreateWall.kt
+            UpdateWallConfig.kt
+            PublishWall.kt
+            ArchiveWall.kt
+          subscription/
+            ActivateSubscription.kt
+            CancelSubscription.kt
+            IssueGrant.kt
+            RevokeGrant.kt
+          experiment/
+            DefineExperiment.kt
+            UpdateExperiment.kt
+            ChangeVariantWeights.kt
+            EndExperiment.kt
+          analytics/
+            RecordWallShown.kt
+            RecordGateCtaClick.kt
+            RecordArticleRead.kt           # → MeterIncremented (MT-*)
+            ResetMeter.kt
+          account/
+            LinkAccount.kt
             Authenticate.kt
-            ChangePassword.kt
-            DeactivateUser.kt
+            ChangeRole.kt
+            DeleteAccount.kt
 
         query/                             # QUERIES — intent to read state
-          contact/
-            GetContact.kt
-            ListContacts.kt
-          company/
-            GetCompany.kt
-            ListCompanies.kt
-          deal/
-            GetDeal.kt
-            ListDeals.kt
-            GetPipeline.kt
-          activity/
-            GetActivity.kt
-            ListActivities.kt
-          user/
-            GetCurrentUser.kt
-            ListUsers.kt
+          wall/
+            GetWall.kt
+            ListWalls.kt
+          subscription/
+            GetSubscription.kt
+            ListSubscriptions.kt
+          experiment/
+            GetExperiment.kt
+            ListExperiments.kt
+            GetExperimentResults.kt
+          analytics/
+            GetMeterStatus.kt
+            ListWallEvents.kt
+          account/
+            GetCurrentAccount.kt
+            ListAccounts.kt
 
         model/                             # VALUE OBJECTS
-          ContactId.kt                     # @JvmInline value class
-          CompanyId.kt
-          DealId.kt
-          ActivityId.kt
-          UserId.kt
+          WallId.kt                        # @JvmInline value class
+          PlanId.kt
+          ExperimentId.kt
+          VisitorId.kt
+          UserId.kt                        # Maps to Ory `sub` claim
+          SubscriptionId.kt
+          GrantId.kt
+          ArticleId.kt
           Email.kt                         # Validated email format
-          PhoneNumber.kt
+          MeterLimit.kt                    # Validated positive article count
           Money.kt                         # amount: BigDecimal + currency: String
-          DealStage.kt                     # enum with transition rules
-          ActivityType.kt                  # enum: CALL, EMAIL, MEETING, TASK, NOTE
-          UserRole.kt                      # enum: ADMIN, MANAGER, USER
+          WallStatus.kt                    # enum with transition rules (DRAFT → LIVE → ARCHIVED)
+          WallType.kt                      # enum: HARD, METERED, FREEMIUM, DYNAMIC
+          UserRole.kt                      # enum: ADMIN, EDITOR, ANALYST
           Tag.kt                           # Lowercase, deduplicated
 
         decision/                          # DECISION MODELS — ephemeral, built per command
-          ContactDecisionModel.kt          # Does contact exist? Current state?
-          CompanyDecisionModel.kt          # Does company exist? Has dependents?
-          DealDecisionModel.kt             # Current stage? Valid transition?
-          ActivityDecisionModel.kt         # Exists? Type check?
-          UserDecisionModel.kt             # Active? Current role?
-          EmailUniquenessDecision.kt       # Is this email already taken? (cross-entity)
-          CompanyNameUniquenessDecision.kt # Is this company name taken? (cross-entity)
+          WallDecisionModel.kt             # Does wall exist? Current status/config?
+          SubscriptionDecisionModel.kt     # Active? Which plan/entitlements?
+          ExperimentDecisionModel.kt       # Running? Valid weight change?
+          GrantDecisionModel.kt            # Grant exists? Already revoked? (FGA-*)
+          AccountDecisionModel.kt          # Linked? Current role?
+          MeterLimitDecision.kt            # Has this visitor hit the meter limit? (MT-*)
+          ActiveExperimentDecision.kt      # Is another experiment live on this wall? (cross-entity, EX-*)
 
         port/                              # PORTS — interfaces to the outside world
           EventStore.kt                    # query(tags, since), append(events, condition)
@@ -180,73 +191,73 @@ shared/
           PasswordHasher.kt               # Hash/verify passwords (infra concern)
 
         validation/                        # PURE VALIDATION FUNCTIONS
-          ContactValidation.kt
-          CompanyValidation.kt
-          DealValidation.kt
-          UserValidation.kt
+          WallValidation.kt
+          SubscriptionValidation.kt
+          ExperimentValidation.kt
+          AccountValidation.kt
           ValidationResult.kt             # sealed: Valid | Invalid(errors: List<ValidationError>)
 
       ── APPLICATION LAYER ─────────────────────────────────────
 
       application/
         command/                            # COMMAND HANDLERS — orchestrate writes
-          ContactCommandHandler.kt
-          CompanyCommandHandler.kt
-          DealCommandHandler.kt
-          ActivityCommandHandler.kt
-          UserCommandHandler.kt
+          WallCommandHandler.kt
+          SubscriptionCommandHandler.kt
+          ExperimentCommandHandler.kt
+          AnalyticsCommandHandler.kt
+          AccountCommandHandler.kt
 
         query/                             # QUERY HANDLERS — orchestrate reads
-          ContactQueryHandler.kt
-          CompanyQueryHandler.kt
-          DealQueryHandler.kt
-          ActivityQueryHandler.kt
-          UserQueryHandler.kt
+          WallQueryHandler.kt
+          SubscriptionQueryHandler.kt
+          ExperimentQueryHandler.kt
+          AnalyticsQueryHandler.kt
+          AccountQueryHandler.kt
 
         projection/                        # EVENT → READ MODEL transformations
-          ContactProjection.kt
-          CompanyProjection.kt
-          DealProjection.kt
-          ActivityProjection.kt
-          UserProjection.kt
+          WallProjection.kt
+          SubscriptionProjection.kt
+          ExperimentProjection.kt
+          WallEventProjection.kt
+          AccountProjection.kt
 
         readmodel/                         # READ MODEL SHAPES (query-optimized)
-          ContactView.kt                   # Denormalized: includes company name
-          CompanyView.kt                   # Includes: contact count, deal count
-          DealView.kt                      # Includes: company name, contacts, stage
-          DealPipelineView.kt              # Deals grouped by stage (kanban data)
-          ActivityView.kt                  # Includes: related entity names
-          UserView.kt                      # Excludes: password hash
+          WallView.kt                      # Denormalized: includes active experiment name
+          SubscriptionView.kt              # Includes: plan name, entitlement count, grants
+          ExperimentView.kt                # Includes: wall name, variants, weights
+          ExperimentResultsView.kt         # Variants grouped with conversion metrics (EX-*)
+          WallEventView.kt                 # Includes: wall + article names
+          AccountView.kt                   # Excludes: password hash (Ory-managed)
           PaginatedResult.kt              # Generic pagination wrapper
 
-    commonTest/kotlin/crm/
+    commonTest/kotlin/nl/incedo/paywall/
       domain/
         decision/
-          ContactDecisionModelTest.kt
-          CompanyDecisionModelTest.kt
-          DealDecisionModelTest.kt
-          EmailUniquenessDecisionTest.kt
-          CompanyNameUniquenessDecisionTest.kt
+          WallDecisionModelTest.kt
+          SubscriptionDecisionModelTest.kt
+          ExperimentDecisionModelTest.kt
+          MeterLimitDecisionTest.kt
+          ActiveExperimentDecisionTest.kt
         model/
           EmailTest.kt
           MoneyTest.kt
-          DealStageTest.kt
+          WallStatusTest.kt
           TagTest.kt
         validation/
-          ContactValidationTest.kt
-          CompanyValidationTest.kt
-          DealValidationTest.kt
+          WallValidationTest.kt
+          SubscriptionValidationTest.kt
+          ExperimentValidationTest.kt
       application/
         command/
-          ContactCommandHandlerTest.kt
-          CompanyCommandHandlerTest.kt
-          DealCommandHandlerTest.kt
-          ActivityCommandHandlerTest.kt
-          UserCommandHandlerTest.kt
+          WallCommandHandlerTest.kt
+          SubscriptionCommandHandlerTest.kt
+          ExperimentCommandHandlerTest.kt
+          AnalyticsCommandHandlerTest.kt
+          AccountCommandHandlerTest.kt
         projection/
-          ContactProjectionTest.kt
-          CompanyProjectionTest.kt
-          DealProjectionTest.kt
+          WallProjectionTest.kt
+          SubscriptionProjectionTest.kt
+          ExperimentProjectionTest.kt
 ```
 
 ### Conventions
@@ -255,8 +266,8 @@ shared/
 - All events implement `sealed interface DomainEvent`
 - Events are `@Serializable` data classes
 - Every event carries `tags: Set<String>` for DCB queries
-- Tags follow format: `"{entityType}:{entityId}"` (e.g., `"contact:abc-123"`)
-- Events with cross-entity relationships carry multiple tags (e.g., `DealCreated` tags: `"deal:{id}"`, `"company:{companyId}"`, `"contact:{contactId}"`)
+- Tags follow format: `"{entityType}:{entityId}"` (e.g., `"visitor:abc-123"`)
+- Events with cross-entity relationships carry multiple tags (e.g., `ExperimentDefined` tags: `"experiment:{id}"`, `"wall:{wallId}"`; `MeterIncremented` tags: `"visitor:{visitorId}"`, `"article:{articleId}"`)
 
 **Commands:**
 - Data classes carrying the intent and all required data
@@ -265,7 +276,7 @@ shared/
 **Decision Models:**
 - Built by folding over queried events: `events.fold(initialState) { state, event -> state.apply(event) }`
 - Ephemeral — created per command, never persisted
-- Enforce domain invariants (business rules)
+- Enforce domain invariants (business rules, e.g., the meter limit MT-*)
 - Each declares which tags it needs to query
 
 **Value Objects:**
@@ -291,34 +302,34 @@ shared/
 backend/
   build.gradle.kts
   src/
-    main/kotlin/crm/backend/
+    main/kotlin/nl/incedo/paywall/backend/
 
       adapter/
         inbound/                           # DRIVING ADAPTERS — trigger commands/queries
           rest/
-            ContactController.kt           # fun Route.contactRoutes(handler, queryHandler)
-            CompanyController.kt
-            DealController.kt
-            ActivityController.kt
+            WallController.kt              # fun Route.wallRoutes(handler, queryHandler)
+            SubscriptionController.kt
+            ExperimentController.kt
+            AnalyticsController.kt
             AuthController.kt
-            UserController.kt
+            AccountController.kt
             dto/
               request/
-                CreateContactRequest.kt    # REST-specific shapes
-                UpdateContactRequest.kt
-                CreateCompanyRequest.kt
-                CreateDealRequest.kt
-                CreateActivityRequest.kt
+                CreateWallRequest.kt       # REST-specific shapes
+                UpdateWallConfigRequest.kt
+                ActivateSubscriptionRequest.kt
+                DefineExperimentRequest.kt
+                RecordArticleReadRequest.kt
                 LoginRequest.kt
-                CreateUserRequest.kt
-                ChangePasswordRequest.kt
+                LinkAccountRequest.kt
+                ChangeRoleRequest.kt
               response/
-                ContactResponse.kt         # From ContactView read model
-                CompanyResponse.kt
-                DealResponse.kt
-                ActivityResponse.kt
-                UserResponse.kt
-                PipelineResponse.kt
+                WallResponse.kt            # From WallView read model
+                SubscriptionResponse.kt
+                ExperimentResponse.kt
+                WallEventResponse.kt
+                AccountResponse.kt
+                ExperimentResultsResponse.kt
                 PaginatedResponse.kt
                 ErrorResponse.kt
             mapper/
@@ -337,11 +348,11 @@ backend/
           readmodel/
             PostgresReadModelStore.kt      # implements ReadModelStore
             table/
-              ContactsReadTable.kt         # Denormalized contact view
-              CompaniesReadTable.kt
-              DealsReadTable.kt
-              ActivitiesReadTable.kt
-              UsersReadTable.kt
+              WallsReadTable.kt            # Denormalized wall view
+              SubscriptionsReadTable.kt
+              ExperimentsReadTable.kt
+              WallEventsReadTable.kt
+              AccountsReadTable.kt
 
           projection/
             ProjectionRunner.kt            # Subscribes to events, dispatches to projections
@@ -358,13 +369,13 @@ backend/
         AuthConfig.kt
         CorsConfig.kt
 
-    test/kotlin/crm/backend/
+    test/kotlin/nl/incedo/paywall/backend/
       adapter/
         inbound/rest/
-          ContactControllerTest.kt         # Ktor testApplication integration tests
-          CompanyControllerTest.kt
-          DealControllerTest.kt
-          ActivityControllerTest.kt
+          WallControllerTest.kt            # Ktor testApplication integration tests
+          SubscriptionControllerTest.kt
+          ExperimentControllerTest.kt
+          AnalyticsControllerTest.kt
           AuthControllerTest.kt
         outbound/eventstore/
           InMemoryEventStoreTest.kt
@@ -385,7 +396,7 @@ backend/
 ### Conventions
 
 **REST Controllers:**
-- Extension functions on `Route`: `fun Route.contactRoutes(commandHandler, queryHandler)`
+- Extension functions on `Route`: `fun Route.wallRoutes(commandHandler, queryHandler)`
 - POST/PUT/DELETE endpoints dispatch **commands** to command handlers
 - GET endpoints dispatch **queries** to query handlers
 - Map REST DTOs to/from domain commands/read models via mappers
@@ -407,8 +418,8 @@ backend/
   ```kotlin
   val eventStore: EventStore = PostgresEventStore(db)
   val readModelStore: ReadModelStore = PostgresReadModelStore(db)
-  val contactCommandHandler = ContactCommandHandler(eventStore)
-  val contactQueryHandler = ContactQueryHandler(readModelStore)
+  val wallCommandHandler = WallCommandHandler(eventStore)
+  val wallQueryHandler = WallQueryHandler(readModelStore)
   ```
 
 ---
@@ -425,7 +436,7 @@ See `architecture/design-system.md` for full token definitions and component cat
 designsystem/
   build.gradle.kts
   src/
-    commonMain/kotlin/crm/designsystem/
+    commonMain/kotlin/nl/incedo/paywall/designsystem/
       theme/
         CrmTheme.kt                       # Theme provider + CompositionLocal wiring
         CrmColors.kt                      # 32+ color tokens (light/dark)
@@ -446,33 +457,33 @@ designsystem/
         CrmIconButton.kt
         CrmInputField.kt                  # BasicTextField + decoration
         CrmSelectField.kt                 # Input + Popup dropdown
-        CrmBadge.kt                       # Status indicators
-        CrmTag.kt                         # Contact/deal tags
+        CrmBadge.kt                       # Status indicators (draft/live/archived)
+        CrmTag.kt                         # Wall/experiment tags
         CrmChip.kt                        # Filter chips
-        CrmAvatar.kt                      # User/contact avatars
+        CrmAvatar.kt                      # Account avatars
         CrmTab.kt                         # Tab navigation
         CrmDialog.kt                      # Foundation Dialog + CrmSurface
         CrmSnackbar.kt                    # Notification bar
         CrmTooltip.kt                     # Hover info popup
-      organism/                            # ORGANISMS — CRM-specific composites
+      organism/                            # ORGANISMS — paywall-specific composites
         CrmNavBar.kt                      # Top navigation bar
         CrmSideNav.kt                     # Side navigation (desktop/tablet)
         CrmBottomNav.kt                   # Bottom navigation (mobile)
         CrmDataTable.kt                   # Sortable, paginated data table
-        CrmKanbanBoard.kt                 # Drag-and-drop deal pipeline
-        CrmDealCard.kt                    # Single deal card for kanban
-        CrmContactCard.kt                 # Contact summary card
-        CrmActivityItem.kt               # Single activity in timeline
-        CrmTimeline.kt                    # Activity feed
+        CrmKanbanBoard.kt                 # Drag-and-drop experiment variant board
+        CrmDealCard.kt                    # Single variant card for kanban
+        CrmContactCard.kt                 # Wall summary card
+        CrmActivityItem.kt               # Single wall event in timeline
+        CrmTimeline.kt                    # Wall event feed
         CrmSearchBar.kt                   # Search with debounce
-        CrmFormSection.kt                 # Grouped form fields
+        CrmFormSection.kt                 # Grouped form fields (wall editor)
         CrmEmptyState.kt                  # Empty list placeholder
-        CrmConfirmDialog.kt              # Delete confirmation
+        CrmConfirmDialog.kt              # Archive confirmation
       layout/
         CrmScaffold.kt                    # Responsive scaffold (adapts nav per platform)
         CrmResponsive.kt                  # WindowSizeClass helpers
 
-    commonTest/kotlin/crm/designsystem/
+    commonTest/kotlin/nl/incedo/paywall/designsystem/
       theme/
         CrmColorsTest.kt
         CrmTypographyTest.kt
@@ -503,67 +514,67 @@ frontend/
   common/                                  # SHARED UI — all screens, state, API adapters
     build.gradle.kts                       # KMP: commonMain → all UI targets
     src/
-      commonMain/kotlin/crm/frontend/
+      commonMain/kotlin/nl/incedo/paywall/frontend/
         app/
           App.kt                           # Root @Composable (used by all platforms)
           Navigation.kt                    # Navigation graph (routes ↔ screens)
         screen/
-          contacts/
-            ContactListScreen.kt           # Uses CrmDataTable, CrmSearchBar
-            ContactDetailScreen.kt         # Uses CrmSurface, CrmTag, CrmAvatar
-            ContactFormScreen.kt           # Uses CrmInputField, CrmSelectField
-          companies/
-            CompanyListScreen.kt
-            CompanyDetailScreen.kt
-            CompanyFormScreen.kt
-          deals/
-            DealPipelineScreen.kt          # Uses CrmKanbanBoard, CrmDealCard
-            DealDetailScreen.kt
-            DealFormScreen.kt
-          activities/
-            ActivityTimelineScreen.kt      # Uses CrmTimeline, CrmActivityItem
-            ActivityFormScreen.kt
+          walls/
+            WallsOverviewScreen.kt         # Uses CrmDataTable, CrmSearchBar (ADM-*)
+            WallDesignerScreen.kt          # Uses CrmSurface, CrmTag, CrmFormSection
+            WallFormScreen.kt              # Uses CrmInputField, CrmSelectField
+          subscriptions/
+            SubscriptionListScreen.kt
+            SubscriptionDetailScreen.kt
+            PlanFormScreen.kt
+          experiments/
+            ExperimentBoardScreen.kt       # Uses CrmKanbanBoard, CrmDealCard (EX-*)
+            ExperimentDetailScreen.kt
+            ExperimentFormScreen.kt
+          analytics/
+            WallEventTimelineScreen.kt     # Uses CrmTimeline, CrmActivityItem
+            MeterStatusScreen.kt
           auth/
             LoginScreen.kt                 # OIDC redirect trigger
             CallbackScreen.kt             # OIDC callback handler
             ProfileScreen.kt
           admin/
-            UserListScreen.kt
-            UserFormScreen.kt
+            AccountListScreen.kt
+            AccountFormScreen.kt
           dashboard/
             DashboardScreen.kt
         state/                             # MVI StateHolders (platform-agnostic)
-          contacts/
-            ContactListState.kt            # State data class
-            ContactListIntent.kt           # Sealed interface of intents
-            ContactListEffect.kt           # Side effects (navigation, snackbar)
-            ContactListStateHolder.kt      # StateFlow + intent handling
-          companies/
-            CompanyListState.kt
-            CompanyListStateHolder.kt
-          deals/
-            PipelineState.kt
-            PipelineStateHolder.kt
-            DealFormState.kt
-            DealFormStateHolder.kt
-          activities/
-            ActivityTimelineState.kt
-            ActivityTimelineStateHolder.kt
+          walls/
+            WallsOverviewState.kt          # State data class
+            WallsOverviewIntent.kt         # Sealed interface of intents
+            WallsOverviewEffect.kt         # Side effects (navigation, snackbar)
+            WallsOverviewStateHolder.kt    # StateFlow + intent handling
+          subscriptions/
+            SubscriptionListState.kt
+            SubscriptionListStateHolder.kt
+          experiments/
+            ExperimentBoardState.kt
+            ExperimentBoardStateHolder.kt
+            ExperimentFormState.kt
+            ExperimentFormStateHolder.kt
+          analytics/
+            WallEventTimelineState.kt
+            WallEventTimelineStateHolder.kt
           auth/
             AuthState.kt
             AuthStateHolder.kt
         api/                               # Outbound adapter — HTTP client
           ApiClient.kt                     # Ktor HttpClient setup (expect/actual per platform)
-          ContactApi.kt                    # suspend fun listContacts(), createContact(), etc.
-          CompanyApi.kt
-          DealApi.kt
-          ActivityApi.kt
+          WallApi.kt                       # suspend fun listWalls(), createWall(), etc.
+          SubscriptionApi.kt
+          ExperimentApi.kt
+          AnalyticsApi.kt
           AuthApi.kt
 
   web/                                     # WEB entry point (wasmJs)
     build.gradle.kts
     src/
-      wasmJsMain/kotlin/crm/frontend/web/
+      wasmJsMain/kotlin/nl/incedo/paywall/frontend/web/
         Main.kt                            # fun main() { renderComposable("root") { App() } }
       wasmJsMain/resources/
         index.html                         # WASM host page
@@ -571,21 +582,21 @@ frontend/
   desktop/                                 # DESKTOP entry point (jvm)
     build.gradle.kts
     src/
-      jvmMain/kotlin/crm/frontend/desktop/
-        Main.kt                            # application { Window(title = "CRM") { App() } }
+      jvmMain/kotlin/nl/incedo/paywall/frontend/desktop/
+        Main.kt                            # application { Window(title = "Paywall") { App() } }
 
   android/                                 # ANDROID entry point
     build.gradle.kts                       # Android application plugin
     src/
-      androidMain/kotlin/crm/frontend/android/
+      androidMain/kotlin/nl/incedo/paywall/frontend/android/
         MainActivity.kt                   # setContent { CrmTheme { App() } }
-        CrmApplication.kt                 # Application class (DI setup)
+        PaywallApplication.kt             # Application class (DI setup)
       androidMain/AndroidManifest.xml
 
   ios/                                     # iOS entry point
     build.gradle.kts
     src/
-      iosMain/kotlin/crm/frontend/ios/
+      iosMain/kotlin/nl/incedo/paywall/frontend/ios/
         MainViewController.kt             # fun MainViewController() = ComposeUIViewController { App() }
     iosApp/                                # Xcode project wrapper
       iosApp/
@@ -619,7 +630,7 @@ frontend/
 
 ### `settings.gradle.kts`
 ```kotlin
-rootProject.name = "crm"
+rootProject.name = "paywall"
 
 // Domain + Application
 include(":shared")
@@ -758,7 +769,7 @@ dependencies {
 
 compose.desktop {
     application {
-        mainClass = "crm.frontend.desktop.MainKt"
+        mainClass = "nl.incedo.paywall.frontend.desktop.MainKt"
     }
 }
 ```
@@ -773,11 +784,11 @@ plugins {
 }
 
 android {
-    namespace = "crm.frontend.android"
+    namespace = "nl.incedo.paywall.frontend.android"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "crm.frontend.android"
+        applicationId = "nl.incedo.paywall.frontend.android"
         minSdk = 26
         targetSdk = 35
     }
@@ -793,8 +804,8 @@ dependencies {
 ```kotlin
 // frontend/ios/build.gradle.kts
 kotlin {
-    iosArm64 { binaries.framework { baseName = "CrmApp" } }
-    iosSimulatorArm64 { binaries.framework { baseName = "CrmApp" } }
+    iosArm64 { binaries.framework { baseName = "PaywallApp" } }
+    iosSimulatorArm64 { binaries.framework { baseName = "PaywallApp" } }
 
     sourceSets {
         iosMain.dependencies {
@@ -827,7 +838,7 @@ dependencies {
 
 ---
 
-## 7. Command Handler Flow (DCB Pattern)
+## 8. Command Handler Flow (DCB Pattern)
 
 This shows how a command flows through the system:
 
