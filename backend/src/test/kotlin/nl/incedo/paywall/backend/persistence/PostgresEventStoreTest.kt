@@ -8,7 +8,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
-import nl.incedo.paywall.accounts.AccountLinked
+import nl.incedo.paywall.accounts.IdentityLinked
+import nl.incedo.paywall.analytics.WallEventRecorded
+import nl.incedo.paywall.analytics.WallEventType
+import nl.incedo.paywall.accounts.IdentityUnlinked
+import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
+import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.GrantId
 import nl.incedo.paywall.core.PlanId
@@ -25,6 +30,7 @@ import nl.incedo.paywall.grants.GrantIssued
 import nl.incedo.paywall.grants.GrantRevoked
 import nl.incedo.paywall.metering.MeterIncremented
 import nl.incedo.paywall.metering.MeterPeriod
+import nl.incedo.paywall.metering.meterTag
 import nl.incedo.paywall.metering.MeterReset
 
 /**
@@ -64,11 +70,11 @@ class PostgresEventStoreTest {
             condition = null,
         )
 
-        val result = store.query(EventQuery(setOf("subject:${subject.value}")))
+        val result = store.query(EventQuery(setOf(meterTag(subject, period))))
         assertEquals(1, result.events.size)
         assertTrue(result.position > 0)
 
-        val later = store.query(EventQuery(setOf("subject:${subject.value}"), since = result.position))
+        val later = store.query(EventQuery(setOf(meterTag(subject, period)), since = result.position))
         assertEquals(0, later.events.size)
     }
 
@@ -85,19 +91,31 @@ class PostgresEventStoreTest {
             EntitlementRevoked(subject, SubscriptionId("sub-1")),
             GrantIssued(GrantId("g-1"), subject, ArticleId("a-1"), grantedBy = "day_pass", expiresAtEpochMs = 2L),
             GrantRevoked(GrantId("g-1"), subject, ArticleId("a-1")),
-            AccountLinked(VisitorId("v-1"), UserId("u-roundtrip-${System.nanoTime()}")),
+            CepGateAdvised(subject, validUntilEpochMs = 3L),
+            CepGateAdviceWithdrawn(subject),
+            IdentityLinked(subject, SubjectId("user:u-roundtrip"), cause = "login"),
+            IdentityUnlinked(subject, SubjectId("user:u-roundtrip"), reason = "support correction"),
+            WallEventRecorded(
+                eventType = WallEventType.WALL_SHOWN,
+                subjectId = subject,
+                variant = "metered",
+                channel = "web",
+                occurredAtEpochMs = 4L,
+                articleId = ArticleId("a-1"),
+                context = mapOf("meterUsed" to "5"),
+            ),
         )
         store.append(events, condition = null)
 
-        val stored = store.query(EventQuery(setOf("subject:${subject.value}"))).events
-        assertEquals(events.dropLast(1), stored.filterNot { it is AccountLinked })
+        val stored = store.query(EventQuery(setOf("subject:${subject.value}", meterTag(subject, period)))).events
+        assertEquals(events, stored)
     }
 
     @Test
     fun appendConditionRejectsConflictingWrite() = runTest {
         val store = storeOrSkip() ?: return@runTest
         val subject = freshSubject()
-        val query = EventQuery(setOf("subject:${subject.value}"))
+        val query = EventQuery(setOf(meterTag(subject, period)))
         val position = store.query(query).position
 
         store.append(listOf(MeterIncremented(subject, ArticleId("a-other"), period)), condition = null)
@@ -115,7 +133,7 @@ class PostgresEventStoreTest {
         val store = storeOrSkip() ?: return@runTest
         val subject = freshSubject()
         val unrelated = freshSubject()
-        val query = EventQuery(setOf("subject:${subject.value}"))
+        val query = EventQuery(setOf(meterTag(subject, period)))
         val position = store.query(query).position
 
         store.append(listOf(MeterIncremented(unrelated, ArticleId("a-9"), period)), condition = null)
@@ -128,7 +146,7 @@ class PostgresEventStoreTest {
     fun concurrentConditionalAppendsAdmitExactlyOne() = runTest {
         val store = storeOrSkip() ?: return@runTest
         val subject = freshSubject()
-        val query = EventQuery(setOf("subject:${subject.value}"))
+        val query = EventQuery(setOf(meterTag(subject, period)))
         val position = store.query(query).position
 
         // Two writers race with the same expected position: the advisory-lock

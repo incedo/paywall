@@ -97,6 +97,19 @@ grant_meta     (id, subject_id, relation, object, granted_by, reason, expires_at
   <tr><td>DM-03</td><td class="should">SHOULD</td><td>Meter state and assignments are keyed by an abstract <code>subject_id</code> so anonymous→user merge (MT-03, US-04) is a re-key, not a schema change.</td></tr>
 </table>
 
+<h3>2.1 Event store at scale (DM-04..) — staying event-sourced</h3>
+<p>Scaling measures change how the log is <em>read, laid out, and derived from</em> — never
+what is authoritative. The event store remains the single source of truth at every scale.</p>
+<table class="req">
+  <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>
+  <tr><td>DM-04</td><td class="must">MUST</td><td>Every cache and read model — including edge KV entries (INF-05) — is a <strong>projection</strong>: derived, disposable, and rebuildable from events. No scaling measure may introduce a second write authority next to the event store.</td></tr>
+  <tr><td>DM-05</td><td class="must">MUST</td><td><strong>Tag design is the index strategy.</strong> Decide-path reads stay bounded regardless of history length: meter events carry a composite subject+period tag (e.g. <code>meter:visitor:abc:2026-06</code>) so a decision model rebuild reads only the current period's events. New hot query paths get new tags at append time — never history scans.</td></tr>
+  <tr><td>DM-06</td><td class="should">SHOULD</td><td>Append concurrency scales by <strong>sharding append serialization per subject</strong> (e.g. advisory lock keyed on <code>hash(subject)</code>): appends for different subjects proceed in parallel while the DCB condition check stays serialized exactly where it matters — within one subject.</td></tr>
+  <tr><td>DM-07</td><td class="should">SHOULD</td><td>The <code>events</code> table is <strong>partitioned by month</strong>; events of anonymous subjects beyond the cookie horizon (MT-01, 13 months) move to cold storage via the AN-04 export path. The log remains complete and replayable across hot store + archive.</td></tr>
+  <tr><td>DM-08</td><td class="should">SHOULD</td><td>At scale, projections move from sync in-process to an <strong>async subscription</strong> (outbox → queue) so the write path never waits on read-model fan-out. The decide path is unaffected — it reads events directly (revisits tech-stack Q-2).</td></tr>
+  <tr><td>DM-09</td><td class="could">COULD</td><td><strong>Snapshots only on evidence</strong>: introduce per-model snapshots only when a decision model demonstrably rebuilds from long histories. The period tag (DM-05) is the meter's natural snapshot boundary — do not build snapshotting preemptively.</td></tr>
+</table>
+
 <h2>3. SEO &amp; crawlers (SEO)</h2>
 <table class="req">
   <tr><th>ID</th><th>Priority</th><th>Requirement</th></tr>

@@ -38,7 +38,9 @@ class RecordArticleReadHandler(
     }
 
     private suspend fun attempt(cmd: RecordArticleRead): MeterIncremented? {
-        val query = EventQuery(tags = setOf("subject:${cmd.subjectId.value}"))
+        // DM-05: the composite tag bounds the query (and the DCB condition)
+        // to this subject's current period — never full subject history.
+        val query = EventQuery(tags = setOf(meterTag(cmd.subjectId, cmd.period)))
         val (events, position) = eventStore.query(query)
 
         val meter = MeterDecision(cmd.period)

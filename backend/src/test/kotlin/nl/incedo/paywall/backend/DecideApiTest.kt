@@ -21,13 +21,6 @@ class DecideApiTest {
 
     private val now = 1_750_000_000_000L
 
-    private fun testService() = AccessService(
-        eventStore = InMemoryEventStore(),
-        experiment = defaultExperiment,
-        clock = { now },
-        currentPeriod = { MeterPeriod("2026-06") },
-    )
-
     /** Find a visitor that EX-01 assigns to the wanted variant, so tests are deterministic. */
     private fun visitorIn(variant: String): String =
         (0 until 10_000).asSequence()
@@ -35,7 +28,14 @@ class DecideApiTest {
             .first { VariantAssigner.assign(VisitorId(it), defaultExperiment).name == variant }
 
     private fun apiTest(block: suspend (io.ktor.client.HttpClient) -> Unit) = testApplication {
-        application { module(testService()) }
+        val store = InMemoryEventStore()
+        val service = AccessService(
+            eventStore = store,
+            experiment = defaultExperiment,
+            clock = { now },
+            currentPeriod = { MeterPeriod("2026-06") },
+        )
+        application { module(service, store) }
         val client = createClient {
             install(ContentNegotiation) { json() }
         }
@@ -108,6 +108,88 @@ class DecideApiTest {
             }.body<DecideResponse>().variant
         }.toSet()
         assertEquals(1, variants.size)
+    }
+
+    @Test
+    fun cepPublishedAdviceGatesDynamicVisitor() = apiTest { client ->
+        val visitor = visitorIn("dynamic")
+        // Without CEP advice the dynamic strategy serves the article
+        val before: DecideResponse = client.post("/api/v1/decide") {
+            contentType(ContentType.Application.Json)
+            setBody(DecideRequest(visitorId = visitor, articleId = "a-1", tier = "premium"))
+        }.body()
+        assertEquals("full", before.access)
+
+        // The CEP publishes gate advice for this subject (PW-40 verdict)
+        val publish = client.post("/api/v1/integration/cep-advice") {
+            contentType(ContentType.Application.Json)
+            setBody(CepAdviceEvent(subjectId = "visitor:$visitor", gate = true, validUntilEpochMs = now + 60_000))
+        }
+        assertEquals(HttpStatusCode.Accepted, publish.status)
+
+        // The access layer acts on the ingested event: next request gates
+        val after: DecideResponse = client.post("/api/v1/decide") {
+            contentType(ContentType.Application.Json)
+            setBody(DecideRequest(visitorId = visitor, articleId = "a-2", tier = "premium"))
+        }.body()
+        assertEquals("gate", after.access)
+        assertEquals("dynamic", after.wallType)
+
+        // Withdrawal opens it up again
+        client.post("/api/v1/integration/cep-advice") {
+            contentType(ContentType.Application.Json)
+            setBody(CepAdviceEvent(subjectId = "visitor:$visitor", gate = false))
+        }
+        val withdrawn: DecideResponse = client.post("/api/v1/decide") {
+            contentType(ContentType.Application.Json)
+            setBody(DecideRequest(visitorId = visitor, articleId = "a-3", tier = "premium"))
+        }.body()
+        assertEquals("full", withdrawn.access)
+    }
+
+    @Test
+    fun linkedIdentitiesShareOneMeter() = apiTest { client ->
+        // MT-13: one person, one meter, across devices — find two distinct
+        // visitors that both land in the metered variant (EX-01 is per visitor)
+        val metered = (0 until 10_000).asSequence()
+            .map { "linked-visitor-$it" }
+            .filter { VariantAssigner.assign(VisitorId(it), defaultExperiment).name == "metered" }
+            .take(2).toList()
+        val (deviceA, deviceB) = metered
+
+        // Device A exhausts the meter (limit 5)
+        for (i in 1..5) {
+            client.post("/api/v1/decide") {
+                contentType(ContentType.Application.Json)
+                setBody(DecideRequest(visitorId = deviceA, articleId = "a-$i", tier = "premium"))
+            }
+        }
+        // Device B, unlinked: fresh meter, reads fine
+        val unlinked: DecideResponse = client.post("/api/v1/decide") {
+            contentType(ContentType.Application.Json)
+            setBody(DecideRequest(visitorId = deviceB, articleId = "a-9", tier = "premium"))
+        }.body()
+        assertEquals("full", unlinked.access)
+
+        // Newsletter click-through links both devices to the same person
+        val link = client.post("/api/v1/integration/identity-link") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                IdentityLinkRequest(
+                    subjectA = "visitor:$deviceA",
+                    subjectB = "visitor:$deviceB",
+                    cause = "newsletter_token",
+                ),
+            )
+        }
+        assertEquals(HttpStatusCode.Accepted, link.status)
+
+        // Device B now shares the exhausted meter (5 from A + 1 own = over limit)
+        val linked: DecideResponse = client.post("/api/v1/decide") {
+            contentType(ContentType.Application.Json)
+            setBody(DecideRequest(visitorId = deviceB, articleId = "a-new", tier = "premium"))
+        }.body()
+        assertEquals("gate", linked.access, "linked person already used ${linked.meterUsed} of ${linked.meterLimit}")
     }
 
     @Test

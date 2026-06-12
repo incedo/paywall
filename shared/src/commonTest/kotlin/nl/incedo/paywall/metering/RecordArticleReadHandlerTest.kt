@@ -30,7 +30,7 @@ class RecordArticleReadHandlerTest {
         val event = handler.handle(RecordArticleRead(subject, ArticleId("a-1"), period))
 
         assertNotNull(event)
-        val stored = store.query(EventQuery(setOf("subject:${subject.value}"))).events
+        val stored = store.query(EventQuery(setOf(meterTag(subject, period)))).events
         assertEquals(listOf<DomainEvent>(event), stored)
     }
 
@@ -44,7 +44,7 @@ class RecordArticleReadHandlerTest {
         val second = handler.handle(RecordArticleRead(subject, ArticleId("a-1"), period))
 
         assertNull(second)
-        assertEquals(1, store.query(EventQuery(setOf("subject:${subject.value}"))).events.size)
+        assertEquals(1, store.query(EventQuery(setOf(meterTag(subject, period)))).events.size)
     }
 
     @Test

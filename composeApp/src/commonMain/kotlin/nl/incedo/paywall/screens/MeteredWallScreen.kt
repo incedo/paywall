@@ -136,7 +136,7 @@ private fun GateCard(definition: WallDefinition, used: Int, limit: Int) {
             val note = when (definition.type) {
                 WallType.Metered -> "Your limit resets on 1 July."
                 WallType.Freemium -> "Premium content — always gated on Free."
-                WallType.Dynamic -> "Shown when the propensity score is above the threshold."
+                WallType.Dynamic -> "Shown when CEP decisioning advises a gate — floor rule caps free reads."
                 WallType.Hard -> null
             }
             if (note != null) {

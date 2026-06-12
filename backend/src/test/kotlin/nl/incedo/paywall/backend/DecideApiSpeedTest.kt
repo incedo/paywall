@@ -37,13 +37,14 @@ class DecideApiSpeedTest {
 
     @Test
     fun decideEndpoint_p95UnderApiBudget() = runBlocking {
+        val store = InMemoryEventStore()
         val service = AccessService(
-            eventStore = InMemoryEventStore(),
+            eventStore = store,
             experiment = defaultExperiment,
             clock = { System.currentTimeMillis() },
             currentPeriod = { MeterPeriod("2026-06") },
         )
-        val server = embeddedServer(CIO, port = 0) { module(service) }.start(wait = false)
+        val server = embeddedServer(CIO, port = 0) { module(service, store) }.start(wait = false)
         val port = server.engine.resolvedConnectors().first().port
         val client = HttpClient(ClientCIO) {
             install(ContentNegotiation) { json() }

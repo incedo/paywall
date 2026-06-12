@@ -5,6 +5,7 @@ import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.SubjectId
 import nl.incedo.paywall.core.UserId
 import nl.incedo.paywall.core.VisitorId
+import nl.incedo.paywall.cep.CepAdviceDecision
 import nl.incedo.paywall.entitlements.EntitlementDecision
 import nl.incedo.paywall.grants.GrantDecision
 import nl.incedo.paywall.metering.MeterDecision
@@ -43,8 +44,6 @@ sealed interface StrategyConfig {
 
     @Serializable
     data class Dynamic(
-        /** PW-40: gate when score ≥ threshold. */
-        val threshold: Double,
         /** PW-42: floor rule — gate always appears at or before the Nth premium article per month (default 10). */
         val floorLimit: Int = 10,
     ) : StrategyConfig
@@ -58,12 +57,17 @@ data class AccessRequest(
     val entitlement: EntitlementDecision,
     val grant: GrantDecision,
     val meter: MeterDecision,
-    /** PW-40/41: propensity score for the dynamic strategy (rule-based heuristic in phase 1). */
-    val propensityScore: Double = 0.0,
+    /**
+     * PW-40 verdict for the dynamic strategy, rebuilt from CEP-published
+     * advice events (the CEP owns propensity scoring and thresholds; the
+     * access layer acts on its events and applies the mechanical floor
+     * rule PW-42 on top — no synchronous CEP call in the decide path).
+     */
+    val cepAdvice: CepAdviceDecision = CepAdviceDecision(),
     val nowEpochMs: Long,
 )
 
-enum class AccessReason { FREE_CONTENT, ENTITLED, GRANT, METER_CREDIT, BELOW_THRESHOLD }
+enum class AccessReason { FREE_CONTENT, ENTITLED, GRANT, METER_CREDIT, DYNAMIC_OPEN }
 
 sealed interface AccessDecision {
     /**
@@ -123,11 +127,11 @@ object AccessDecisionEngine {
 
             is StrategyConfig.Dynamic -> {
                 val floorReached = !request.meter.hasCreditFor(article.id, strategy.floorLimit) // PW-42
-                if (request.propensityScore >= strategy.threshold || floorReached) {
+                if (request.cepAdvice.gateAdvised(request.nowEpochMs) || floorReached) {
                     AccessDecision.Gated(strategy, meterUsed = request.meter.used, meterLimit = strategy.floorLimit)
                 } else {
                     AccessDecision.Full(
-                        reason = AccessReason.BELOW_THRESHOLD,
+                        reason = AccessReason.DYNAMIC_OPEN,
                         countsTowardMeter = !request.meter.isCounted(article.id), // feeds the floor rule
                     )
                 }

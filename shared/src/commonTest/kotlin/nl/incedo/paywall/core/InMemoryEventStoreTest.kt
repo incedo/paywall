@@ -9,6 +9,7 @@ import nl.incedo.paywall.core.port.AppendCondition
 import nl.incedo.paywall.core.port.ConcurrencyException
 import nl.incedo.paywall.core.port.EventQuery
 import nl.incedo.paywall.metering.MeterIncremented
+import nl.incedo.paywall.metering.meterTag
 import nl.incedo.paywall.metering.MeterPeriod
 
 class InMemoryEventStoreTest {
@@ -22,7 +23,7 @@ class InMemoryEventStoreTest {
         val store = InMemoryEventStore()
         store.append(listOf(event("v-1", "a-1"), event("v-2", "a-2")), condition = null)
 
-        val result = store.query(EventQuery(setOf("subject:visitor:v-1")))
+        val result = store.query(EventQuery(setOf(meterTag(SubjectId("visitor:v-1"), period))))
 
         assertEquals(1, result.events.size)
         assertEquals(2, result.position, "position reflects the whole store")
@@ -34,7 +35,7 @@ class InMemoryEventStoreTest {
         val store = InMemoryEventStore()
         store.append(listOf(event("v-1", "a-1"), event("u-1", "a-2"), event("v-9", "a-3")), condition = null)
 
-        val result = store.query(EventQuery(setOf("subject:visitor:v-1", "subject:visitor:u-1")))
+        val result = store.query(EventQuery(setOf(meterTag(SubjectId("visitor:v-1"), period), meterTag(SubjectId("visitor:u-1"), period))))
 
         assertEquals(2, result.events.size)
     }
@@ -42,7 +43,7 @@ class InMemoryEventStoreTest {
     @Test
     fun appendConditionRejectsWhenMatchingEventsAppeared() = runTest {
         val store = InMemoryEventStore()
-        val query = EventQuery(setOf("subject:visitor:v-1"))
+        val query = EventQuery(setOf(meterTag(SubjectId("visitor:v-1"), period)))
         val position = store.query(query).position
 
         // Concurrent write for the same subject after our query
@@ -56,7 +57,7 @@ class InMemoryEventStoreTest {
     @Test
     fun appendConditionIgnoresUnrelatedEvents() = runTest {
         val store = InMemoryEventStore()
-        val query = EventQuery(setOf("subject:visitor:v-1"))
+        val query = EventQuery(setOf(meterTag(SubjectId("visitor:v-1"), period)))
         val position = store.query(query).position
 
         // A different subject's events must not block our append

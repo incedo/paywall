@@ -179,6 +179,7 @@ token as a <em>cache</em>:</p>
   <tr><td>MT-10</td><td class="must">MUST</td><td>Meter parameters (limit, period, per-variant overrides PW-06/MT-06, registered-visitor bonus PW-25) are managed in configuration (API-03) with validation and audit on change.</td></tr>
   <tr><td>MT-11</td><td class="must">MUST</td><td>An internal admin API can inspect a subject's meter state (count, articles, period) and reset it — for support and QA (EX-05). Every reset is audited.</td></tr>
   <tr><td>MT-12</td><td class="should">SHOULD</td><td>Meter changes (config or reset) take effect within the cache windows (AC-03, INF-05) without deploy or cache purge tooling beyond TTL expiry.</td></tr>
+  <tr><td>MT-13</td><td class="should">SHOULD</td><td><strong>First-party identity graph, as events:</strong> consent-based signals that tie identifiers to one person — newsletter/email click-through tokens, share-token redemptions (BP-05), CIAM logins on additional devices (US-08) — are recorded as identity <em>link events</em> extending the MT-03 merge. The decide-path union query spans all linked subjects: one person, one meter, across devices. Every link carries its cause (auditable); wrong links are corrected by compensating unlink events, never by mutation. Covert fingerprinting remains excluded (MT-07).</td></tr>
 </table>
 
 <h2>5. Fine-grained authorization (FGA)</h2>
