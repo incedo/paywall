@@ -9,6 +9,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import nl.incedo.paywall.accounts.AccountLinked
+import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
+import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.GrantId
 import nl.incedo.paywall.core.PlanId
@@ -85,6 +87,8 @@ class PostgresEventStoreTest {
             EntitlementRevoked(subject, SubscriptionId("sub-1")),
             GrantIssued(GrantId("g-1"), subject, ArticleId("a-1"), grantedBy = "day_pass", expiresAtEpochMs = 2L),
             GrantRevoked(GrantId("g-1"), subject, ArticleId("a-1")),
+            CepGateAdvised(subject, validUntilEpochMs = 3L),
+            CepGateAdviceWithdrawn(subject),
             AccountLinked(VisitorId("v-1"), UserId("u-roundtrip-${System.nanoTime()}")),
         )
         store.append(events, condition = null)

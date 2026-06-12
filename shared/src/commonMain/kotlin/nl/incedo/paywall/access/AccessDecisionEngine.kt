@@ -5,6 +5,7 @@ import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.SubjectId
 import nl.incedo.paywall.core.UserId
 import nl.incedo.paywall.core.VisitorId
+import nl.incedo.paywall.cep.CepAdviceDecision
 import nl.incedo.paywall.entitlements.EntitlementDecision
 import nl.incedo.paywall.grants.GrantDecision
 import nl.incedo.paywall.metering.MeterDecision
@@ -57,12 +58,12 @@ data class AccessRequest(
     val grant: GrantDecision,
     val meter: MeterDecision,
     /**
-     * PW-40 verdict retrieved from the CEP for the dynamic strategy. Propensity
-     * scoring and thresholds are marketing decisioning and live in the CEP
-     * (Doc 7 scope boundary) — the access layer only receives the outcome and
-     * applies the mechanical floor rule (PW-42) on top.
+     * PW-40 verdict for the dynamic strategy, rebuilt from CEP-published
+     * advice events (the CEP owns propensity scoring and thresholds; the
+     * access layer acts on its events and applies the mechanical floor
+     * rule PW-42 on top — no synchronous CEP call in the decide path).
      */
-    val cepGateAdvised: Boolean = false,
+    val cepAdvice: CepAdviceDecision = CepAdviceDecision(),
     val nowEpochMs: Long,
 )
 
@@ -126,7 +127,7 @@ object AccessDecisionEngine {
 
             is StrategyConfig.Dynamic -> {
                 val floorReached = !request.meter.hasCreditFor(article.id, strategy.floorLimit) // PW-42
-                if (request.cepGateAdvised || floorReached) {
+                if (request.cepAdvice.gateAdvised(request.nowEpochMs) || floorReached) {
                     AccessDecision.Gated(strategy, meterUsed = request.meter.used, meterLimit = strategy.floorLimit)
                 } else {
                     AccessDecision.Full(

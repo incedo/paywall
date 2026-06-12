@@ -13,6 +13,18 @@ data class DecideRequest(
     val tier: String,
 )
 
+/**
+ * Inbound integration payload: the CEP publishes gate advice as events.
+ * `gate = true` records [nl.incedo.paywall.cep.CepGateAdvised],
+ * `gate = false` records [nl.incedo.paywall.cep.CepGateAdviceWithdrawn].
+ */
+@Serializable
+data class CepAdviceEvent(
+    val subjectId: String,
+    val gate: Boolean,
+    val validUntilEpochMs: Long? = null,
+)
+
 @Serializable
 data class DecideResponse(
     /** "full" or "gate" — the premium body itself never travels with a gate decision (AC-01). */

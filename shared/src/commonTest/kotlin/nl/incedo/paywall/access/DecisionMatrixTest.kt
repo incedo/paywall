@@ -3,6 +3,8 @@ package nl.incedo.paywall.access
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import nl.incedo.paywall.cep.CepAdviceDecision
+import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.PlanId
 import nl.incedo.paywall.core.SubscriptionId
@@ -66,6 +68,13 @@ class DecisionMatrixTest {
         return decision
     }
 
+    /** CEP advice as it arrives in the store: a published, subject-tagged event. */
+    private fun cepAdvisedGate(state: VisitorState): CepAdviceDecision {
+        val decision = CepAdviceDecision()
+        decision.apply(CepGateAdvised(subject(state).subjectId, validUntilEpochMs = now + 60_000))
+        return decision
+    }
+
     /** Meter exhausted: 3 other articles already counted this period. */
     private fun exhaustedMeter(state: VisitorState): MeterDecision {
         val meter = MeterDecision(period)
@@ -84,7 +93,7 @@ class DecisionMatrixTest {
                 entitlement = entitlement(state),
                 grant = GrantDecision(ArticleId("a-1")),
                 meter = exhaustedMeter(state),
-                cepGateAdvised = true, // CEP verdict: gate → dynamic gates
+                cepAdvice = cepAdvisedGate(state), // ingested CEP event: gate → dynamic gates
                 nowEpochMs = now,
             ),
         )
@@ -179,8 +188,8 @@ class DecisionMatrixTest {
 
     @Test
     fun dynamicWithoutCepGateAdviceServesFullContent() {
-        // Propensity is evaluated in the CEP; without a gate verdict the
-        // access layer serves the article (and feeds the floor rule)
+        // Propensity is evaluated in the CEP; without an ingested gate-advice
+        // event the access layer serves the article (and feeds the floor rule)
         val decision = AccessDecisionEngine.decide(
             AccessRequest(
                 article = article(ContentTier.PREMIUM),
@@ -189,7 +198,6 @@ class DecisionMatrixTest {
                 entitlement = EntitlementDecision(),
                 grant = GrantDecision(ArticleId("a-1")),
                 meter = MeterDecision(period),
-                cepGateAdvised = false,
                 nowEpochMs = now,
             ),
         )
@@ -197,9 +205,29 @@ class DecisionMatrixTest {
     }
 
     @Test
+    fun expiredCepAdviceNoLongerGates() {
+        // The CEP bounds its verdicts; stale advice must not keep gating
+        val advice = CepAdviceDecision()
+        advice.apply(CepGateAdvised(subject(VisitorState.ANONYMOUS).subjectId, validUntilEpochMs = now - 1))
+        val decision = AccessDecisionEngine.decide(
+            AccessRequest(
+                article = article(ContentTier.PREMIUM),
+                subject = subject(VisitorState.ANONYMOUS),
+                strategy = StrategyConfig.Dynamic(floorLimit = 10),
+                entitlement = EntitlementDecision(),
+                grant = GrantDecision(ArticleId("a-1")),
+                meter = MeterDecision(period),
+                cepAdvice = advice,
+                nowEpochMs = now,
+            ),
+        )
+        assertIs<AccessDecision.Full>(decision)
+    }
+
+    @Test
     fun dynamicFloorRuleGatesEvenWithoutCepAdvice() {
         // PW-42: the gate appears at or before the Nth premium article — a
-        // mechanical access-layer rule, independent of the CEP verdict
+        // mechanical access-layer rule, independent of any CEP advice
         val state = VisitorState.ANONYMOUS
         val meter = MeterDecision(period)
         repeat(10) { i ->
@@ -213,7 +241,6 @@ class DecisionMatrixTest {
                 entitlement = EntitlementDecision(),
                 grant = GrantDecision(ArticleId("a-1")),
                 meter = meter,
-                cepGateAdvised = false,
                 nowEpochMs = now,
             ),
         )

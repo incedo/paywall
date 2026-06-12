@@ -19,11 +19,15 @@ import nl.incedo.paywall.access.Article
 import nl.incedo.paywall.access.ContentTier
 import nl.incedo.paywall.access.StrategyConfig
 import nl.incedo.paywall.access.Subject
+import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
+import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.ExperimentId
+import nl.incedo.paywall.core.SubjectId
 import nl.incedo.paywall.core.UserId
 import nl.incedo.paywall.core.VisitorId
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
+import nl.incedo.paywall.core.port.EventStore
 import nl.incedo.paywall.experiments.ExperimentDefinition
 import nl.incedo.paywall.experiments.Variant
 
@@ -64,10 +68,10 @@ fun main() {
         clock = { System.currentTimeMillis() },
         currentPeriod = ::currentPeriod,
     )
-    embeddedServer(CIO, port = 8080) { module(service) }.start(wait = true)
+    embeddedServer(CIO, port = 8080) { module(service, eventStore) }.start(wait = true)
 }
 
-fun Application.module(service: AccessService) {
+fun Application.module(service: AccessService, eventStore: EventStore) {
     install(ContentNegotiation) {
         json(Json { ignoreUnknownKeys = true })
     }
@@ -91,6 +95,23 @@ fun Application.module(service: AccessService) {
                 article = Article(ArticleId(request.articleId), tier),
             )
             call.respond(DecideResponse.from(outcome))
+        }
+        // Integration inbound: the CEP publishes gate advice as events; the
+        // access layer acts on them at decide time (no synchronous CEP call).
+        post("/api/v1/integration/cep-advice") {
+            val advice = call.receive<CepAdviceEvent>()
+            if (advice.subjectId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId must not be blank"))
+                return@post
+            }
+            val subjectId = SubjectId(advice.subjectId)
+            val event = if (advice.gate) {
+                CepGateAdvised(subjectId, advice.validUntilEpochMs)
+            } else {
+                CepGateAdviceWithdrawn(subjectId)
+            }
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to event::class.simpleName))
         }
     }
 }

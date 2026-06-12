@@ -21,13 +21,6 @@ class DecideApiTest {
 
     private val now = 1_750_000_000_000L
 
-    private fun testService() = AccessService(
-        eventStore = InMemoryEventStore(),
-        experiment = defaultExperiment,
-        clock = { now },
-        currentPeriod = { MeterPeriod("2026-06") },
-    )
-
     /** Find a visitor that EX-01 assigns to the wanted variant, so tests are deterministic. */
     private fun visitorIn(variant: String): String =
         (0 until 10_000).asSequence()
@@ -35,7 +28,14 @@ class DecideApiTest {
             .first { VariantAssigner.assign(VisitorId(it), defaultExperiment).name == variant }
 
     private fun apiTest(block: suspend (io.ktor.client.HttpClient) -> Unit) = testApplication {
-        application { module(testService()) }
+        val store = InMemoryEventStore()
+        val service = AccessService(
+            eventStore = store,
+            experiment = defaultExperiment,
+            clock = { now },
+            currentPeriod = { MeterPeriod("2026-06") },
+        )
+        application { module(service, store) }
         val client = createClient {
             install(ContentNegotiation) { json() }
         }
@@ -108,6 +108,43 @@ class DecideApiTest {
             }.body<DecideResponse>().variant
         }.toSet()
         assertEquals(1, variants.size)
+    }
+
+    @Test
+    fun cepPublishedAdviceGatesDynamicVisitor() = apiTest { client ->
+        val visitor = visitorIn("dynamic")
+        // Without CEP advice the dynamic strategy serves the article
+        val before: DecideResponse = client.post("/api/v1/decide") {
+            contentType(ContentType.Application.Json)
+            setBody(DecideRequest(visitorId = visitor, articleId = "a-1", tier = "premium"))
+        }.body()
+        assertEquals("full", before.access)
+
+        // The CEP publishes gate advice for this subject (PW-40 verdict)
+        val publish = client.post("/api/v1/integration/cep-advice") {
+            contentType(ContentType.Application.Json)
+            setBody(CepAdviceEvent(subjectId = "visitor:$visitor", gate = true, validUntilEpochMs = now + 60_000))
+        }
+        assertEquals(HttpStatusCode.Accepted, publish.status)
+
+        // The access layer acts on the ingested event: next request gates
+        val after: DecideResponse = client.post("/api/v1/decide") {
+            contentType(ContentType.Application.Json)
+            setBody(DecideRequest(visitorId = visitor, articleId = "a-2", tier = "premium"))
+        }.body()
+        assertEquals("gate", after.access)
+        assertEquals("dynamic", after.wallType)
+
+        // Withdrawal opens it up again
+        client.post("/api/v1/integration/cep-advice") {
+            contentType(ContentType.Application.Json)
+            setBody(CepAdviceEvent(subjectId = "visitor:$visitor", gate = false))
+        }
+        val withdrawn: DecideResponse = client.post("/api/v1/decide") {
+            contentType(ContentType.Application.Json)
+            setBody(DecideRequest(visitorId = visitor, articleId = "a-3", tier = "premium"))
+        }.body()
+        assertEquals("full", withdrawn.access)
     }
 
     @Test

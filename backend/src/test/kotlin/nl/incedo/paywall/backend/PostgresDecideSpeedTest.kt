@@ -47,7 +47,7 @@ class PostgresDecideSpeedTest {
             clock = { System.currentTimeMillis() },
             currentPeriod = { MeterPeriod("2026-06") },
         )
-        val server = embeddedServer(CIO, port = 0) { module(service) }.start(wait = false)
+        val server = embeddedServer(CIO, port = 0) { module(service, store) }.start(wait = false)
         val port = server.engine.resolvedConnectors().first().port
         val client = HttpClient(ClientCIO) {
             install(ContentNegotiation) { json() }

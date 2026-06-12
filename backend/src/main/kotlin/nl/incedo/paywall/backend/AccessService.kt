@@ -4,8 +4,8 @@ import nl.incedo.paywall.access.AccessDecision
 import nl.incedo.paywall.access.AccessDecisionEngine
 import nl.incedo.paywall.access.AccessRequest
 import nl.incedo.paywall.access.Article
-import nl.incedo.paywall.access.StrategyConfig
 import nl.incedo.paywall.access.Subject
+import nl.incedo.paywall.cep.CepAdviceDecision
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.SubjectId
 import nl.incedo.paywall.core.port.EventQuery
@@ -31,13 +31,6 @@ class AccessService(
     private val experiment: ExperimentDefinition,
     private val clock: () -> Long,
     private val currentPeriod: () -> MeterPeriod,
-    /**
-     * Outbound port to the CEP: does marketing decisioning advise a gate for
-     * this subject/article? Propensity scoring and thresholds live in the CEP
-     * (Doc 7 scope boundary). Default: no advice — the floor rule (PW-42)
-     * remains the only dynamic gate trigger.
-     */
-    private val cepGateAdvice: suspend (Subject, Article) -> Boolean = { _, _ -> false },
 ) {
 
     data class Outcome(val decision: AccessDecision, val variant: Variant, val meterUsedAfter: Int)
@@ -59,14 +52,9 @@ class AccessService(
         val meter = MeterDecision(period).also { it.applyAll(events) }
         val entitlement = EntitlementDecision().also { it.applyAll(events) }
         val grant = GrantDecision(article.id).also { it.applyAll(events) }
-
-        // The CEP is consulted only when the variant's strategy is dynamic —
-        // every other strategy is purely mechanical (no marketing decisioning).
-        val cepGateAdvised = if (variant.strategy is StrategyConfig.Dynamic) {
-            cepGateAdvice(subject, article)
-        } else {
-            false
-        }
+        // CEP advice arrives as published events (same union query — they are
+        // subject-tagged); the access layer acts on them, it never calls the CEP.
+        val cepAdvice = CepAdviceDecision().also { it.applyAll(events) }
 
         val decision = AccessDecisionEngine.decide(
             AccessRequest(
@@ -76,7 +64,7 @@ class AccessService(
                 entitlement = entitlement,
                 grant = grant,
                 meter = meter,
-                cepGateAdvised = cepGateAdvised,
+                cepAdvice = cepAdvice,
                 nowEpochMs = now,
             ),
         )

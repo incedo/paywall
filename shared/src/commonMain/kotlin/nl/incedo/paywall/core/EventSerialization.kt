@@ -5,6 +5,8 @@ import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
 import nl.incedo.paywall.accounts.AccountLinked
+import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
+import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.entitlements.EntitlementGranted
 import nl.incedo.paywall.entitlements.EntitlementRevoked
 import nl.incedo.paywall.grants.GrantIssued
@@ -27,6 +29,8 @@ val paywallSerializersModule = SerializersModule {
         subclass(GrantIssued::class)
         subclass(GrantRevoked::class)
         subclass(AccountLinked::class)
+        subclass(CepGateAdvised::class)
+        subclass(CepGateAdviceWithdrawn::class)
     }
 }
 
