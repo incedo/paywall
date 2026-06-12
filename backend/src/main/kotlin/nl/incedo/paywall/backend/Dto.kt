@@ -11,8 +11,6 @@ data class DecideRequest(
     val articleId: String,
     /** "free" or "premium" (PW-01). */
     val tier: String,
-    /** PW-40/41: phase-1 heuristic score supplied by the caller; defaults to 0. */
-    val propensityScore: Double = 0.0,
 )
 
 @Serializable

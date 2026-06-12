@@ -19,8 +19,8 @@ import nl.incedo.paywall.metering.MeterPeriod
  * NFR-12: the decision matrix — each paywall type × (anonymous, registered,
  * subscriber, expired) × (free, premium). 4 × 4 × 2 = 32 cases, exercised
  * exhaustively below. Gating states are chosen deterministically: the meter
- * is exhausted and the dynamic score is at the threshold, so every
- * non-entitled premium case must gate.
+ * is exhausted and the CEP advises a gate, so every non-entitled premium
+ * case must gate.
  */
 class DecisionMatrixTest {
 
@@ -34,7 +34,7 @@ class DecisionMatrixTest {
         "hard" to StrategyConfig.Hard,
         "metered" to StrategyConfig.Metered(limit = 3),
         "freemium" to StrategyConfig.Freemium,
-        "dynamic" to StrategyConfig.Dynamic(threshold = 0.5, floorLimit = 10),
+        "dynamic" to StrategyConfig.Dynamic(floorLimit = 10),
     )
 
     private fun subject(state: VisitorState) = when (state) {
@@ -84,7 +84,7 @@ class DecisionMatrixTest {
                 entitlement = entitlement(state),
                 grant = GrantDecision(ArticleId("a-1")),
                 meter = exhaustedMeter(state),
-                propensityScore = 0.5, // at threshold → dynamic gates
+                cepGateAdvised = true, // CEP verdict: gate → dynamic gates
                 nowEpochMs = now,
             ),
         )
@@ -178,25 +178,28 @@ class DecisionMatrixTest {
     }
 
     @Test
-    fun dynamicBelowThresholdServesFullContent() {
+    fun dynamicWithoutCepGateAdviceServesFullContent() {
+        // Propensity is evaluated in the CEP; without a gate verdict the
+        // access layer serves the article (and feeds the floor rule)
         val decision = AccessDecisionEngine.decide(
             AccessRequest(
                 article = article(ContentTier.PREMIUM),
                 subject = subject(VisitorState.ANONYMOUS),
-                strategy = StrategyConfig.Dynamic(threshold = 0.5, floorLimit = 10),
+                strategy = StrategyConfig.Dynamic(floorLimit = 10),
                 entitlement = EntitlementDecision(),
                 grant = GrantDecision(ArticleId("a-1")),
                 meter = MeterDecision(period),
-                propensityScore = 0.49,
+                cepGateAdvised = false,
                 nowEpochMs = now,
             ),
         )
-        assertEquals(AccessDecision.Full(AccessReason.BELOW_THRESHOLD, countsTowardMeter = true), decision)
+        assertEquals(AccessDecision.Full(AccessReason.DYNAMIC_OPEN, countsTowardMeter = true), decision)
     }
 
     @Test
-    fun dynamicFloorRuleGatesRegardlessOfScore() {
-        // PW-42: the gate appears at or before the Nth premium article even for low scores
+    fun dynamicFloorRuleGatesEvenWithoutCepAdvice() {
+        // PW-42: the gate appears at or before the Nth premium article — a
+        // mechanical access-layer rule, independent of the CEP verdict
         val state = VisitorState.ANONYMOUS
         val meter = MeterDecision(period)
         repeat(10) { i ->
@@ -206,11 +209,11 @@ class DecisionMatrixTest {
             AccessRequest(
                 article = article(ContentTier.PREMIUM),
                 subject = subject(state),
-                strategy = StrategyConfig.Dynamic(threshold = 0.99, floorLimit = 10),
+                strategy = StrategyConfig.Dynamic(floorLimit = 10),
                 entitlement = EntitlementDecision(),
                 grant = GrantDecision(ArticleId("a-1")),
                 meter = meter,
-                propensityScore = 0.0,
+                cepGateAdvised = false,
                 nowEpochMs = now,
             ),
         )

@@ -43,8 +43,6 @@ sealed interface StrategyConfig {
 
     @Serializable
     data class Dynamic(
-        /** PW-40: gate when score ≥ threshold. */
-        val threshold: Double,
         /** PW-42: floor rule — gate always appears at or before the Nth premium article per month (default 10). */
         val floorLimit: Int = 10,
     ) : StrategyConfig
@@ -58,12 +56,17 @@ data class AccessRequest(
     val entitlement: EntitlementDecision,
     val grant: GrantDecision,
     val meter: MeterDecision,
-    /** PW-40/41: propensity score for the dynamic strategy (rule-based heuristic in phase 1). */
-    val propensityScore: Double = 0.0,
+    /**
+     * PW-40 verdict retrieved from the CEP for the dynamic strategy. Propensity
+     * scoring and thresholds are marketing decisioning and live in the CEP
+     * (Doc 7 scope boundary) — the access layer only receives the outcome and
+     * applies the mechanical floor rule (PW-42) on top.
+     */
+    val cepGateAdvised: Boolean = false,
     val nowEpochMs: Long,
 )
 
-enum class AccessReason { FREE_CONTENT, ENTITLED, GRANT, METER_CREDIT, BELOW_THRESHOLD }
+enum class AccessReason { FREE_CONTENT, ENTITLED, GRANT, METER_CREDIT, DYNAMIC_OPEN }
 
 sealed interface AccessDecision {
     /**
@@ -123,11 +126,11 @@ object AccessDecisionEngine {
 
             is StrategyConfig.Dynamic -> {
                 val floorReached = !request.meter.hasCreditFor(article.id, strategy.floorLimit) // PW-42
-                if (request.propensityScore >= strategy.threshold || floorReached) {
+                if (request.cepGateAdvised || floorReached) {
                     AccessDecision.Gated(strategy, meterUsed = request.meter.used, meterLimit = strategy.floorLimit)
                 } else {
                     AccessDecision.Full(
-                        reason = AccessReason.BELOW_THRESHOLD,
+                        reason = AccessReason.DYNAMIC_OPEN,
                         countsTowardMeter = !request.meter.isCounted(article.id), // feeds the floor rule
                     )
                 }

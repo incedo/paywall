@@ -77,7 +77,7 @@ val demoWalls = listOf(
         updated = "28 May",
     ),
     WallSummary(
-        name = "Dynamic — propensity gate",
+        name = "Dynamic — CEP gate",
         type = WallType.Dynamic,
         channels = setOf(Channel.Web),
         status = WallStatus.Paused,

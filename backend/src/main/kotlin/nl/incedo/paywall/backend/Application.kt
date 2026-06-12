@@ -38,7 +38,7 @@ val defaultExperiment = ExperimentDefinition(
         Variant("hard", StrategyConfig.Hard, weight = 25),
         Variant("metered", StrategyConfig.Metered(limit = 5), weight = 25),
         Variant("freemium", StrategyConfig.Freemium, weight = 25),
-        Variant("dynamic", StrategyConfig.Dynamic(threshold = 0.5, floorLimit = 10), weight = 25),
+        Variant("dynamic", StrategyConfig.Dynamic(floorLimit = 10), weight = 25),
     ),
 )
 
@@ -89,7 +89,6 @@ fun Application.module(service: AccessService) {
             val outcome = service.decide(
                 subject = Subject(VisitorId(request.visitorId), request.userId?.let(::UserId)),
                 article = Article(ArticleId(request.articleId), tier),
-                propensityScore = request.propensityScore,
             )
             call.respond(DecideResponse.from(outcome))
         }

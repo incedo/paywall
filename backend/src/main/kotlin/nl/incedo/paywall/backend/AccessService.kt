@@ -4,6 +4,7 @@ import nl.incedo.paywall.access.AccessDecision
 import nl.incedo.paywall.access.AccessDecisionEngine
 import nl.incedo.paywall.access.AccessRequest
 import nl.incedo.paywall.access.Article
+import nl.incedo.paywall.access.StrategyConfig
 import nl.incedo.paywall.access.Subject
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.SubjectId
@@ -30,11 +31,18 @@ class AccessService(
     private val experiment: ExperimentDefinition,
     private val clock: () -> Long,
     private val currentPeriod: () -> MeterPeriod,
+    /**
+     * Outbound port to the CEP: does marketing decisioning advise a gate for
+     * this subject/article? Propensity scoring and thresholds live in the CEP
+     * (Doc 7 scope boundary). Default: no advice — the floor rule (PW-42)
+     * remains the only dynamic gate trigger.
+     */
+    private val cepGateAdvice: suspend (Subject, Article) -> Boolean = { _, _ -> false },
 ) {
 
     data class Outcome(val decision: AccessDecision, val variant: Variant, val meterUsedAfter: Int)
 
-    suspend fun decide(subject: Subject, article: Article, propensityScore: Double = 0.0): Outcome {
+    suspend fun decide(subject: Subject, article: Article): Outcome {
         val variant = VariantAssigner.assign(subject.visitorId, experiment)
         val period = currentPeriod()
         val now = clock()
@@ -52,6 +60,14 @@ class AccessService(
         val entitlement = EntitlementDecision().also { it.applyAll(events) }
         val grant = GrantDecision(article.id).also { it.applyAll(events) }
 
+        // The CEP is consulted only when the variant's strategy is dynamic —
+        // every other strategy is purely mechanical (no marketing decisioning).
+        val cepGateAdvised = if (variant.strategy is StrategyConfig.Dynamic) {
+            cepGateAdvice(subject, article)
+        } else {
+            false
+        }
+
         val decision = AccessDecisionEngine.decide(
             AccessRequest(
                 article = article,
@@ -60,7 +76,7 @@ class AccessService(
                 entitlement = entitlement,
                 grant = grant,
                 meter = meter,
-                propensityScore = propensityScore,
+                cepGateAdvised = cepGateAdvised,
                 nowEpochMs = now,
             ),
         )
