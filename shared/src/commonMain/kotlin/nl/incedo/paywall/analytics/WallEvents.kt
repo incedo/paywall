@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.DomainEvent
 import nl.incedo.paywall.core.SubjectId
+import nl.incedo.paywall.core.fnv1a32
 
 /**
  * The minimum funnel event set (AN-02). Server-observed events (wall_shown,
@@ -46,7 +47,20 @@ data class WallEventRecorded(
     val articleId: ArticleId? = null,
     val context: Map<String, String> = emptyMap(),
     override val tags: Set<String> = setOf(
-        "wall-event",
+        wallEventShardTag(subjectId),
         "subject:${subjectId.value}",
     ),
 ) : DomainEvent
+
+/**
+ * The wall-event stream is sharded by subject hash (DM-05/06): a single
+ * global tag would re-serialize every logging append on one advisory lock.
+ * Stats/export readers query the union of all shard tags.
+ */
+const val WALL_EVENT_SHARDS = 16
+
+fun wallEventShardTag(subjectId: SubjectId): String =
+    "wall-event:s${(fnv1a32(subjectId.value).toLong() and 0xFFFFFFFFL) % WALL_EVENT_SHARDS}"
+
+fun wallEventShardTags(): Set<String> =
+    (0 until WALL_EVENT_SHARDS).map { "wall-event:s$it" }.toSet()

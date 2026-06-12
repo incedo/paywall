@@ -22,6 +22,7 @@ import nl.incedo.paywall.access.Subject
 import nl.incedo.paywall.accounts.IdentityLinked
 import nl.incedo.paywall.accounts.IdentityUnlinked
 import nl.incedo.paywall.analytics.VariantStatsProjection
+import nl.incedo.paywall.analytics.wallEventShardTags
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
@@ -167,7 +168,7 @@ fun Application.module(service: AccessService, eventStore: EventStore) {
         // Experiment dashboard numbers (AN-10): per-variant funnel stats,
         // rebuilt from the wall-event stream (projection — DM-04/DM-08).
         get("/api/v1/stats") {
-            val events = eventStore.query(EventQuery(setOf("wall-event"))).events
+            val events = eventStore.query(EventQuery(wallEventShardTags())).events
             val projection = VariantStatsProjection().also { it.applyAll(events) }
             val response = projection.stats().map { (variant, s) ->
                 VariantStatsResponse(

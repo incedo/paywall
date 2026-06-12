@@ -15,6 +15,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
+import nl.incedo.paywall.analytics.wallEventShardTags
 import nl.incedo.paywall.core.VisitorId
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
 import nl.incedo.paywall.core.port.EventQuery
@@ -56,7 +57,7 @@ class AnalyticsApiTest {
     fun gateLogsWallShownWithDecisionContext() = apiTest { client, store ->
         decide(client, visitorIn("hard"), "a-1")
 
-        val events = store.query(EventQuery(setOf("wall-event"))).events.filterIsInstance<WallEventRecorded>()
+        val events = store.query(EventQuery(wallEventShardTags())).events.filterIsInstance<WallEventRecorded>()
         assertEquals(1, events.size)
         val shown = events.single()
         assertEquals(WallEventType.WALL_SHOWN, shown.eventType) // AN-02
@@ -69,7 +70,7 @@ class AnalyticsApiTest {
     fun countedReadLogsArticleRead() = apiTest { client, store ->
         decide(client, visitorIn("metered"), "a-1")
 
-        val events = store.query(EventQuery(setOf("wall-event"))).events.filterIsInstance<WallEventRecorded>()
+        val events = store.query(EventQuery(wallEventShardTags())).events.filterIsInstance<WallEventRecorded>()
         assertEquals(listOf(WallEventType.ARTICLE_READ), events.map { it.eventType }) // MT-04: a real read, no wall
     }
 
@@ -82,7 +83,7 @@ class AnalyticsApiTest {
         }
         assertEquals(HttpStatusCode.Accepted, response.status)
 
-        val event = store.query(EventQuery(setOf("wall-event"))).events
+        val event = store.query(EventQuery(wallEventShardTags())).events
             .filterIsInstance<WallEventRecorded>().single()
         assertEquals(WallEventType.GATE_CTA_CLICK, event.eventType)
         assertEquals("metered", event.variant, "variant resolved server-side (EX-01), not client-supplied")

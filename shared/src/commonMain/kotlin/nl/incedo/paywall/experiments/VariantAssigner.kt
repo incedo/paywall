@@ -3,6 +3,7 @@ package nl.incedo.paywall.experiments
 import kotlinx.serialization.Serializable
 import nl.incedo.paywall.core.ExperimentId
 import nl.incedo.paywall.core.VisitorId
+import nl.incedo.paywall.core.fnv1a32
 import nl.incedo.paywall.access.StrategyConfig
 
 /**
@@ -44,14 +45,5 @@ object VariantAssigner {
             if (bucket < cumulative) return variant
         }
         return experiment.variants.last()
-    }
-
-    private fun fnv1a32(input: String): Int {
-        var hash = -0x7ee3623b // 0x811C9DC5
-        for (byte in input.encodeToByteArray()) {
-            hash = hash xor (byte.toInt() and 0xFF)
-            hash *= 0x01000193
-        }
-        return hash
     }
 }
