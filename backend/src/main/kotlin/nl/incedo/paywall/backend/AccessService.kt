@@ -5,6 +5,7 @@ import nl.incedo.paywall.access.AccessDecisionEngine
 import nl.incedo.paywall.access.AccessRequest
 import nl.incedo.paywall.access.Article
 import nl.incedo.paywall.access.Subject
+import nl.incedo.paywall.accounts.IdentityLinkDecision
 import nl.incedo.paywall.cep.CepAdviceDecision
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.SubjectId
@@ -43,19 +44,22 @@ class AccessService(
 
         // One union query covers the subject's events: composite meter tags
         // (DM-05 — only the current period) for visitor + linked user (MT-03),
-        // subject tags for entitlements/CEP advice, and the article tag for grants.
-        val subjectIds = buildList {
+        // subject tags for entitlements/CEP advice/identity links, and the
+        // article tag for grants.
+        val initialSubjects = buildSet {
             add(SubjectId.of(subject.visitorId))
             subject.userId?.let { add(SubjectId.of(it)) }
         }
-        val queryTags = buildSet {
-            subjectIds.forEach { id ->
-                add(meterTag(id, period))
-                add("subject:${id.value}")
-            }
-            add("article:${article.id.value}")
+        var events = eventStore.query(EventQuery(queryTags(initialSubjects, article, period))).events
+
+        // MT-13: identity link events expand the subject set — one person, one
+        // meter, across devices. Only when links exist does this cost a second
+        // (equally bounded) query for the newly discovered subjects.
+        val links = IdentityLinkDecision().also { it.applyAll(events) }
+        val allSubjects = links.linkedSubjects(initialSubjects)
+        if (allSubjects != initialSubjects) {
+            events = eventStore.query(EventQuery(queryTags(allSubjects, article, period))).events
         }
-        val events = eventStore.query(EventQuery(queryTags)).events
 
         val meter = MeterDecision(period).also { it.applyAll(events) }
         val entitlement = EntitlementDecision().also { it.applyAll(events) }
@@ -85,4 +89,13 @@ class AccessService(
         }
         return Outcome(decision, variant, usedAfter)
     }
+
+    private fun queryTags(subjects: Set<SubjectId>, article: Article, period: MeterPeriod): Set<String> =
+        buildSet {
+            subjects.forEach { id ->
+                add(meterTag(id, period))
+                add("subject:${id.value}")
+            }
+            add("article:${article.id.value}")
+        }
 }

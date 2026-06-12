@@ -19,6 +19,8 @@ import nl.incedo.paywall.access.Article
 import nl.incedo.paywall.access.ContentTier
 import nl.incedo.paywall.access.StrategyConfig
 import nl.incedo.paywall.access.Subject
+import nl.incedo.paywall.accounts.IdentityLinked
+import nl.incedo.paywall.accounts.IdentityUnlinked
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.core.ArticleId
@@ -109,6 +111,22 @@ fun Application.module(service: AccessService, eventStore: EventStore) {
                 CepGateAdvised(subjectId, advice.validUntilEpochMs)
             } else {
                 CepGateAdviceWithdrawn(subjectId)
+            }
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to event::class.simpleName))
+        }
+        // Integration inbound (MT-13): consent-based identity link signals —
+        // login (US-04), newsletter tokens, share tokens (BP-05), extra devices.
+        post("/api/v1/integration/identity-link") {
+            val request = call.receive<IdentityLinkRequest>()
+            if (request.subjectA.isBlank() || request.subjectB.isBlank() || request.cause.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectA, subjectB and cause are required"))
+                return@post
+            }
+            val event = if (request.link) {
+                IdentityLinked(SubjectId(request.subjectA), SubjectId(request.subjectB), request.cause)
+            } else {
+                IdentityUnlinked(SubjectId(request.subjectA), SubjectId(request.subjectB), request.cause)
             }
             eventStore.append(listOf(event), condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to event::class.simpleName))

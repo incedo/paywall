@@ -25,6 +25,19 @@ data class CepAdviceEvent(
     val validUntilEpochMs: Long? = null,
 )
 
+/**
+ * Inbound integration payload (MT-13): a consent-based identity link signal.
+ * `link = false` records a compensating unlink (support correction).
+ */
+@Serializable
+data class IdentityLinkRequest(
+    val subjectA: String,
+    val subjectB: String,
+    /** e.g. "login", "newsletter_token", "share_token", "device_login" */
+    val cause: String,
+    val link: Boolean = true,
+)
+
 @Serializable
 data class DecideResponse(
     /** "full" or "gate" — the premium body itself never travels with a gate decision (AC-01). */

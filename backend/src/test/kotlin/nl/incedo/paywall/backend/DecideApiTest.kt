@@ -148,6 +148,51 @@ class DecideApiTest {
     }
 
     @Test
+    fun linkedIdentitiesShareOneMeter() = apiTest { client ->
+        // MT-13: one person, one meter, across devices — find two distinct
+        // visitors that both land in the metered variant (EX-01 is per visitor)
+        val metered = (0 until 10_000).asSequence()
+            .map { "linked-visitor-$it" }
+            .filter { VariantAssigner.assign(VisitorId(it), defaultExperiment).name == "metered" }
+            .take(2).toList()
+        val (deviceA, deviceB) = metered
+
+        // Device A exhausts the meter (limit 5)
+        for (i in 1..5) {
+            client.post("/api/v1/decide") {
+                contentType(ContentType.Application.Json)
+                setBody(DecideRequest(visitorId = deviceA, articleId = "a-$i", tier = "premium"))
+            }
+        }
+        // Device B, unlinked: fresh meter, reads fine
+        val unlinked: DecideResponse = client.post("/api/v1/decide") {
+            contentType(ContentType.Application.Json)
+            setBody(DecideRequest(visitorId = deviceB, articleId = "a-9", tier = "premium"))
+        }.body()
+        assertEquals("full", unlinked.access)
+
+        // Newsletter click-through links both devices to the same person
+        val link = client.post("/api/v1/integration/identity-link") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                IdentityLinkRequest(
+                    subjectA = "visitor:$deviceA",
+                    subjectB = "visitor:$deviceB",
+                    cause = "newsletter_token",
+                ),
+            )
+        }
+        assertEquals(HttpStatusCode.Accepted, link.status)
+
+        // Device B now shares the exhausted meter (5 from A + 1 own = over limit)
+        val linked: DecideResponse = client.post("/api/v1/decide") {
+            contentType(ContentType.Application.Json)
+            setBody(DecideRequest(visitorId = deviceB, articleId = "a-new", tier = "premium"))
+        }.body()
+        assertEquals("gate", linked.access, "linked person already used ${linked.meterUsed} of ${linked.meterLimit}")
+    }
+
+    @Test
     fun invalidTierIsRejected() = apiTest { client ->
         val response = client.post("/api/v1/decide") {
             contentType(ContentType.Application.Json)
