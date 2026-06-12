@@ -29,7 +29,7 @@ Tests: `./gradlew :shared:jvmTest` — includes the **NFR-12 decision matrix** (
 
 ## What's in `composeApp/`
 
-A working Compose Multiplatform scaffold (Kotlin 2.2.21, Compose Multiplatform 1.9.3) with targets `wasmJs` (web) and `jvm` (desktop):
+A working Compose Multiplatform scaffold (Kotlin 2.4.0, Compose Multiplatform 1.11.1) with targets `wasmJs` (web) and `jvm` (desktop):
 
 - `theme/CrmTheme.kt` — 1:1 Compose port of the design-system tokens (colors light/dark, typography, spacing, shapes, borders). Components read tokens only; hard-coded hex/dp is banned per the design system.
 - `ui/Components.kt` — atoms: buttons, card, tag, divider, segmented toggle, usage meter, text field, avatar.
