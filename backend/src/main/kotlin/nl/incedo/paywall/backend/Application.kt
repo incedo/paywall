@@ -27,6 +27,7 @@ import nl.incedo.paywall.analytics.wallEventShardTags
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.backend.auth.CiamJwtValidator
+import nl.incedo.paywall.backend.content.ArticleRepository
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.core.ArticleId
@@ -117,6 +118,7 @@ fun Application.module(
     eventStore: EventStore,
     /** Null = no CIAM configured: every request is anonymous (AC-07 fallback). */
     jwtValidator: CiamJwtValidator? = null,
+    articles: ArticleRepository = ArticleRepository(),
 ) {
     install(ContentNegotiation) {
         json(Json { ignoreUnknownKeys = true })
@@ -145,6 +147,51 @@ fun Application.module(
                 channel = request.channel,
             )
             call.respond(DecideResponse.from(outcome))
+        }
+        // The consumer endpoint (AC-04: same rules as any page). The premium
+        // body is never present in a gated response (AC-01/BP-01); the teaser
+        // is generated server-side (AC-05/PW-02).
+        get("/api/v1/articles/{id}") {
+            val articleId = call.parameters["id"]?.takeIf { it.isNotBlank() }
+            val visitorId = call.request.headers["X-Visitor-Id"] ?: call.request.queryParameters["visitorId"]
+            if (articleId == null || visitorId.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "article id and visitor id are required"))
+                return@get
+            }
+            val stored = articles.find(ArticleId(articleId))
+            if (stored == null) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "unknown article"))
+                return@get
+            }
+            val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
+            val outcome = service.decide(
+                subject = Subject(VisitorId(visitorId), userId),
+                article = Article(stored.id, stored.tier),
+            )
+            val response = when (val decision = outcome.decision) {
+                is nl.incedo.paywall.access.AccessDecision.Full -> ArticleResponse(
+                    id = stored.id.value,
+                    title = stored.title,
+                    tier = stored.tier.name.lowercase(),
+                    access = "full",
+                    body = stored.body,
+                    meterUsed = outcome.meterUsedAfter,
+                )
+                is nl.incedo.paywall.access.AccessDecision.Gated -> ArticleResponse(
+                    id = stored.id.value,
+                    title = stored.title,
+                    tier = stored.tier.name.lowercase(),
+                    access = "gate",
+                    teaser = ArticleRepository.teaserOf(stored),
+                    gate = GateInfo(
+                        wallType = outcome.variant.name,
+                        variant = outcome.variant.name,
+                        meterUsed = decision.meterUsed,
+                        meterLimit = decision.meterLimit,
+                    ),
+                )
+            }
+            call.respond(response)
         }
         // Integration inbound: the CEP publishes gate advice as events; the
         // access layer acts on them at decide time (no synchronous CEP call).

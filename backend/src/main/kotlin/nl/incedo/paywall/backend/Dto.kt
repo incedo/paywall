@@ -31,6 +31,31 @@ data class ClientEventRequest(
     val context: Map<String, String> = emptyMap(),
 )
 
+/**
+ * Article rendering (AC-01/BP-01): for an unentitled request the premium
+ * body is ABSENT — not hidden. The teaser is server-generated (AC-05).
+ */
+@Serializable
+data class ArticleResponse(
+    val id: String,
+    val title: String,
+    val tier: String,
+    /** "full" or "gate". */
+    val access: String,
+    val body: String? = null,
+    val teaser: String? = null,
+    val gate: GateInfo? = null,
+    val meterUsed: Int? = null,
+)
+
+@Serializable
+data class GateInfo(
+    val wallType: String,
+    val variant: String,
+    val meterUsed: Int? = null,
+    val meterLimit: Int? = null,
+)
+
 @Serializable
 data class VariantStatsResponse(
     val variant: String,
