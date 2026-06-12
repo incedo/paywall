@@ -1,7 +1,7 @@
 # Testing Strategy
 
 **Status**: AGREED
-**Last Updated**: 2026-04-16
+**Last Updated**: 2026-06-12
 **Depends On**: architecture/module-structure.md, architecture/tech-stack.md, architecture/design-system.md
 
 ---
@@ -56,12 +56,13 @@ The Component Workbench sits between BDD and E2E — it tests UI components in i
 
 ### Conventions
 
-- **One test class per production class**: `ContactDecisionModel` → `ContactDecisionModelTest`
-- **Test method naming**: `fun testBR1_rejectsBlankFirstName()`, `fun testCreateContact_emitsContactCreatedEvent()`
+- **One test class per production class**: `MeterLimitDecision` → `MeterLimitDecisionTest`
+- **Test method naming**: `fun testBR1_rejectsBlankWallName()`, `fun testPublishWall_emitsWallPublishedEvent()`
 - **Use InMemoryEventStore** for command handler tests — no real DB
 - **Use InMemoryReadModelStore** for query handler tests
 - **Arrange-Act-Assert** pattern, no mocking frameworks — prefer simple fakes
 - **Each business rule (BR-N)** gets at least one dedicated test
+- **The decision matrix (NFR-12)** is exercised at the unit layer first: `MeterLimitDecision` and the access-decision logic each get one test per (paywall type × visitor state × content tier) cell — minimum 32 cases. `MeterIncremented` is the canonical concurrency example: two concurrent increments at `limit - 1` must result in exactly one accepted command (DCB append condition rejects the second).
 
 ### Gradle Command
 ```bash
@@ -89,7 +90,7 @@ The Component Workbench sits between BDD and E2E — it tests UI components in i
 └─────────────────┘                                     └─────────────────┘
 ```
 
-1. **Consumer side** (frontend tests): Define expectations — "when I POST to /api/v1/contacts with this body, I expect 201 with this shape"
+1. **Consumer side** (frontend tests): Define expectations — "when I POST to /api/v1/walls with this body, I expect 201 with this shape"
 2. **Contract artifact**: Generated pact file or OpenAPI spec
 3. **Producer side** (backend tests): Verify the real API matches the contract
 
@@ -97,11 +98,12 @@ The Component Workbench sits between BDD and E2E — it tests UI components in i
 
 | Contract | Consumer Expects | Producer Verifies |
 |----------|-----------------|-------------------|
-| Create Contact | POST /api/v1/contacts → 201 `{ contactId }` | Endpoint returns correct shape |
-| Create Contact (invalid) | POST /api/v1/contacts → 400 `{ error }` | Error shape matches |
-| List Contacts | GET /api/v1/contacts → 200 `{ data, pagination }` | Pagination shape matches |
-| Get Contact | GET /api/v1/contacts/{id} → 200 `ContactView` | All fields present |
-| Get Contact (missing) | GET /api/v1/contacts/{id} → 404 `{ error }` | 404 error shape matches |
+| Publish Wall | POST /api/v1/walls → 201 `{ wallId }` | Endpoint returns correct shape |
+| Publish Wall (invalid) | POST /api/v1/walls → 400 `{ error }` | Error shape matches |
+| List Walls | GET /api/v1/walls → 200 `{ data, pagination }` | Pagination shape matches |
+| Get Wall | GET /api/v1/walls/{id} → 200 `WallView` | All fields present |
+| Get Wall (missing) | GET /api/v1/walls/{id} → 404 `{ error }` | 404 error shape matches |
+| Access Decision | POST /api/v1/decide → 200 `{ decision, variant, meter }` | Decision shape matches (API-05) |
 | (repeat for each entity and endpoint) | | |
 
 ### Additional Contract Checks
@@ -137,20 +139,20 @@ The Component Workbench sits between BDD and E2E — it tests UI components in i
 
 ```
 specs/features/                          # Gherkin .feature files (co-located with specs)
-  contacts.feature
-  companies.feature
-  deals.feature
-  activities.feature
+  walls.feature
+  metering.feature
+  experiments.feature
+  subscriptions.feature
   auth.feature
-  pipeline.feature                       # Cross-entity flow: deal through pipeline
+  decision-matrix.feature                # Cross-entity flow: paywall type × visitor state × content tier (NFR-12)
 
-backend/src/test/kotlin/crm/backend/
+backend/src/test/kotlin/nl/incedo/paywall/backend/
   bdd/
     steps/
-      ContactSteps.kt                   # Step definitions for contact scenarios
-      CompanySteps.kt
-      DealSteps.kt
-      ActivitySteps.kt
+      WallSteps.kt                      # Step definitions for wall scenarios
+      MeteringSteps.kt
+      ExperimentSteps.kt
+      SubscriptionSteps.kt
       AuthSteps.kt
       CommonSteps.kt                    # Shared steps (authentication, assertions)
     CucumberRunner.kt                   # JUnit5 Cucumber runner
@@ -160,44 +162,42 @@ backend/src/test/kotlin/crm/backend/
 ### Example Feature File
 
 ```gherkin
-# specs/features/contacts.feature
+# specs/features/metering.feature
 
-Feature: Contact Management
-  As a CRM user
-  I want to manage contacts
-  So that I can track relationships with people
+Feature: Article Metering
+  As a media company
+  I want to meter premium article reads per visitor
+  So that the metered wall gates at the configured free limit
 
   Background:
-    Given I am authenticated as an "ADMIN" user
+    Given the metered wall is configured with a monthly limit of 5
 
-  Scenario: Create a new contact
-    When I create a contact with:
-      | firstName | lastName | email              |
-      | John      | Doe      | john@example.com   |
-    Then the response status is 201
-    And the response contains a "contactId"
+  Scenario: Reading a premium article increments the meter
+    Given an anonymous visitor with 2 articles read this month
+    When the visitor opens a premium article
+    Then the response status is 200
+    And a "MeterIncremented" event is recorded
+    And the visitor's meter shows 3 of 5
 
-  Scenario: Cannot create contact with duplicate email
-    Given a contact exists with email "jane@example.com"
-    When I create a contact with:
-      | firstName | lastName | email              |
-      | Another   | Person   | jane@example.com   |
-    Then the response status is 409
-    And the error code is "UNIQUENESS_VIOLATION"
+  Scenario: Cannot read past the monthly free limit
+    Given an anonymous visitor with 5 articles read this month
+    When the visitor opens a premium article
+    Then the response status is 402
+    And the error code is "METER_LIMIT_REACHED"
+    And a "WallShown" event is recorded
 
-  Scenario: List contacts with pagination
-    Given 25 contacts exist
-    When I list contacts with page 1 and size 10
-    Then the response contains 10 contacts
-    And the pagination total is 25
+  Scenario: Re-reading an article does not double-count
+    Given an anonymous visitor who already read article "long-read-42" this month
+    When the visitor opens article "long-read-42" again
+    Then the response status is 200
+    And the visitor's meter is unchanged
 
-  Scenario: Delete contact removes deal associations
-    Given a contact "John Doe" exists
-    And a deal "Big Sale" is associated with "John Doe"
-    When I delete contact "John Doe"
-    Then the contact is deleted
-    And the deal "Big Sale" still exists
-    But "John Doe" is no longer associated with "Big Sale"
+  Scenario: Meter reset restores access
+    Given an anonymous visitor with 5 articles read this month
+    When an admin resets the visitor's meter
+    Then a "MeterReset" event is recorded
+    And the visitor can open a premium article
+    But the audit log records the reset with actor and reason
 ```
 
 ### Main Flow Scenarios (Required)
@@ -208,11 +208,11 @@ Each entity must have BDD scenarios for these main flows:
 |------|-----------|
 | **CRUD** | Create, read (single + list), update, delete |
 | **Validation** | Reject invalid input per each business rule |
-| **Uniqueness** | Detect and reject duplicates (DCB decision model) |
-| **Cross-entity** | Create with references, cascade behavior on delete |
-| **Auth** | Protected endpoints require token, role-based access |
-| **Pipeline** (Deals) | Move through stages, close deal, kanban view data |
-| **Timeline** (Activities) | Create activities linked to entities, complete tasks |
+| **Limits** | Detect and reject meter overruns (DCB decision model `MeterLimitDecision`, MT-*) |
+| **Cross-entity** | Publish wall with experiment references, cascade behavior on archive |
+| **Auth** | Protected endpoints require token, role-based access (ADM-05) |
+| **Decision Matrix** (Walls) | Each paywall type × (anonymous, registered, subscriber, expired) × (free, premium) — minimum 32 cases (NFR-12) |
+| **Timeline** (WallEvents) | `WallShown` / `VariantAssigned` events recorded per decision, subject inspector data (ADM-04) |
 
 ### Gradle Command
 ```bash
@@ -225,7 +225,7 @@ Each entity must have BDD scenarios for these main flows:
 
 ## 5. Component Workbench (Storybook)
 
-**Scope**: Visual testing and documentation of all design system components and CRM screens in isolation, across themes, viewports, and interaction states.
+**Scope**: Visual testing and documentation of all design system components and paywall console screens in isolation, across themes, viewports, and interaction states.
 
 **Runs in**: `:docs` module (Compose Desktop) + future `:storybook` module
 
@@ -250,12 +250,12 @@ Each component has one or more **Stories** — named, discoverable render config
 
 ```kotlin
 // stories/ButtonStories.kt
-val buttonStories = storyGroup("Button") {
-    story("Primary") { CrmButton(text = "Save", onClick = {}) }
-    story("Secondary") { CrmButton(text = "Cancel", onClick = {}, variant = SECONDARY) }
-    story("Danger") { CrmButton(text = "Delete", onClick = {}, variant = DANGER) }
-    story("Disabled") { CrmButton(text = "Disabled", onClick = {}, enabled = false) }
-    story("With Icon") { CrmButton(text = "Add", onClick = {}, leadingIcon = { CrmIcon(glyph = "+") }) }
+val buttonStories = storyGroup("Buttons") {
+    story("Primary") { CrmPrimaryButton(text = "Upgrade to Pro", onClick = {}) }
+    story("Secondary") { CrmSecondaryButton(text = "Compare plans", onClick = {}) }
+    story("Text") { CrmTextButton(text = "Maybe later", onClick = {}) }
+    story("Toggle Chip") { CrmToggleChip(label = "Web", selected = true, onClick = {}) }
+    story("Segmented") { CrmSegmentedToggle(options = listOf("Monthly", "Annual"), selectedIndex = 0, onSelect = {}) }
 }
 ```
 
@@ -265,27 +265,26 @@ Each story can have **Scenarios** — predefined data/state configurations:
 
 | Scenario | Purpose | Example |
 |----------|---------|---------|
-| **Default** | Happy path | Contact form with valid data |
-| **Loading** | Async in-progress | Spinner + skeleton in table |
-| **Error** | Validation/network failure | Form with error messages |
-| **Empty** | No data | Empty contact list with EmptyState |
-| **Long Content** | Overflow/truncation | Contact name with 200 characters |
+| **Default** | Happy path | Wall designer with a valid wall definition |
+| **Loading** | Async in-progress | Spinner + skeleton in walls overview table |
+| **Error** | Validation/network failure | Designer with invalid variant weights message |
+| **Empty** | No data | Empty walls overview with EmptyState |
+| **Long Content** | Overflow/truncation | Wall name with 200 characters |
 | **Disabled** | Non-interactive | All inputs disabled |
 | **RTL** | Right-to-left layout | Arabic text direction (future) |
 
 ### Controls (Runtime Interaction)
 
 ```kotlin
-story("InputField") {
-    val label = textControl("Label", default = "Email")
-    val error = textControl("Error", default = "")
-    val enabled = booleanControl("Enabled", default = true)
+story("UsageMeter") {
+    val label = textControl("Label", default = "Free articles this month")
+    val used = intControl("Used", default = 3)
+    val limit = intControl("Limit", default = 5)
 
-    CrmInputField(
-        value = "", onValueChange = {},
+    CrmUsageMeter(
         label = label.value,
-        error = error.value.ifEmpty { null },
-        enabled = enabled.value,
+        used = used.value,
+        limit = limit.value,
     )
 }
 ```
@@ -309,10 +308,10 @@ Wrappers that provide the rendering environment without the full app runtime:
 
 | Decorator | Purpose |
 |-----------|---------|
-| **ThemeDecorator** | Wraps in `CrmTheme(theme = ...)` |
-| **ScaffoldDecorator** | Wraps in `CrmScaffold` with nav |
+| **ThemeDecorator** | Wraps in `CrmTheme(darkTheme = ...)` |
+| **ScaffoldDecorator** | Wraps in the console scaffold with nav |
 | **PaddingDecorator** | Adds consistent padding |
-| **FakeDataDecorator** | Provides fake read models / API responses |
+| **FakeDataDecorator** | Provides fake read models / API responses (fake `WallDefinition`s, meter states) |
 
 ### Relationship to Other Test Layers
 
@@ -379,11 +378,11 @@ e2e/
   package.json                       # Node.js deps (playwright)
   tests/
     auth.spec.ts                     # Login/logout flow
-    contacts.spec.ts                 # Contact CRUD flows
-    companies.spec.ts                # Company CRUD flows
-    deals.spec.ts                    # Deal pipeline flows
-    activities.spec.ts               # Activity timeline flows
-    dashboard.spec.ts                # Dashboard rendering
+    walls.spec.ts                    # Wall designer + publish flows
+    metering.spec.ts                 # Metered gate flows
+    experiments.spec.ts              # A/B variant assignment flows
+    subscriptions.spec.ts            # Checkout + entitlement flows
+    dashboard.spec.ts                # Console dashboard rendering
   fixtures/
     auth.fixture.ts                  # Login helper, authenticated context
   helpers/
@@ -394,16 +393,16 @@ e2e/
 
 | Flow | Test |
 |------|------|
-| **Login** | Navigate to app → redirected to Ory login → enter credentials → redirected back → see dashboard |
-| **Create Contact** | Click "New Contact" → fill form → save → see detail view with correct data |
-| **Search & Filter** | Type in search bar → list filters → results match |
-| **Edit Contact** | Open contact → click edit → change fields → save → changes persisted |
-| **Delete Contact** | Open contact → click delete → confirm → contact removed from list |
-| **Deal Pipeline** | View kanban → drag deal card to next stage → stage updated |
-| **Close Deal** | Open deal → click close → select won/lost → deal moves to closed column |
-| **Activity Timeline** | Create activity → see it in timeline → mark task complete |
-| **Role-Based Access** | Login as USER → admin menu hidden. Login as ADMIN → admin menu visible |
-| **OIDC Flow** | Full redirect → Kratos login → Hydra token → app authenticated |
+| **Login** | Navigate to console → redirected to Ory login → enter credentials → redirected back → see dashboard |
+| **Create Wall** | Click "New Wall" → configure in designer → save → see walls overview row with correct data |
+| **Search & Filter** | Type in walls overview search bar → table filters → results match |
+| **Edit Wall** | Open wall → change gate copy in designer → save → changes persisted, live preview updates |
+| **Publish Wall** | Open wall → click publish → confirm diff → status badge flips to Published |
+| **Metered Gate** | Visit articles as anonymous reader → usage meter counts up → gate appears at the limit with "You've reached this month's free limit" |
+| **Subscribe** | Hit gate → click "Upgrade to Pro" → checkout → premium article fully visible |
+| **Variant Assignment** | Same visitor revisits → same variant rendered (EX-01, no flicker) |
+| **Role-Based Access** | Login as EDITOR → publish action hidden. Login as ADMIN → publish action visible |
+| **OIDC Flow** | Full redirect → Kratos login → Hydra token → console authenticated |
 
 ### Test Environment
 - Tests run against the full K8s stack (Rancher Desktop) or Docker Compose
@@ -415,7 +414,7 @@ e2e/
 ```bash
 cd e2e && npx playwright test                    # Run all UI tests
 cd e2e && npx playwright test --headed           # Run with browser visible
-cd e2e && npx playwright test contacts.spec.ts   # Run single spec
+cd e2e && npx playwright test walls.spec.ts      # Run single spec
 cd e2e && npx playwright show-report             # View HTML report
 ```
 
@@ -434,9 +433,9 @@ Runs against real K8s or Docker Compose. Uses API helpers to seed data:
 
 ```typescript
 // e2e/helpers/api.helper.ts
-async function createContact(data: ContactInput): Promise<string> {
-  const response = await request.post('/api/v1/contacts', { data });
-  return response.json().contactId;
+async function publishWall(data: WallInput): Promise<string> {
+  const response = await request.post('/api/v1/walls', { data });
+  return response.json().wallId;
 }
 ```
 
@@ -480,6 +479,7 @@ The Ralph Wiggum loop uses this mapping to know which tests to write and run:
 | API Endpoints (shapes) | Contract | `backend/test/.../contract/{Entity}ContractTest.kt` |
 | API Endpoints (behavior) | BDD | `specs/features/{entity}.feature` + `backend/test/.../bdd/steps/{Entity}Steps.kt` |
 | Business Rules (scenarios) | BDD | `specs/features/{entity}.feature` |
+| Decision matrix (NFR-12) | Unit + BDD | `shared/commonTest/.../domain/decision/` + `specs/features/decision-matrix.feature` |
 | **Design system tokens** | **Workbench** | `storybook/stories/tokens/{Token}Stories.kt` |
 | **Design system components** | **Workbench** | `storybook/stories/component/{Component}Stories.kt` |
 | **Screen layouts** | **Workbench** | `storybook/stories/screen/{Screen}Stories.kt` |
@@ -495,7 +495,7 @@ The Ralph Wiggum loop uses this mapping to know which tests to write and run:
 The Component Workbench is a **derived artifact** of the design system — it is generated from the same token and component definitions. Every design system component automatically gets:
 
 1. **A default story** — renders the component with default props
-2. **Variant stories** — one per enum variant (e.g., Button: Primary/Secondary/Danger/Ghost)
+2. **Variant stories** — one per enum variant (e.g., Buttons: Primary/Secondary/Text)
 3. **State scenarios** — default, disabled, error, loading
 4. **Responsive preview** — the same story at all 4 breakpoints
 5. **Theme comparison** — light vs dark side by side
@@ -533,6 +533,7 @@ When a new component is added to `designsystem/`, a corresponding story file is 
 - [x] 14/16 BCs at 90%+ line coverage
 - [ ] All BCs at 95%+ line coverage
 - [x] CI runs tests on every PR (GitHub Actions)
+- [ ] Decision-matrix suite (NFR-12) passes against the GraalVM native binary, not only the JVM (TS-03)
 
 ---
 

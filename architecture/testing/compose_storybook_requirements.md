@@ -1,7 +1,7 @@
 # Compose Storybook / Component Workbench Requirements
 
 **Status:** AGREED  
-**Last Updated:** 2026-04-16  
+**Last Updated:** 2026-06-12  
 **Audience:** Engineering, Design Systems, Frontend Platform, QA  
 **Primary Goal:** Define an implementation-ready requirement set for a Storybook-like component workbench for Compose, including responsive design system rules for phone, tablet, desktop, and web.
 
@@ -9,7 +9,7 @@
 
 ## 1. Purpose
 
-The platform shall provide a Storybook-like workbench for Compose-based UI development. The workbench shall allow teams to:
+The paywall platform shall provide a Storybook-like workbench for Compose-based UI development. The workbench shall allow teams to:
 
 - render components and screens in isolation
 - browse a structured catalog of UI stories
@@ -72,7 +72,7 @@ A user of the workbench shall be able to:
 The workbench shall support both:
 
 - **component stories** for atoms, molecules, and reusable UI elements
-- **screen stories** for feature screens and state-based screen scenarios
+- **screen stories** for feature screens and state-based screen scenarios — e.g. the walls overview table, the wall designer workspace, the pricing wall, the metered gate, and the registration wall
 
 ---
 
@@ -107,6 +107,8 @@ A story group represents a logical catalog grouping such as:
 - Layout
 - Screens
 - Experimental
+
+Feature-level screen stories are additionally grouped by domain: Walls, Metering, Experiments, Subscriptions.
 
 ### 4.3 Story Decorator
 
@@ -149,7 +151,8 @@ Examples:
 - empty
 - validation error
 - server error
-- premium user
+- subscriber (entitled visitor)
+- metered visitor at the free limit
 - long text content
 
 ---
@@ -244,7 +247,7 @@ The story environment shall support:
 - fake clocks
 - fake state providers
 - fake analytics hooks
-- deterministic mock data
+- deterministic mock data (e.g. canned `WallDefinition`s, fixed meter states such as 3 of 5, plan demo content Free/Pro/Business)
 
 The workbench must not require production backend connectivity to render stories.
 
@@ -322,7 +325,7 @@ A recommended initial decomposition is:
   - foundation stories
   - component stories
 - `feature-<x>-stories`
-  - per-feature screen and component stories
+  - per-feature screen and component stories, e.g. `feature-walls-stories`, `feature-metering-stories`, `feature-experiments-stories`, `feature-subscriptions-stories`
 
 ### 7.2 Story Rendering Boundary
 
@@ -334,7 +337,7 @@ The preferred pattern is:
 - content composable renders state and callbacks
 - story targets the content composable or a fake route wrapper
 
-This boundary is strongly preferred because it improves isolation and reusability.
+This boundary is strongly preferred because it improves isolation and reusability. The gate renderers already follow it — they are driven entirely by a `WallDefinition`, so the same composable serves the live app, the designer's live preview, and a story.
 
 ---
 
@@ -434,7 +437,7 @@ Expected characteristics:
 
 Desktop layout rules:
 
-- multi-pane layout is allowed and preferred where useful
+- multi-pane layout is allowed and preferred where useful (the wall designer workspace — configuration left, live preview centre, targeting & publishing right — is the canonical example)
 - persistent navigation and side panels are allowed
 - higher information density is allowed if readability remains acceptable
 - hover states, keyboard focus, and pointer affordances must be supported
@@ -597,8 +600,8 @@ Responsive behavior should preferably be container-aware, not only screen-aware.
 
 This is especially important for:
 
-- embedded cards
-- split panes
+- embedded cards (e.g. plan cards on the pricing wall)
+- split panes (e.g. the designer's live preview, which itself simulates web and mobile widths)
 - nested layouts
 - web resizable panels
 
@@ -679,6 +682,8 @@ A story authoring model should make it easy to add stories for:
 - expanded width
 - dark theme
 - localization edge cases
+
+Typical stories for this platform include: the metered gate at 3 of 5 / 5 of 5 with the copy "You've reached this month's free limit" and the "Upgrade to Pro" CTA; the pricing wall with Free/Pro/Business plan cards and a Monthly/Annual segmented toggle; the registration wall; the walls overview table with status, channels, and A/B columns; and the wall designer workspace.
 
 ---
 
@@ -850,7 +855,7 @@ review documented responsive rules per story
 identify layout defects such as clipping, overflow, poor truncation, and broken alignment
 15.9 Design System Coverage
 
-The workbench shall support the existing CRM design system inventory by enabling story coverage for:
+The workbench shall support the existing design system inventory (the Crm* token and component set, e.g. CrmTheme, CrmCard, CrmTag, CrmUsageMeter, CrmSegmentedToggle, CrmTextField) by enabling story coverage for:
 
 token categories
 foundations / atoms
@@ -911,7 +916,7 @@ Kotlin Multiplatform
 Compose declarative rendering principles
 16.6 Design System Integrity
 
-The workbench shall not introduce parallel tokens or hardcoded styling exceptions that bypass the CRM design system.
+The workbench shall not introduce parallel tokens or hardcoded styling exceptions that bypass the platform design system (the Crm* token and theme model).
 
 All previewed components shall use the existing token and theme model.
 
@@ -931,6 +936,6 @@ feature modules can contribute stories through a stable registration mechanism
 the structure allows later phased expansion without redesigning the architecture
 18. Summary
 
-The target solution is a Compose-native Storybook-like Component Workbench for the CRM ecosystem. It must fit the existing architecture style of DDD + DCB + CQRS on Kotlin Multiplatform and Compose, and it must use the existing CRM Design System as its source baseline.
+The target solution is a Compose-native Storybook-like Component Workbench for the paywall platform. It must fit the existing architecture style of DDD + DCB + CQRS on Kotlin Multiplatform and Compose, and it must use the existing design system (the Crm* tokens and components shipped in `composeApp/`) as its source baseline.
 
-The solution must support isolated rendering, scenario-based exploration, documentation, runtime controls, and responsive validation across phone, tablet, desktop, and web. The implementation roadmap is phased, with discovery, validation, quality, and sharing capabilities added incrementally rather than treated as optional extras.
+The solution must support isolated rendering, scenario-based exploration, documentation, runtime controls, and responsive validation across phone, tablet, desktop, and web — including the gate screens themselves (pricing wall, metered gate, registration wall) rendered from `WallDefinition` fake data. The implementation roadmap is phased, with discovery, validation, quality, and sharing capabilities added incrementally rather than treated as optional extras.
