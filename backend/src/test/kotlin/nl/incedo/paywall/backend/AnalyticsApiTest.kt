@@ -103,6 +103,23 @@ class AnalyticsApiTest {
     }
 
     @Test
+    fun wallEventsExportAsCsvWithIncrementalPaging() = apiTest { client, _ ->
+        val visitor = visitorIn("hard")
+        decide(client, visitor, "a-1") // wall_shown
+
+        val response = client.get("/api/v1/export/wall-events.csv")
+        val csv = response.body<String>()
+        val lines = csv.trim().lines()
+        assertEquals("occurred_at_epoch_ms,type,subject_id,variant,channel,article_id,context", lines.first())
+        assertTrue(lines.any { "wall_shown" in it && "visitor:$visitor" in it }, "AN-04 export carries the event")
+
+        // Incremental export from the returned position yields nothing new
+        val position = response.headers["X-Export-Position"]!!.toLong()
+        val next = client.get("/api/v1/export/wall-events.csv?since=$position").body<String>()
+        assertEquals(1, next.trim().lines().size, "only the header after the last position")
+    }
+
+    @Test
     fun statsAggregatePerVariantWithConversionRate() = apiTest { client, _ ->
         val hard = visitorIn("hard")
         // Funnel: gate shown -> CTA click -> checkout complete
