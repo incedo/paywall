@@ -15,9 +15,30 @@ Paywall experiment for a media company — see [`requirements/`](requirements/in
 
 The whole stack stays Kotlin: Compose Multiplatform on the client, Kotlin/GraalVM native for the backend (TS-01), shared models (e.g. `WallDefinition`) publishable as a KMP library consumed by both.
 
+## What's in `shared/`
+
+The domain core (pure Kotlin, KMP: `jvm` + `wasmJs`), per `architecture/`:
+
+- `core/` — `DomainEvent` (tagged, DCB), `EventStore` port with `EventQuery`/`AppendCondition`, in-memory adapter
+- `access/AccessDecisionEngine.kt` — the Doc 2 §1 decision flow as a pure function: free → entitled → grant → strategy (hard/metered/freemium/dynamic incl. PW-42 floor rule)
+- `metering/` — `MeterDecision` (PW-20/21), `RecordArticleReadHandler` (DCB append condition, 3 retries per Q-7)
+- `entitlements/`, `grants/` — decision models fed by integration events (external subscription administration; Keto-backed FGA)
+- `experiments/VariantAssigner.kt` — deterministic FNV-1a assignment (EX-01)
+
+Tests: `./gradlew :shared:jvmTest` — includes the **NFR-12 decision matrix** (4 types × 4 visitor states × 2 tiers = 32 cases) plus unit suites per decision model, concurrency-retry and event-store contract tests.
+
+## What's in `backend/`
+
+The Ktor origin (CIO engine): `POST /api/v1/decide` — variant assignment (EX-01), decision models from one tagged event query, engine, meter counting (MT-04).
+
+- Event store: **PostgreSQL** (JSONB events + tag index, Q-1) when `DATABASE_URL` is set, in-memory otherwise. Append conditions run under an advisory lock inside the appending transaction.
+- Run: `DATABASE_URL=jdbc:postgresql://localhost:5432/paywall ./gradlew :backend:run`
+- Tests: `./gradlew :backend:test` — API flows (PW-20/21/22, EX-01, AC-01 shape) always run; Postgres integration + speed tests run when `PAYWALL_TEST_PG_URL` (+ optional `PAYWALL_TEST_PG_USER`/`_PASSWORD`) points at a database, and are skipped otherwise.
+- Speed tests guard the API-05 budget (< 50 ms p95) over a real socket, sequential and 8-way concurrent — measured ~5 ms / ~14 ms p95 on PostgreSQL.
+
 ## What's in `composeApp/`
 
-A working Compose Multiplatform scaffold (Kotlin 2.2.21, Compose Multiplatform 1.9.3) with targets `wasmJs` (web) and `jvm` (desktop):
+A working Compose Multiplatform scaffold (Kotlin 2.4.0, Compose Multiplatform 1.11.1) with targets `wasmJs` (web) and `jvm` (desktop):
 
 - `theme/CrmTheme.kt` — 1:1 Compose port of the design-system tokens (colors light/dark, typography, spacing, shapes, borders). Components read tokens only; hard-coded hex/dp is banned per the design system.
 - `ui/Components.kt` — atoms: buttons, card, tag, divider, segmented toggle, usage meter, text field, avatar.

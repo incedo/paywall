@@ -1,7 +1,7 @@
 # Storybook Controls + Responsive Specifications
 
 **Status**: AGREED  
-**Last Updated**: 2026-04-16  
+**Last Updated**: 2026-06-12  
 **Depends On**: testing.md, ../design-system.md, ../forms-pattern.md, specs/architecture/testing/compose_storybook_requirements.md, specs/architecture/testing/storybook_story_and_scenario_specs.md
 
 ---
@@ -9,16 +9,16 @@
 # Storybook Controls
 
 **Status**: AGREED  
-**Last Updated**: 2026-04-16  
+**Last Updated**: 2026-06-12  
 **Depends On**: specs/architecture/testing/storybook_story_and_scenario_specs.md
 
 ---
 
 ## 1. Overview
 
-A **Control** defines a runtime-adjustable input for a Story or Scenario in the CRM Storybook / Component Workbench. Controls exist so that engineers, QA, and design stakeholders can interactively vary parameters without changing source code or rebuilding the application.
+A **Control** defines a runtime-adjustable input for a Story or Scenario in the paywall platform's Storybook / Component Workbench. Controls exist so that engineers, QA, and design stakeholders can interactively vary parameters without changing source code or rebuilding the application.
 
-Controls turn static examples into exploratory UI contracts. They are used to inspect state transitions, parameter ranges, layout edge cases, and design system compliance under changing inputs.
+Controls turn static examples into exploratory UI contracts. They are used to inspect state transitions, parameter ranges, layout edge cases, and design system compliance under changing inputs — e.g. a wall title or body text control, a primary/secondary CTA label control, an enum control over `WallType` (Hard/Metered/Freemium/Dynamic), a channel-set control, integer controls for the usage meter's `used`/`limit`, or a dark-preview boolean mirroring the wall designer's preview toggle (ADM-12).
 
 ---
 
@@ -170,7 +170,7 @@ Command arrives
 - **Request Body**:
   ```json
   {
-    "schemaId": "controls-button-primary",
+    "schemaId": "controls-metered-gate",
     "lifecycle": "ACTIVE"
   }
   ```
@@ -182,12 +182,12 @@ Command arrives
 - **Request Body**:
   ```json
   {
-    "controlId": "loading",
-    "key": "loading",
-    "label": "Loading",
-    "type": "BOOLEAN",
-    "defaultValue": false,
-    "bindingRef": "props.loading"
+    "controlId": "meterUsed",
+    "key": "meterUsed",
+    "label": "Articles used",
+    "type": "INTEGER",
+    "defaultValue": 3,
+    "bindingRef": "props.meterUsed"
   }
   ```
 - **Success Response** (201): Created event confirmation
@@ -204,7 +204,7 @@ Command arrives
 - **Request Body**:
   ```json
   {
-    "defaultValue": true
+    "defaultValue": 2
   }
   ```
 - **Success Response** (200): Updated confirmation
@@ -215,7 +215,7 @@ Command arrives
 - **Request Body**:
   ```json
   {
-    "optionsRef": "options.button.variant"
+    "optionsRef": "options.wall.type"
   }
   ```
 - **Success Response** (200): Linked confirmation
@@ -226,7 +226,7 @@ Command arrives
 - **Request Body**:
   ```json
   {
-    "validationRule": "range:0..100"
+    "validationRule": "range:0..99"
   }
   ```
 - **Success Response** (200): Attached confirmation
@@ -308,17 +308,17 @@ Command arrives
 
 ### 10c. BDD Tests (backend — Gherkin scenarios for main flows)
 - [ ] Scenario: Register control schema for valid scenario → 201
-- [ ] Scenario: Add boolean control with valid default → 201
+- [ ] Scenario: Add boolean control (dark preview) with valid default → 201
 - [ ] Scenario: Add duplicate control key within schema → 409
-- [ ] Scenario: Change control default to incompatible type → 400 or 409
-- [ ] Scenario: Link options to enum control → 200
+- [ ] Scenario: Change control default to incompatible type (e.g. text into meter-limit integer) → 400 or 409
+- [ ] Scenario: Link options to enum control (wall type) → 200
 - [ ] Scenario: Remove control from schema → 204
 - [ ] Scenario: Get controls for scenario
 - [ ] Scenario: Auth — protected endpoint requires token
 
 ### 10d. UI Tests (E2E — Playwright, main user flows)
 - [ ] Flow: Add control to scenario → appears in controls panel
-- [ ] Flow: Update control default → preview recomposes
+- [ ] Flow: Update meter-used default ("3 of 3" → "2 of 3") → gate preview recomposes
 - [ ] Flow: Group controls → panel updates grouping
 - [ ] Flow: Remove control → disappears from panel
 - [ ] Flow: Inspect bindings → binding map shown
@@ -346,16 +346,16 @@ Command arrives
 # Storybook Responsive
 
 **Status**: AGREED  
-**Last Updated**: 2026-04-16  
+**Last Updated**: 2026-06-12  
 **Depends On**: specs/architecture/testing/storybook_story_and_scenario_specs.md, ../design-system.md
 
 ---
 
 ## 1. Overview
 
-The **Responsive** specification defines how Stories and Scenarios behave across supported form factors in the CRM Storybook / Component Workbench. It establishes a deterministic, token-based responsive model for phone, tablet, desktop, and web.
+The **Responsive** specification defines how Stories and Scenarios behave across supported form factors in the paywall platform's Storybook / Component Workbench. It establishes a deterministic, token-based responsive model for phone, tablet, desktop, and web.
 
-Responsive behavior is not an optional enhancement. It is a core quality characteristic of the CRM design system and must be explicit, inspectable, and testable inside the workbench.
+Responsive behavior is not an optional enhancement. It is a core quality characteristic of the platform's design system and must be explicit, inspectable, and testable inside the workbench — the walls overview table must degrade gracefully, the wall designer's 3-column workspace (configuration / live preview / targeting & publishing) must collapse predictably at narrow widths, and gate components must render correctly at the mobile widths the designer's web/mobile preview toggle simulates.
 
 ---
 
@@ -364,7 +364,7 @@ Responsive behavior is not an optional enhancement. It is a core quality charact
 | Value Object | Type | Validation | Notes |
 |-------------|------|------------|-------|
 | ResponsiveProfileId | `@JvmInline value class` | Non-blank UUID or stable slug | Typed identifier |
-| ResponsiveProfileKey | `@JvmInline value class` | Non-blank, unique | Stable key, e.g. `crm-default-responsive` |
+| ResponsiveProfileKey | `@JvmInline value class` | Non-blank, unique | Stable key, e.g. `paywall-default-responsive` |
 | StoryRef | `@JvmInline value class` | Existing StoryId | Parent story reference |
 | ScenarioRef | `@JvmInline value class` | Existing ScenarioId | Optional scenario reference |
 | FormFactor | `enum class` | PHONE, TABLET, DESKTOP, WEB | Supported runtime contexts |
@@ -495,8 +495,8 @@ Command arrives
 - **Request Body**:
   ```json
   {
-    "profileId": "responsive-crm-default",
-    "profileKey": "crm-default-responsive",
+    "profileId": "responsive-paywall-default",
+    "profileKey": "paywall-default-responsive",
     "lifecycle": "ACTIVE"
   }
   ```
@@ -554,8 +554,8 @@ Command arrives
 - **Request Body**:
   ```json
   {
-    "scenarioId": "button-primary-loading",
-    "expectationRef": "responsive.button.primary.loading"
+    "scenarioId": "pricing-wall-three-plans",
+    "expectationRef": "responsive.walls.pricing.three-plans"
   }
   ```
 - **Success Response** (200): Linked confirmation
@@ -566,7 +566,7 @@ Command arrives
 - **Request Body**:
   ```json
   {
-    "ruleRef": "layout.single-column-on-compact"
+    "ruleRef": "layout.plan-cards-stack-on-compact"
   }
   ```
 - **Success Response** (201): Added confirmation
@@ -650,10 +650,10 @@ Command arrives
 
 ### 10d. UI Tests (E2E — Playwright, main user flows)
 - [ ] Flow: Open responsive matrix → support matrix visible
-- [ ] Flow: Switch preview from phone to tablet to desktop → context changes reflected
+- [ ] Flow: Switch preview from phone to tablet to desktop → context changes reflected (pricing wall plans stack on compact, sit side-by-side on expanded)
 - [ ] Flow: Inspect navigation pattern by context → correct mapping shown
 - [ ] Flow: Review responsive expectations linked to scenario → expectations visible
-- [ ] Flow: Edit responsive profile → layout rules updated
+- [ ] Flow: Edit responsive profile → layout rules updated (e.g. wall designer workspace collapses from 3 columns to tabbed panels)
 
 ### 10e. Definition of Done
 - [ ] All tests in 10a-10d pass

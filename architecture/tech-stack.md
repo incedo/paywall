@@ -1,14 +1,14 @@
 # Tech Stack
 
 **Status**: AGREED
-**Last Updated**: 2026-04-09
+**Last Updated**: 2026-06-12
 **Depends On**: None
 
 ---
 
 ## 1. Overview
 
-This spec documents the technology choices for the CRM and the rationale behind each decision. It also captures open architectural questions that need resolution before implementation begins.
+This spec documents the technology choices for the paywall platform and the rationale behind each decision. It also captures open architectural questions that need resolution before implementation begins. It is adapted from the CRM reference architecture: the core principles, technology decisions, and structure are carried over unchanged, with examples rewritten for the paywall domain (walls, metering, experiments, entitlements). Subscription administration itself is an external system: the paywall enforces access and drives conversion toward a subscription; it consumes entitlement changes, it does not manage subscriptions.
 
 ---
 
@@ -71,6 +71,8 @@ Compose Multiplatform provides a declarative UI framework that compiles to WASM 
 
 Ktor is a Kotlin-native, coroutine-based HTTP server. It's lightweight and modular — you install only the plugins you need.
 
+> **Deployment target note**: The base target deployment is what requirements Doc 5 (TS-01, INF-*) describes: GraalVM native binaries behind Cloudflare Workers. The JVM/Kubernetes setup in this reference architecture is the development-shaped reference and a possible later additional target. Because the hexagonal core has zero infrastructure dependencies, the deployment shapes remain interchangeable.
+
 ### Plugins to Use
 | Plugin | Purpose |
 |--------|---------|
@@ -96,16 +98,16 @@ Ktor is a Kotlin-native, coroutine-based HTTP server. It's lightweight and modul
   {
     "error": {
       "code": "VALIDATION_ERROR",
-      "message": "Email format is invalid",
+      "message": "Title must not be empty",
       "details": [
-        { "field": "email", "rule": "BR-3", "message": "Must be a valid email address" }
+        { "field": "title", "rule": "BR-3", "message": "Wall title is required in the wall editor" }
       ]
     }
   }
   ```
 - Pagination: `?page=1&size=20` → response includes `pagination` object
 - Sorting: `?sort=name:asc,createdAt:desc`
-- Filtering: `?filter=status:active,company:uuid`
+- Filtering: `?filter=status:live,type:metered`
 
 ---
 
@@ -117,7 +119,7 @@ The system separates writes (commands) from reads (queries) at every level.
 ```
 REST POST/PUT/DELETE → Controller → CommandHandler → EventStore.append()
 ```
-- Commands are data classes expressing intent (e.g., `CreateContact`)
+- Commands are data classes expressing intent (e.g., `PublishWall`)
 - Command handlers validate, build decision models from events, emit new events
 - The Event Store is the **only** write target — no direct database writes
 
@@ -125,7 +127,7 @@ REST POST/PUT/DELETE → Controller → CommandHandler → EventStore.append()
 ```
 REST GET → Controller → QueryHandler → ReadModelStore.find()
 ```
-- Queries are data classes expressing what to read (e.g., `ListContacts(page, size)`)
+- Queries are data classes expressing what to read (e.g., `ListWalls(page, size)`)
 - Query handlers read from denormalized read models (projections)
 - Read models are **disposable** — can be rebuilt from the event store at any time
 
@@ -150,33 +152,33 @@ DCB replaces traditional aggregates with **decision models** built dynamically f
 **Events are tagged:**
 ```kotlin
 @Serializable
-data class DealCreated(
-    val dealId: DealId,
-    val companyId: CompanyId,
-    val contactIds: List<ContactId>,
+data class ExperimentDefined(
+    val experimentId: ExperimentId,
+    val wallId: WallId,
+    val variantWallIds: List<WallId>,
     val title: String,
-    val value: Money?,
+    val trafficSplit: Map<String, Int>,
     override val tags: Set<String> = setOf(
-        "deal:${dealId.value}",
-        "company:${companyId.value}"
-    ) + contactIds.map { "contact:${it.value}" }.toSet()
+        "experiment:${experimentId.value}",
+        "wall:${wallId.value}"
+    ) + variantWallIds.map { "wall:${it.value}" }.toSet()
 ) : DomainEvent
 ```
 
 **Decision models are ephemeral:**
 ```kotlin
-class EmailUniquenessDecision {
-    private var emailTaken = false
+class MeterLimitDecision {
+    private var articlesRead = 0
 
     fun apply(event: DomainEvent) {
         when (event) {
-            is ContactCreated -> if (event.email != null) emailTaken = true
-            is ContactDeleted -> emailTaken = false
+            is MeterIncremented -> articlesRead++
+            is MeterReset -> articlesRead = 0
             else -> {}
         }
     }
 
-    fun isEmailAvailable(): Boolean = !emailTaken
+    fun isWithinLimit(limit: Int): Boolean = articlesRead < limit
 }
 ```
 
@@ -193,31 +195,31 @@ data class AppendCondition(
 
 **Command handler flow:**
 ```kotlin
-class ContactCommandHandler(private val eventStore: EventStore) {
-    suspend fun handle(cmd: CreateContact): ContactCreated {
+class MeterCommandHandler(private val eventStore: EventStore) {
+    suspend fun handle(cmd: RecordArticleRead): MeterIncremented {
         // 1. Validate fields
-        ContactValidation.validate(cmd).throwIfInvalid()
+        MeterValidation.validate(cmd).throwIfInvalid()
 
         // 2. Query decision events (DCB)
-        val emailQuery = EventQuery(tags = setOf("email:${cmd.email}"))
-        val (events, position) = eventStore.query(emailQuery)
+        val meterQuery = EventQuery(tags = setOf("visitor:${cmd.visitorId.value}"))
+        val (events, position) = eventStore.query(meterQuery)
 
         // 3. Build decision model
-        val decision = EmailUniquenessDecision()
+        val decision = MeterLimitDecision()
         events.forEach { decision.apply(it) }
 
-        // 4. Enforce invariant
-        require(decision.isEmailAvailable()) { "Email already in use" }
+        // 4. Enforce invariant (meter limit, MT-*)
+        require(decision.isWithinLimit(cmd.meterLimit)) { "Meter limit reached" }
 
         // 5. Create event
-        val event = ContactCreated(
-            contactId = ContactId.generate(),
-            firstName = cmd.firstName,
+        val event = MeterIncremented(
+            visitorId = cmd.visitorId,
+            articleId = cmd.articleId,
             // ...
         )
 
         // 6. Append with condition (optimistic concurrency)
-        eventStore.append(listOf(event), AppendCondition(emailQuery, position))
+        eventStore.append(listOf(event), AppendCondition(meterQuery, position))
         return event
     }
 }
@@ -303,7 +305,7 @@ CREATE INDEX idx_event_tags_tag ON event_tags(tag);
 -- DCB query: find events matching tags
 -- SELECT e.* FROM events e
 -- JOIN event_tags t ON e.position = t.event_position
--- WHERE t.tag IN ('contact:abc-123', 'email:john@example.com')
+-- WHERE t.tag IN ('visitor:abc-123', 'article:2026-0142')
 -- AND e.position > :since
 -- ORDER BY e.position;
 
@@ -323,11 +325,11 @@ PostgreSQL is used for read model tables (projections). These are denormalized, 
 ### Read Model Tables
 | Table | Projected From | Purpose |
 |-------|---------------|---------|
-| `contacts_view` | ContactCreated, ContactUpdated, ContactDeleted | Contact list + detail queries |
-| `companies_view` | CompanyCreated, CompanyUpdated, CompanyDeleted | Company list + detail queries |
-| `deals_view` | DealCreated, DealStageChanged, DealClosed | Deal list + pipeline queries |
-| `activities_view` | ActivityCreated, ActivityCompleted | Activity timeline queries |
-| `users_view` | UserCreated, UserDeactivated | User management queries |
+| `walls_view` | WallCreated, WallConfigChanged, WallArchived | Wall list + designer detail queries (ADM-*) |
+| `entitlements_view` | EntitlementGranted, EntitlementRevoked, GrantIssued, GrantRevoked | Entitlement lookup for access decisions (AC-02, EA-*, FGA-*); entitlement events are ingested from the external subscription administration |
+| `experiments_view` | ExperimentDefined, VariantWeightChanged, ExperimentEnded | Experiment list + variant queries (EX-*) |
+| `wall_events_view` | WallShown, GateCtaClicked | Wall analytics timeline queries |
+| `accounts_view` | AccountLinked, AccountDeleted | Account management queries (Ory `sub`-mapped) |
 
 Read model tables can be **dropped and rebuilt** from the event store at any time. They are not the source of truth.
 
@@ -336,6 +338,8 @@ Read model tables can be **dropped and rebuilt** from the event store at any tim
 ## 9. Kubernetes Deployment
 
 Two deployment models are under consideration. Both will be fully specified and the decision will be made during spec elaboration.
+
+> **Deployment target note**: The base target per requirements Doc 5 (TS-01, INF-*) is GraalVM native binaries behind Cloudflare Workers. The JVM/K8s setup below is the development-shaped reference and a possible later additional target; the hexagonal core keeps the shapes interchangeable.
 
 ### Option A: Conventional (JVM Backend + Static WASM Frontend)
 
@@ -363,12 +367,35 @@ Two deployment models are under consideration. Both will be fully specified and 
 └─────────────────────────────────────────┘
 ```
 
+**Pros**: Proven, well-understood, rich JVM ecosystem for backend
+**Cons**: JVM container is heavier (~200-500MB), slower cold start
+
 ### Option B: WASM Runtime on K8s (Experimental)
 
-Same as before — see original description.
+```
+┌─────────────────────────────────────────┐
+│              Kubernetes Cluster           │
+│         (with WASM runtime support)      │
+│                                          │
+│  ┌──────────────────┐                    │
+│  │ Frontend Pod      │                   │
+│  │ WASM runtime      │ ← same as A      │
+│  └──────────────────┘                    │
+│                                          │
+│  ┌──────────────────┐  ┌──────────────┐ │
+│  │ Backend Pod       │  │  PostgreSQL   │ │
+│  │ WasmEdge / Spin   │──│              │ │
+│  │ Kotlin → WASM     │  │              │ │
+│  │ (~1-10MB)         │  └──────────────┘ │
+│  └──────────────────┘                    │
+└─────────────────────────────────────────┘
+```
+
+**Pros**: Tiny containers (~1-10MB), near-instant cold start, lower resource usage
+**Cons**: Experimental, limited library support, Kotlin/WASM server-side is bleeding edge
 
 ### Hybrid Approach
-Start with Option A, architect for Option B.
+Start with **Option A** for initial development (proven, debuggable), architect for eventual migration to **Option B** by keeping backend logic clean and portable.
 
 ---
 
@@ -407,115 +434,7 @@ ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
 
 ---
 
-## 11. Open Questions
-
-- **Q-1**: Event Store implementation — PostgreSQL-based custom, Axon Server, or EventStoreDB? — **Decision**: PostgreSQL custom (JSONB events + tag index table, schema already in the spec)
-- **Q-2**: Projection strategy — sync (in-process) or async (separate subscription)? — **Decision**: Sync in-process (projections run in same process after append)
-- **Q-3**: ~~JWT vs. session-based authentication?~~ — **Decision**: RESOLVED — OIDC (JWT) via Ory Kratos + Hydra. See `architecture/auth.md`.
-- **Q-4**: ~~Option A vs. Option B vs. Hybrid for deployment?~~ — **Decision**: RESOLVED — Hybrid. Both Option A (JVM, default) and Option B (WASM, experimental/scale-to-0) deployed via Kustomize on Rancher Desktop with WASM enabled. See `architecture/deployment.md`.
-- **Q-5**: Specific Kotlin, Ktor, and Compose versions to pin? — **Decision**: Use latest stable at implementation time
-- **Q-6**: Database access library for read models — Exposed vs. ktorm? — **Decision**: Exposed (JetBrains Kotlin SQL DSL)
-- **Q-7**: Should commands support retry on ConcurrencyException, and if so, how many retries? — **Decision**: Yes, 3 retries with exponential backoff
-
----
-
-## 6. Kubernetes Deployment
-
-Two deployment models are under consideration. Both will be fully specified and the decision will be made during spec elaboration.
-
-### Option A: Conventional (JVM Backend + Static WASM Frontend)
-
-```
-┌─────────────────────────────────────────┐
-│              Kubernetes Cluster           │
-│                                          │
-│  ┌──────────────────┐                    │
-│  │ Frontend Pod      │                   │
-│  │ Nginx + WASM/JS   │ ← static assets  │
-│  │ static files      │                   │
-│  └────────┬─────────┘                    │
-│           │                              │
-│  ┌────────┴─────────┐                    │
-│  │  Ingress          │                   │
-│  │  /* → frontend    │                   │
-│  │  /api/* → backend │                   │
-│  └────────┬─────────┘                    │
-│           │                              │
-│  ┌────────┴─────────┐  ┌──────────────┐ │
-│  │ Backend Pod       │  │  PostgreSQL   │ │
-│  │ JVM + Ktor        │──│  (StatefulSet │ │
-│  │                   │  │  or managed)  │ │
-│  └───────────────────┘  └──────────────┘ │
-└─────────────────────────────────────────┘
-```
-
-**Pros**: Proven, well-understood, rich JVM ecosystem for backend
-**Cons**: JVM container is heavier (~200-500MB), slower cold start
-
-### Option B: WASM Runtime on K8s (Experimental)
-
-```
-┌─────────────────────────────────────────┐
-│              Kubernetes Cluster           │
-│         (with WASM runtime support)      │
-│                                          │
-│  ┌──────────────────┐                    │
-│  │ Frontend Pod      │                   │
-│  │ WASM runtime      │ ← same as A      │
-│  └──────────────────┘                    │
-│                                          │
-│  ┌──────────────────┐  ┌──────────────┐ │
-│  │ Backend Pod       │  │  PostgreSQL   │ │
-│  │ WasmEdge / Spin   │──│              │ │
-│  │ Kotlin → WASM     │  │              │ │
-│  │ (~1-10MB)         │  └──────────────┘ │
-│  └──────────────────┘                    │
-└─────────────────────────────────────────┘
-```
-
-**Pros**: Tiny containers (~1-10MB), near-instant cold start, lower resource usage
-**Cons**: Experimental, limited library support, Kotlin/WASM server-side is bleeding edge
-
-### Hybrid Approach
-Start with **Option A** for initial development (proven, debuggable), architect for eventual migration to **Option B** by keeping backend logic clean and portable.
-
----
-
-## 7. Build System
-
-**Gradle with Kotlin DSL** and a version catalog.
-
-```
-gradle/
-  libs.versions.toml    # Central version definitions
-build.gradle.kts        # Root build file (plugins, allprojects config)
-settings.gradle.kts     # Module declarations
-gradle.properties       # Kotlin/Compose compiler flags
-```
-
-### Version Catalog Structure (`libs.versions.toml`)
-```toml
-[versions]
-kotlin = "2.1.x"
-ktor = "3.x.x"
-compose = "1.7.x"
-serialization = "1.7.x"
-coroutines = "1.9.x"
-exposed = "0.57.x"  # if chosen
-
-[libraries]
-# Defined per-dependency
-
-[plugins]
-kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
-kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose" }
-ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
-```
-
----
-
-## 8. Authentication & Identity — Ory Stack
+## 11. Authentication & Identity — Ory Stack
 
 **Decision**: OIDC via Ory (Kratos + Hydra). See `architecture/auth.md` for full details.
 
@@ -526,13 +445,13 @@ ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
 | Kratos Self-Service UI | Login/register/recovery pages | 4455 |
 | Mailslurper | Fake SMTP for dev emails | 4436 |
 
-### CRM Backend Integration
+### Paywall Backend Integration
 - Validates JWT access tokens via Hydra's JWKS endpoint
-- Reads user claims (sub, email, name, role) from token
+- Reads user claims (sub, email, name, role) from token — accounts map to the Ory `sub`
 - Manages roles via Kratos Admin API
 - **Never stores passwords**
 
-### CRM Frontend Integration
+### Paywall Frontend Integration
 - OIDC Authorization Code Flow with PKCE
 - Redirects to Hydra for login → Kratos handles credentials
 - Stores access token in memory (not localStorage)
@@ -542,3 +461,15 @@ ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
 cd docker && docker compose up -d
 ./setup-oidc-client.sh   # Register OIDC client + seed admin user
 ```
+
+---
+
+## 12. Open Questions
+
+- **Q-1**: Event Store implementation — PostgreSQL-based custom, Axon Server, or EventStoreDB? — **Decision**: PostgreSQL custom (JSONB events + tag index table, schema already in the spec)
+- **Q-2**: Projection strategy — sync (in-process) or async (separate subscription)? — **Decision**: Sync in-process (projections run in same process after append)
+- **Q-3**: ~~JWT vs. session-based authentication?~~ — **Decision**: RESOLVED — OIDC (JWT) via Ory Kratos + Hydra. See `architecture/auth.md`.
+- **Q-4**: ~~Option A vs. Option B vs. Hybrid for deployment?~~ — **Decision**: RESOLVED — Hybrid. Both Option A (JVM, default) and Option B (WASM, experimental/scale-to-0) deployed via Kustomize on Rancher Desktop with WASM enabled. See `architecture/deployment.md`.
+- **Q-5**: Specific Kotlin, Ktor, and Compose versions to pin? — **Decision**: Use latest stable at implementation time
+- **Q-6**: Database access library for read models — Exposed vs. ktorm? — **Decision**: Exposed (JetBrains Kotlin SQL DSL)
+- **Q-7**: Should commands support retry on ConcurrencyException, and if so, how many retries? — **Decision**: Yes, 3 retries with exponential backoff

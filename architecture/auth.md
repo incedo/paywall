@@ -1,14 +1,14 @@
 # Authentication & Authorization — OIDC + Ory via BFF
 
 **Status**: AGREED
-**Last Updated**: 2026-04-18
+**Last Updated**: 2026-06-12
 **Depends On**: architecture/tech-stack.md, architecture/module-structure.md
 
 ---
 
 ## 1. Overview
 
-Authentication and authorization use **OpenID Connect (OIDC)** backed by the **Ory** open-source identity stack. The CRM never stores passwords or manages login flows directly — it validates OIDC tokens issued by Ory Hydra and reads user identity from Ory Kratos.
+Authentication and authorization use **OpenID Connect (OIDC)** backed by the **Ory** open-source identity stack (TS-04). The paywall platform never stores passwords or manages login flows directly — it validates OIDC tokens issued by Ory Hydra and reads user identity from Ory Kratos.
 
 The OIDC dance is wired as a **Backend-for-Frontend (BFF)**. The backend owns PKCE, state, and code exchange; every client (web/desktop/Android/iOS) only asks the backend to start a flow and then either receives an HttpOnly session cookie (web) or drains tokens from a one-shot exchange key (mobile/desktop). This is the only shape that satisfies the Kotlin Multiplatform rule in `CLAUDE.md`: every client capability must either exist in commonMain already or be expressible as a thin HTTP adapter to the backend.
 
@@ -16,7 +16,7 @@ The OIDC dance is wired as a **Backend-for-Frontend (BFF)**. The backend owns PK
 - Open-source, self-hosted — no vendor lock-in.
 - Kratos handles identity (registration, login, recovery, settings, profile).
 - Hydra handles OAuth2/OIDC (code exchange, RS256 JWT issuance, consent).
-- Clean separation: the CRM is a pure OIDC relying party.
+- Clean separation: the paywall backend is a pure OIDC relying party.
 - Docker-native — single-command local bring-up via `scripts/start-ory.sh`.
 
 ### Why BFF (and not direct SPA-PKCE)?
@@ -28,7 +28,7 @@ A direct SPA flow needs SHA-256, URL-safe random bytes, session storage, and an 
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│                      CRM Frontend (KMP)                            │
+│                  Paywall Frontend (KMP, TS-07)                     │
 │                                                                    │
 │  Compose screens (CrmTheme tokens only, no third-party UI):        │
 │     LoginScreen          RegistrationScreen    RecoveryScreen      │
@@ -40,11 +40,11 @@ A direct SPA flow needs SHA-256, URL-safe random bytes, session storage, and an 
 │     jvm     → DesktopAuth / Desktop.browse + /exchange polling     │
 │     android → AndroidAuth / CustomTabsIntent + polling             │
 │     iOS     → IosAuth / ASWebAuthenticationSession + polling       │
-└─────────────────────────────────┬──────────────────────────────────┘
-                                  │ HTTP (cookie or Bearer)
-                                  ▼
+└─────────────────────────────┬──────────────────────────────────────┘
+                              │ HTTP (cookie or Bearer)
+                              ▼
 ┌────────────────────────────────────────────────────────────────────┐
-│                      CRM Backend (Ktor)                            │
+│                    Paywall Backend (Ktor)                          │
 │                                                                    │
 │  BffAuthController                 AuthConfig (JWT realm)          │
 │   GET  /api/v1/auth/login           RS256 verify via Hydra JWKS    │
@@ -93,7 +93,7 @@ A direct SPA flow needs SHA-256, URL-safe random bytes, session storage, and an 
 ### 4.1 Web (Wasm)
 
 ```
-User → :8081/                       (admin app)
+User → :8081/                       (admin console)
 App → AuthStateHolder.checkSession
   GET /api/v1/auth/me → 401 (no cookie)
 App → push AdminConfig.Login
@@ -119,10 +119,12 @@ Hydra issues code → 302 to /api/v1/auth/callback?code=X&state=Y
 Backend /callback
   → VerifierStore.takeVerifier(state)
   → POST Hydra /oauth2/token (code + verifier) → tokens
-  → Set-Cookie: crm_session=<JWT> HttpOnly SameSite=Lax
+  → Set-Cookie: paywall_session=<JWT> HttpOnly SameSite=Lax
   → 302 to POST_LOGIN_REDIRECT (:8081/)
 App boots, checkSession succeeds via cookie.
 ```
+
+On the first authenticated session the anonymous `visitor_id` (set by the edge for metering) is linked to the OIDC `sub`, so prior meter counts merge into the account (US-04, MT-03). The backend performs the merge in `/callback` after token exchange; the `visitor_id` cookie itself stays put so the edge keeps metering consistently.
 
 ### 4.2 Desktop (JVM)
 
@@ -148,7 +150,7 @@ Identical to desktop but `Desktop.browse()` is replaced with `CustomTabsIntent.l
 
 ### 4.4 iOS
 
-`ASWebAuthenticationSession` opens the authorize URL with a `crm-app` callback scheme. The polling loop on `/auth/exchange` is identical to desktop/android. Dismissal of the web sheet is a UX nicety — correctness comes from polling, not from intercepting the callback URL.
+`ASWebAuthenticationSession` opens the authorize URL with a `paywall-app` callback scheme. The polling loop on `/auth/exchange` is identical to desktop/android. Dismissal of the web sheet is a UX nicety — correctness comes from polling, not from intercepting the callback URL.
 
 ---
 
@@ -156,13 +158,13 @@ Identical to desktop but `Desktop.browse()` is replaced with `CustomTabsIntent.l
 
 | File | Role |
 |---|---|
-| `backend/src/main/kotlin/crm/backend/config/AuthConfig.kt` | JWT realm config; AUTH_MODE switch; cookie↔bearer fallback via `authHeader {}` |
-| `backend/src/main/kotlin/crm/backend/config/Plugins.kt` | CORS with explicit origins + `allowCredentials=true` (required for cookie auth) |
-| `backend/src/main/kotlin/crm/backend/user/BffAuthController.kt` | `/auth/login`, `/callback`, `/mobile-callback`, `/exchange`, `/logout` |
-| `backend/src/main/kotlin/crm/backend/user/HydraAuthController.kt` | `/auth/login/{challenge,accept}`, `/auth/consent/{challenge,accept}` bridge to Hydra Admin |
-| `backend/src/main/kotlin/crm/backend/user/HttpKratosAdmin.kt` | `KratosAdminPort` HTTP adapter (create identity, role patch, state patch) |
-| `backend/src/main/kotlin/crm/backend/user/VerifierStore.kt` | Pluggable store — InMemory (default) or Redis (when `REDIS_URL` set) |
-| `backend/src/main/kotlin/crm/backend/user/AuthController.kt` | `/auth/dev-login` (AUTH_MODE=DEV only) + `/auth/me` |
+| `backend/src/main/kotlin/nl/incedo/paywall/backend/config/AuthConfig.kt` | JWT realm config; AUTH_MODE switch; cookie↔bearer fallback via `authHeader {}` |
+| `backend/src/main/kotlin/nl/incedo/paywall/backend/config/Plugins.kt` | CORS with explicit origins + `allowCredentials=true` (required for cookie auth) |
+| `backend/src/main/kotlin/nl/incedo/paywall/backend/account/BffAuthController.kt` | `/auth/login`, `/callback`, `/mobile-callback`, `/exchange`, `/logout` |
+| `backend/src/main/kotlin/nl/incedo/paywall/backend/account/HydraAuthController.kt` | `/auth/login/{challenge,accept}`, `/auth/consent/{challenge,accept}` bridge to Hydra Admin |
+| `backend/src/main/kotlin/nl/incedo/paywall/backend/account/HttpKratosAdmin.kt` | `KratosAdminPort` HTTP adapter (create identity, role patch, state patch) |
+| `backend/src/main/kotlin/nl/incedo/paywall/backend/account/VerifierStore.kt` | Pluggable store — InMemory (default) or Redis (when `REDIS_URL` set) |
+| `backend/src/main/kotlin/nl/incedo/paywall/backend/account/AuthController.kt` | `/auth/dev-login` (AUTH_MODE=DEV only) + `/auth/me` |
 
 ---
 
@@ -170,16 +172,16 @@ Identical to desktop but `Desktop.browse()` is replaced with `CustomTabsIntent.l
 
 | File | Target | Role |
 |---|---|---|
-| `frontend/common/src/commonMain/kotlin/crm/frontend/state/auth/AuthState.kt` | common | `AuthStateHolder` — Checking/Authenticated/Unauthenticated/LoginRedirecting state machine |
-| `frontend/common/src/commonMain/kotlin/crm/frontend/api/BffAuth.kt` | common | `beginLoginRedirect` / `beginLoginMobile` / `completeLoginMobile` / `logout` |
-| `frontend/common/src/commonMain/kotlin/crm/frontend/api/KratosClient.kt` | common | Typed wrapper for Kratos Self-Service API (login/register/recovery/recovery-code/settings) |
-| `frontend/common/src/commonMain/kotlin/crm/frontend/api/HydraLoginBridge.kt` | common | Typed wrapper for `/auth/login/{challenge,accept}` |
-| `frontend/common/src/commonMain/kotlin/crm/frontend/api/PlatformLogin.kt` | common | `expect suspend fun beginPlatformLogin(): Boolean` |
+| `frontend/common/src/commonMain/kotlin/nl/incedo/paywall/frontend/state/auth/AuthState.kt` | common | `AuthStateHolder` — Checking/Authenticated/Unauthenticated/LoginRedirecting state machine |
+| `frontend/common/src/commonMain/kotlin/nl/incedo/paywall/frontend/api/BffAuth.kt` | common | `beginLoginRedirect` / `beginLoginMobile` / `completeLoginMobile` / `logout` |
+| `frontend/common/src/commonMain/kotlin/nl/incedo/paywall/frontend/api/KratosClient.kt` | common | Typed wrapper for Kratos Self-Service API (login/register/recovery/recovery-code/settings) |
+| `frontend/common/src/commonMain/kotlin/nl/incedo/paywall/frontend/api/HydraLoginBridge.kt` | common | Typed wrapper for `/auth/login/{challenge,accept}` |
+| `frontend/common/src/commonMain/kotlin/nl/incedo/paywall/frontend/api/PlatformLogin.kt` | common | `expect suspend fun beginPlatformLogin(): Boolean` |
 | `frontend/common/src/wasmJsMain/.../PlatformLogin.wasmJs.kt` | Wasm | `BffAuth.beginLoginRedirect()` + `awaitCancellation()` |
 | `frontend/common/src/jvmMain/.../PlatformLogin.jvm.kt` | JVM | `Desktop.browse()` + poll `/auth/exchange` |
 | `frontend/common/src/androidMain/.../PlatformLogin.android.kt` | Android | `CustomTabsIntent` via registered `AndroidAuthContext` + poll |
 | `frontend/common/src/iosMain/.../PlatformLogin.ios.kt` | iOS | `UIApplication.openURL` + poll (frontend:ios has a richer `IosAuth` using ASWebAuthenticationSession) |
-| `frontend/common/src/commonMain/kotlin/crm/frontend/screen/auth/*Screen.kt` | common | Compose screens using `CrmTheme` tokens only |
+| `frontend/common/src/commonMain/kotlin/nl/incedo/paywall/frontend/screen/auth/*Screen.kt` | common | Compose screens using `CrmTheme` tokens only |
 
 ---
 
@@ -190,7 +192,7 @@ Identical to desktop but `Desktop.browse()` is replaced with `CustomTabsIntent.l
 | `AUTH_MODE` | `DEV` (or `ORY` if `OIDC_JWKS_URL` set) | AuthConfig |
 | `OIDC_ISSUER_URL` | `http://localhost:4444/` | JWT verifier |
 | `OIDC_JWKS_URL` | `http://localhost:4444/.well-known/jwks.json` | JWT verifier |
-| `OIDC_CLIENT_ID` | `crm-frontend` | BFF authorize URL |
+| `OIDC_CLIENT_ID` | `paywall-frontend` | BFF authorize URL |
 | `OIDC_REDIRECT_URI` | `http://localhost:8080/api/v1/auth/callback` | BFF web redirect |
 | `OIDC_MOBILE_REDIRECT_URI` | `http://localhost:8080/api/v1/auth/mobile-callback` | BFF mobile/desktop redirect |
 | `POST_LOGIN_REDIRECT` | `http://localhost:8081/` | after `/callback` |
@@ -212,19 +214,21 @@ Kratos identity schema: `docker/ory/kratos/identity.schema.json`.
   "traits": {
     "email":  { "identifier": true, "verification": { "via": "email" } },
     "name":   "string",
-    "role":   "enum [ADMIN, MANAGER, USER, PROSPECT, CUSTOMER]"
+    "role":   "enum [ADMIN, OPERATOR, VIEWER, READER, SUBSCRIBER]"
   }
 }
 ```
 
-`UserRole` lives in `shared/src/commonMain/kotlin/crm/user/domain/UserRole.kt`. `CrmPrincipal` (backend) reads the role from the JWT claim; `PortalRoleUpgradeReactor` transitions PROSPECT → CUSTOMER on `CustomerActivated` by calling `KratosAdminPort.updateRole`.
+`UserRole` lives in `shared/src/commonMain/kotlin/nl/incedo/paywall/account/domain/UserRole.kt`. `PaywallPrincipal` (backend) reads the role from the JWT claim; `SubscriberRoleUpgradeReactor` transitions READER → SUBSCRIBER on `EntitlementGranted` (ingested from the external subscription administration) by calling `KratosAdminPort.updateRole`.
+
+The staff roles VIEWER / OPERATOR / ADMIN gate the admin console (ADM-05); admin-console access additionally requires an AAL2 step-up (second factor via Kratos) on top of the password session — the role claim alone is not sufficient. READER / SUBSCRIBER are end-user roles on the public site. Anonymous visitors carry only a `visitor_id` and have no Kratos identity until they register; the `visitor_id` → `sub` link is established at first login (US-04, MT-03).
 
 ---
 
 ## 9. Security Posture
 
 **Cookies (web)**
-- `crm_session` is `HttpOnly`, `SameSite=Lax`, `Path=/`, not marked `Secure` in dev (HTTP). Production MUST set `secure=true` and serve over TLS.
+- `paywall_session` is `HttpOnly`, `SameSite=Lax`, `Path=/`, not marked `Secure` in dev (HTTP). Production MUST set `secure=true` and serve over TLS.
 - Cookie holds the access token directly (~1h TTL); no server-side session table. Refresh is deferred — user re-authenticates when the token expires.
 
 **PKCE**
@@ -261,7 +265,7 @@ Bring the whole thing up:
 ./scripts/start-ory.sh --all
 ```
 
-This runs the stack + backend (`AUTH_MODE=ory`, `REDIS_URL=redis://localhost:6379`) + admin web (:8081) + portal (:8082). Seed admin: `admin@crm.local` / `Admin123!`.
+This runs the stack + backend (`AUTH_MODE=ory`, `REDIS_URL=redis://localhost:6379`) + admin console (:8081) + reader portal (:8082). Seed admin: `admin@paywall.local` / `Admin123!`.
 
 ---
 

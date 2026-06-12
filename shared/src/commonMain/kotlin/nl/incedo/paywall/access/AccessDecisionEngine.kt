@@ -1,0 +1,137 @@
+package nl.incedo.paywall.access
+
+import kotlinx.serialization.Serializable
+import nl.incedo.paywall.core.ArticleId
+import nl.incedo.paywall.core.SubjectId
+import nl.incedo.paywall.core.UserId
+import nl.incedo.paywall.core.VisitorId
+import nl.incedo.paywall.entitlements.EntitlementDecision
+import nl.incedo.paywall.grants.GrantDecision
+import nl.incedo.paywall.metering.MeterDecision
+
+/** PW-01: every article has a content tier; free articles are never gated. */
+enum class ContentTier { FREE, PREMIUM }
+
+@Serializable
+data class Article(val id: ArticleId, val tier: ContentTier)
+
+/** The requesting subject: anonymous visitor or logged-in user (AC-07: invalid token degrades to anonymous). */
+data class Subject(
+    val visitorId: VisitorId,
+    val userId: UserId? = null,
+) {
+    val registered: Boolean get() = userId != null
+    val subjectId: SubjectId get() = userId?.let { SubjectId.of(it) } ?: SubjectId.of(visitorId)
+}
+
+/** Per-variant strategy configuration (PW-05/06): parameters are config, not code. */
+@Serializable
+sealed interface StrategyConfig {
+    @Serializable
+    data object Hard : StrategyConfig
+
+    @Serializable
+    data class Metered(
+        /** PW-20 default 5. */
+        val limit: Int = 5,
+        /** PW-25 (COULD): higher limit for registered visitors; null = same as anonymous. */
+        val registeredLimit: Int? = null,
+    ) : StrategyConfig
+
+    @Serializable
+    data object Freemium : StrategyConfig
+
+    @Serializable
+    data class Dynamic(
+        /** PW-40: gate when score ≥ threshold. */
+        val threshold: Double,
+        /** PW-42: floor rule — gate always appears at or before the Nth premium article per month (default 10). */
+        val floorLimit: Int = 10,
+    ) : StrategyConfig
+}
+
+/** Everything the engine needs; the caller (command/query handler) builds the decision models from event queries. */
+data class AccessRequest(
+    val article: Article,
+    val subject: Subject,
+    val strategy: StrategyConfig,
+    val entitlement: EntitlementDecision,
+    val grant: GrantDecision,
+    val meter: MeterDecision,
+    /** PW-40/41: propensity score for the dynamic strategy (rule-based heuristic in phase 1). */
+    val propensityScore: Double = 0.0,
+    val nowEpochMs: Long,
+)
+
+enum class AccessReason { FREE_CONTENT, ENTITLED, GRANT, METER_CREDIT, BELOW_THRESHOLD }
+
+sealed interface AccessDecision {
+    /**
+     * Serve the full article. [countsTowardMeter] is true only for a freshly
+     * counted metered read (MT-04; PW-21: re-reads don't consume credit).
+     */
+    data class Full(val reason: AccessReason, val countsTowardMeter: Boolean = false) : AccessDecision
+
+    /** Serve teaser + gate (AC-01: the premium body never leaves the server). */
+    data class Gated(
+        val strategy: StrategyConfig,
+        val meterUsed: Int? = null,
+        val meterLimit: Int? = null,
+    ) : AccessDecision
+}
+
+/**
+ * The access decision flow of Doc 2 §1 as a pure function: free → full;
+ * entitled → full; live grant → full; otherwise the variant's paywall
+ * strategy decides. Wall-event logging (AN-*) is the caller's concern.
+ */
+object AccessDecisionEngine {
+
+    fun decide(request: AccessRequest): AccessDecision {
+        val article = request.article
+
+        if (article.tier == ContentTier.FREE) {
+            return AccessDecision.Full(AccessReason.FREE_CONTENT)
+        }
+        if (request.entitlement.hasValidEntitlement(request.nowEpochMs)) {
+            return AccessDecision.Full(AccessReason.ENTITLED)
+        }
+        if (request.grant.hasLiveGrant(request.nowEpochMs)) {
+            return AccessDecision.Full(AccessReason.GRANT)
+        }
+
+        return when (val strategy = request.strategy) {
+            is StrategyConfig.Hard -> AccessDecision.Gated(strategy) // PW-10
+
+            is StrategyConfig.Freemium -> AccessDecision.Gated(strategy) // PW-30
+
+            is StrategyConfig.Metered -> {
+                val limit = if (request.subject.registered) {
+                    strategy.registeredLimit ?: strategy.limit
+                } else {
+                    strategy.limit
+                }
+                if (request.meter.hasCreditFor(article.id, limit)) {
+                    AccessDecision.Full(
+                        reason = AccessReason.METER_CREDIT,
+                        countsTowardMeter = !request.meter.isCounted(article.id),
+                    )
+                } else {
+                    AccessDecision.Gated(strategy, meterUsed = request.meter.used, meterLimit = limit)
+                }
+            }
+
+            is StrategyConfig.Dynamic -> {
+                val floorReached = !request.meter.hasCreditFor(article.id, strategy.floorLimit) // PW-42
+                if (request.propensityScore >= strategy.threshold || floorReached) {
+                    AccessDecision.Gated(strategy, meterUsed = request.meter.used, meterLimit = strategy.floorLimit)
+                } else {
+                    AccessDecision.Full(
+                        reason = AccessReason.BELOW_THRESHOLD,
+                        countsTowardMeter = !request.meter.isCounted(article.id), // feeds the floor rule
+                    )
+                }
+            }
+        }
+    }
+}
