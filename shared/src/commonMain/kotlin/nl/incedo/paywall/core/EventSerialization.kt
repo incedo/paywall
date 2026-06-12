@@ -1,0 +1,39 @@
+package nl.incedo.paywall.core
+
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.polymorphic
+import kotlinx.serialization.modules.subclass
+import nl.incedo.paywall.accounts.AccountLinked
+import nl.incedo.paywall.entitlements.EntitlementGranted
+import nl.incedo.paywall.entitlements.EntitlementRevoked
+import nl.incedo.paywall.grants.GrantIssued
+import nl.incedo.paywall.grants.GrantRevoked
+import nl.incedo.paywall.metering.MeterIncremented
+import nl.incedo.paywall.metering.MeterReset
+
+/**
+ * Polymorphic registration of every domain event, shared by all event-store
+ * adapters (PostgreSQL JSONB persistence, API payloads, exports per AN-04).
+ * New events MUST be registered here — the serialization round-trip test
+ * fails otherwise.
+ */
+val paywallSerializersModule = SerializersModule {
+    polymorphic(DomainEvent::class) {
+        subclass(MeterIncremented::class)
+        subclass(MeterReset::class)
+        subclass(EntitlementGranted::class)
+        subclass(EntitlementRevoked::class)
+        subclass(GrantIssued::class)
+        subclass(GrantRevoked::class)
+        subclass(AccountLinked::class)
+    }
+}
+
+/** JSON configuration for event persistence: stable, additive-schema friendly. */
+val eventJson = Json {
+    serializersModule = paywallSerializersModule
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+    classDiscriminator = "type"
+}

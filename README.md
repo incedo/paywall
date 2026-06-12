@@ -27,6 +27,15 @@ The domain core (pure Kotlin, KMP: `jvm` + `wasmJs`), per `architecture/`:
 
 Tests: `./gradlew :shared:jvmTest` — includes the **NFR-12 decision matrix** (4 types × 4 visitor states × 2 tiers = 32 cases) plus unit suites per decision model, concurrency-retry and event-store contract tests.
 
+## What's in `backend/`
+
+The Ktor origin (CIO engine): `POST /api/v1/decide` — variant assignment (EX-01), decision models from one tagged event query, engine, meter counting (MT-04).
+
+- Event store: **PostgreSQL** (JSONB events + tag index, Q-1) when `DATABASE_URL` is set, in-memory otherwise. Append conditions run under an advisory lock inside the appending transaction.
+- Run: `DATABASE_URL=jdbc:postgresql://localhost:5432/paywall ./gradlew :backend:run`
+- Tests: `./gradlew :backend:test` — API flows (PW-20/21/22, EX-01, AC-01 shape) always run; Postgres integration + speed tests run when `PAYWALL_TEST_PG_URL` (+ optional `PAYWALL_TEST_PG_USER`/`_PASSWORD`) points at a database, and are skipped otherwise.
+- Speed tests guard the API-05 budget (< 50 ms p95) over a real socket, sequential and 8-way concurrent — measured ~5 ms / ~14 ms p95 on PostgreSQL.
+
 ## What's in `composeApp/`
 
 A working Compose Multiplatform scaffold (Kotlin 2.4.0, Compose Multiplatform 1.11.1) with targets `wasmJs` (web) and `jvm` (desktop):

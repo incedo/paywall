@@ -19,7 +19,10 @@ Guidance for working in this repository (paywall experiment for a media company)
 - `shared/` — pure-Kotlin KMP domain core (jvm + wasmJs): access decision engine,
   DCB event model, metering/entitlements/grants/experiments. No infra dependencies.
 - `backend/` — Ktor origin: `POST /api/v1/decide` (API-05 budget: < 50 ms p95,
-  guarded by `DecideApiSpeedTest`).
+  guarded by `DecideApiSpeedTest`). PostgreSQL event store adapter (JSONB + tag
+  index); integration tests need `PAYWALL_TEST_PG_URL` set (they skip without it —
+  start a local PG 16 and set it to run the full suite). New domain events must be
+  registered in `paywallSerializersModule` (round-trip test enforces this).
 - `composeApp/` — Compose Multiplatform admin console (wasmJs + jvm), wall designer.
 - `requirements/` — the specification (Docs 1–7); reference requirement IDs
   (e.g. `PW-20`, `MT-03`, `NFR-12`) in commits and code comments.

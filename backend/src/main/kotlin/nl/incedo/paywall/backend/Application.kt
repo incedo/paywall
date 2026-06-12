@@ -48,8 +48,18 @@ fun currentPeriod() = nl.incedo.paywall.metering.MeterPeriod(
 )
 
 fun main() {
+    // DATABASE_URL selects the PostgreSQL event store (Q-1); without it the
+    // server runs on the in-memory store for local experimentation.
+    val eventStore = System.getenv("DATABASE_URL")?.let { url ->
+        nl.incedo.paywall.backend.persistence.PostgresEventStore.connect(
+            jdbcUrl = url,
+            username = System.getenv("DATABASE_USER") ?: "",
+            password = System.getenv("DATABASE_PASSWORD") ?: "",
+        )
+    } ?: InMemoryEventStore()
+
     val service = AccessService(
-        eventStore = InMemoryEventStore(), // PostgreSQL adapter replaces this (tech-stack Q-1)
+        eventStore = eventStore,
         experiment = defaultExperiment,
         clock = { System.currentTimeMillis() },
         currentPeriod = ::currentPeriod,
