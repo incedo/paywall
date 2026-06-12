@@ -43,22 +43,47 @@ class PostgresEventStore(private val dataSource: DataSource) : EventStore {
     fun ensureSchema() {
         dataSource.connection.use { conn ->
             conn.createStatement().use { st ->
+                // DM-07: events partitioned by month. The PK includes the
+                // partition key (PostgreSQL requirement); the tag table keeps
+                // a plain position column (FKs to partitioned tables would
+                // need the full key) with its own index. A DEFAULT partition
+                // catches anything outside provisioned months.
                 st.execute(
                     """
                     CREATE TABLE IF NOT EXISTS events (
-                        position    BIGSERIAL PRIMARY KEY,
+                        position    BIGINT GENERATED ALWAYS AS IDENTITY,
                         event_type  VARCHAR(255) NOT NULL,
                         data        JSONB NOT NULL,
-                        timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    );
+                        timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        PRIMARY KEY (position, timestamp)
+                    ) PARTITION BY RANGE (timestamp);
+                    CREATE TABLE IF NOT EXISTS events_default PARTITION OF events DEFAULT;
                     CREATE TABLE IF NOT EXISTS event_tags (
-                        event_position  BIGINT NOT NULL REFERENCES events(position),
+                        event_position  BIGINT NOT NULL,
                         tag             VARCHAR(255) NOT NULL,
                         PRIMARY KEY (event_position, tag)
                     );
                     CREATE INDEX IF NOT EXISTS idx_event_tags_tag ON event_tags(tag);
                     """.trimIndent(),
                 )
+            }
+        }
+        ensureMonthPartitions()
+    }
+
+    /** DM-07: provision the current and next month so the boundary never fails. */
+    fun ensureMonthPartitions(now: java.time.YearMonth = java.time.YearMonth.now(java.time.ZoneOffset.UTC)) {
+        dataSource.connection.use { conn ->
+            conn.createStatement().use { st ->
+                for (month in listOf(now, now.plusMonths(1))) {
+                    val name = "events_p%04d%02d".format(month.year, month.monthValue)
+                    val from = month.atDay(1)
+                    val to = month.plusMonths(1).atDay(1)
+                    st.execute(
+                        "CREATE TABLE IF NOT EXISTS $name PARTITION OF events " +
+                            "FOR VALUES FROM ('$from') TO ('$to')",
+                    )
+                }
             }
         }
     }
