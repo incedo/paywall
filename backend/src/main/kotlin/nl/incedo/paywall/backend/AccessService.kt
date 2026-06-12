@@ -16,6 +16,7 @@ import nl.incedo.paywall.experiments.Variant
 import nl.incedo.paywall.experiments.VariantAssigner
 import nl.incedo.paywall.grants.GrantDecision
 import nl.incedo.paywall.metering.MeterDecision
+import nl.incedo.paywall.metering.meterTag
 import nl.incedo.paywall.metering.MeterPeriod
 import nl.incedo.paywall.metering.RecordArticleRead
 import nl.incedo.paywall.metering.RecordArticleReadHandler
@@ -40,14 +41,21 @@ class AccessService(
         val period = currentPeriod()
         val now = clock()
 
-        // One union query covers visitor + linked user meter state (MT-03)
-        // and entitlements; grants are article-tagged, fetched alongside.
-        val subjectTags = buildSet {
-            add("subject:${SubjectId.of(subject.visitorId).value}")
-            subject.userId?.let { add("subject:${SubjectId.of(it).value}") }
+        // One union query covers the subject's events: composite meter tags
+        // (DM-05 — only the current period) for visitor + linked user (MT-03),
+        // subject tags for entitlements/CEP advice, and the article tag for grants.
+        val subjectIds = buildList {
+            add(SubjectId.of(subject.visitorId))
+            subject.userId?.let { add(SubjectId.of(it)) }
+        }
+        val queryTags = buildSet {
+            subjectIds.forEach { id ->
+                add(meterTag(id, period))
+                add("subject:${id.value}")
+            }
             add("article:${article.id.value}")
         }
-        val events = eventStore.query(EventQuery(subjectTags)).events
+        val events = eventStore.query(EventQuery(queryTags)).events
 
         val meter = MeterDecision(period).also { it.applyAll(events) }
         val entitlement = EntitlementDecision().also { it.applyAll(events) }
