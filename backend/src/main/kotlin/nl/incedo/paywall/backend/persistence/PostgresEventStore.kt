@@ -19,16 +19,16 @@ import nl.incedo.paywall.core.port.EventStore
  * PostgreSQL event store (tech-stack Q-1): JSONB event data plus a tag index
  * table, exactly the schema documented in architecture/tech-stack.md.
  *
- * Append conditions are checked inside the appending transaction under an
- * advisory lock, which serializes appends. That is deliberate: appends are
- * sub-millisecond and the experiment's write volume is low; correctness of
- * the DCB check beats parallel-append throughput here.
+ * Append conditions are checked inside the appending transaction under
+ * per-tag advisory locks (DM-06): appends for different subjects proceed in
+ * parallel, while appends whose tags overlap — the only ones a DCB condition
+ * can conflict with — are serialized. Locks are taken in sorted tag order to
+ * prevent deadlocks; unconditional appends lock their tags too, so a
+ * condition check can never race a concurrent insert it should have seen.
  */
 class PostgresEventStore(private val dataSource: DataSource) : EventStore {
 
     companion object {
-        private const val APPEND_LOCK = 0x50415957L // "PAYW"
-
         fun connect(jdbcUrl: String, username: String = "", password: String = ""): PostgresEventStore {
             val config = HikariConfig().apply {
                 this.jdbcUrl = jdbcUrl
@@ -109,10 +109,7 @@ class PostgresEventStore(private val dataSource: DataSource) : EventStore {
             dataSource.connection.use { conn ->
                 conn.autoCommit = false
                 try {
-                    conn.prepareStatement("SELECT pg_advisory_xact_lock(?)").use { st ->
-                        st.setLong(1, APPEND_LOCK)
-                        st.executeQuery().close()
-                    }
+                    lockTags(conn, events, condition)
                     if (condition != null) checkCondition(conn, condition)
                     insertEvents(conn, events)
                     conn.commit()
@@ -122,6 +119,21 @@ class PostgresEventStore(private val dataSource: DataSource) : EventStore {
                 }
             }
         }
+
+    /** DM-06: lock every tag this append touches (events + condition), in sorted order. */
+    private fun lockTags(conn: Connection, events: List<DomainEvent>, condition: AppendCondition?) {
+        val tags = buildSet {
+            events.forEach { addAll(it.tags) }
+            condition?.query?.tags?.let { addAll(it) }
+        }.sorted()
+        if (tags.isEmpty()) return
+        conn.prepareStatement("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))").use { st ->
+            tags.forEach { tag ->
+                st.setString(1, tag)
+                st.executeQuery().close()
+            }
+        }
+    }
 
     private fun checkCondition(conn: Connection, condition: AppendCondition) {
         val sql = if (condition.query.tags.isEmpty()) {
