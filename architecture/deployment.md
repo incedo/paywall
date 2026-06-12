@@ -143,7 +143,7 @@ spec:
       # WASM binary compiled from Kotlin → WASM
 ```
 
-> **Note**: Kotlin server-side WASM is experimental. The manifests include both Option A (JVM) and Option B (WASM) deployments. Use Option A by default; Option B for experimentation.
+> **Note**: Kotlin server-side WASM is experimental. The manifests include both Option A (JVM) and Option B (WASM) deployments. Use Option A by default; Option B for experimentation. Option A's image can be either the JVM build (fast iteration in dev) or the **GraalVM native binary in a slim Linux container** (production-shaped, per TS-01) — both run on K8s as ordinary containers, no special runtime needed.
 
 ---
 
@@ -198,7 +198,65 @@ kubectl -n paywall-dev scale deployment/paywall-backend-wasm --replicas=1
 
 ---
 
-## 8. Completion Criteria
+## 8. Additional Target — Kubernetes behind Cloudflare Edge (Cloudflare Tunnel)
+
+The composed production-shaped pattern: Cloudflare stays the entry point per the base target (INF-01), and the K8s cluster serves as the origin **behind** the edge. The link is **Cloudflare Tunnel**: `cloudflared` runs as a deployment inside the cluster and opens *outbound* connections to Cloudflare — the cluster needs no public ingress, no LoadBalancer, no open inbound ports.
+
+```
+Client ──► Cloudflare Edge ──► Cloudflare Tunnel ──► cloudflared pods ──► ClusterIP services
+            Worker (INF-01):     (outbound-only,        (≥2 replicas)       paywall-backend
+            routing, visitor_id,  no public ingress)                        ory-hydra (JWKS)
+            crawler & JWT checks
+```
+
+### cloudflared Deployment (sketch)
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: paywall-prod
+spec:
+  replicas: 2                      # HA: each replica holds its own tunnel connections
+  selector:
+    matchLabels: { app: cloudflared }
+  template:
+    metadata:
+      labels: { app: cloudflared }
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:latest
+          args: ["tunnel", "run", "--token", "$(TUNNEL_TOKEN)"]
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom: { secretKeyRef: { name: tunnel-credentials, key: token } }
+```
+
+Ingress rules (hostname → in-cluster service) are managed on the Cloudflare side (remotely-managed tunnel) or in `cloudflared` config: e.g. `origin.paywall.example` → `http://paywall-backend.paywall-prod.svc:8080`.
+
+### Why this pattern fits the requirements
+- **INF-02 becomes structural**: the origin accepts traffic *only* through the tunnel — there is no public path that bypasses the Worker, so the enriched headers (subject, channel, crawler flag) are trustworthy by construction.
+- **Same artifacts as the base target**: the containerized origin image is identical whether it runs as a Cloudflare Container or in this cluster; only the wiring differs.
+- **No origin TLS certificates needed**: tunnel connections are outbound and encrypted; certificate management stays at the edge.
+
+### Can the origin containers be Wasm deployments here?
+
+Mechanically yes: the RuntimeClass/shim setup from §5 (Spin/WasmEdge via containerd `runwasi`) works identically behind a Tunnel — `cloudflared` itself remains a normal container and doesn't care what runtime serves the upstream service. The honest constraints are not in the pattern but in **Kotlin server-side Wasm** itself:
+
+| Concern | Status |
+|---|---|
+| Kotlin `wasmWasi` target | Experimental; WASI Preview 1 only |
+| HTTP server (Ktor) on WASI | Not supported — no stable server/socket story |
+| Database drivers (Postgres) on WASI | Not available |
+| GraalVM native image → Wasm | Native image produces a native binary, not Wasm; GraalVM's Wasm backend for Java is experimental |
+| Wasm GC / threads in server runtimes | Support in WasmEdge/Wasmtime still maturing |
+
+**Practical line**: the full Ktor origin cannot run as a Wasm workload today — run it as a regular container. Note that "regular container" includes the **GraalVM native binary in a slim Linux container** (distroless/scratch base): K8s runs it exactly as well as Cloudflare does, with the same benefits (image of tens of MB instead of hundreds, < 100 ms startup per TS-01, low memory). That makes the native image the preferred production-shaped K8s deployment, with the JVM image as the fast-iteration dev variant (TS-03). What *can* go Wasm early is the **pure decision core** (hexagonal core: decision models, validation — zero infra dependencies): compiling it to `wasmWasi` as a thin sidecar/Spin component is a contained experiment, and doubles as a portability check on the core (same spirit as the native-binary parity tests, TS-03/NFR-12). Revisit Option B as the Kotlin/WASI ecosystem matures.
+
+---
+
+## 9. Completion Criteria
 
 - [ ] All K8s manifests are valid (`kubectl apply --dry-run=client`)
 - [ ] `deploy-local.sh` brings up all services in paywall-dev namespace
@@ -213,7 +271,7 @@ kubectl -n paywall-dev scale deployment/paywall-backend-wasm --replicas=1
 
 ---
 
-## 9. Open Questions
+## 10. Open Questions
 
 - **Q-1**: Use Kustomize overlays or Helm charts for environment differences? — **Decision**: Kustomize (simpler, no templating engine)
 - **Q-2**: Container registry for local images — use Rancher Desktop's built-in registry or `nerdctl` direct load? — **Decision**: nerdctl direct load (load images directly into containerd, no registry)
