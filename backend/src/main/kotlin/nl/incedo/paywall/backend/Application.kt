@@ -31,6 +31,10 @@ import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.ExperimentId
+import nl.incedo.paywall.core.PlanId
+import nl.incedo.paywall.core.SubscriptionId
+import nl.incedo.paywall.entitlements.EntitlementGranted
+import nl.incedo.paywall.entitlements.EntitlementRevoked
 import nl.incedo.paywall.core.SubjectId
 import nl.incedo.paywall.core.UserId
 import nl.incedo.paywall.core.VisitorId
@@ -207,6 +211,31 @@ fun Application.module(
                 )
             }.sortedBy { it.variant }
             call.respond(response)
+        }
+        // Integration inbound (AC-02, EA-*): entitlement changes from the
+        // external subscription administration. The paywall enforces; it
+        // never manages subscriptions (scope boundary).
+        post("/api/v1/integration/entitlements") {
+            val change = call.receive<EntitlementChangeRequest>()
+            if (change.subjectId.isBlank() || change.subscriptionRef.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId and subscriptionRef are required"))
+                return@post
+            }
+            val event = if (change.active) {
+                EntitlementGranted(
+                    subjectId = SubjectId(change.subjectId),
+                    planId = PlanId(change.planId ?: "unknown"),
+                    subscriptionRef = SubscriptionId(change.subscriptionRef),
+                    validUntilEpochMs = change.validUntilEpochMs,
+                )
+            } else {
+                EntitlementRevoked(
+                    subjectId = SubjectId(change.subjectId),
+                    subscriptionRef = SubscriptionId(change.subscriptionRef),
+                )
+            }
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to event::class.simpleName))
         }
         // Integration inbound (MT-13): consent-based identity link signals —
         // login (US-04), newsletter tokens, share tokens (BP-05), extra devices.

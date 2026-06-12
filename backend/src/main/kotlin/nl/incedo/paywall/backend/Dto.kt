@@ -70,6 +70,20 @@ data class IdentityLinkRequest(
     val link: Boolean = true,
 )
 
+/**
+ * Inbound integration payload: entitlement changes published by the external
+ * subscription administration (AC-02, EA-*). `active = false` records a
+ * revocation. The paywall never manages subscriptions — it ingests changes.
+ */
+@Serializable
+data class EntitlementChangeRequest(
+    val subjectId: String,
+    val subscriptionRef: String,
+    val planId: String? = null,
+    val validUntilEpochMs: Long? = null,
+    val active: Boolean = true,
+)
+
 @Serializable
 data class DecideResponse(
     /** "full" or "gate" — the premium body itself never travels with a gate decision (AC-01). */

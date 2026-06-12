@@ -137,6 +137,35 @@ class CiamAuthTest {
     }
 
     @Test
+    fun entitlementLifecycleViaIntegrationEndpoint() = apiTest { client, _ ->
+        val visitor = visitorIn("hard")
+        val bearer = token(sub = "ciam-user-2")
+
+        // The external subscription administration publishes a grant (AC-02)
+        val grant = client.post("/api/v1/integration/entitlements") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                EntitlementChangeRequest(
+                    subjectId = "user:ciam-user-2",
+                    subscriptionRef = "sub-77",
+                    planId = "pro",
+                    validUntilEpochMs = now + 86_400_000,
+                ),
+            )
+        }
+        assertEquals(HttpStatusCode.Accepted, grant.status)
+        assertEquals("full", decide(client, visitor, bearer = bearer).access)
+
+        // Cancellation arrives: access ends while the token is still valid
+        // (AC-08: entitlement claims never outlive the local store)
+        client.post("/api/v1/integration/entitlements") {
+            contentType(ContentType.Application.Json)
+            setBody(EntitlementChangeRequest(subjectId = "user:ciam-user-2", subscriptionRef = "sub-77", active = false))
+        }
+        assertEquals("gate", decide(client, visitor, article = "a-2", bearer = bearer).access)
+    }
+
+    @Test
     fun forgedSignatureDegradesToAnonymous() = apiTest { client, store ->
         store.append(
             listOf(
