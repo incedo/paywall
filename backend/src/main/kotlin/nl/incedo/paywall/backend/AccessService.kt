@@ -6,6 +6,7 @@ import nl.incedo.paywall.access.AccessRequest
 import nl.incedo.paywall.access.Article
 import nl.incedo.paywall.access.Subject
 import nl.incedo.paywall.accounts.IdentityLinkDecision
+import nl.incedo.paywall.accounts.IdentityLinked
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.cep.CepAdviceDecision
@@ -58,6 +59,20 @@ class AccessService(
         // meter, across devices. Only when links exist does this cost a second
         // (equally bounded) query for the newly discovered subjects.
         val links = IdentityLinkDecision().also { it.applyAll(events) }
+
+        // US-04: on an authenticated request the visitor is linked to the user
+        // (once — idempotent), so the anonymous meter state merges (MT-03)
+        val userId = subject.userId
+        if (userId != null) {
+            val visitorSubject = SubjectId.of(subject.visitorId)
+            val userSubject = SubjectId.of(userId)
+            if (!links.isLinked(visitorSubject, userSubject)) {
+                val link = IdentityLinked(visitorSubject, userSubject, cause = "login")
+                eventStore.append(listOf(link), condition = null)
+                links.apply(link)
+            }
+        }
+
         val allSubjects = links.linkedSubjects(initialSubjects)
         if (allSubjects != initialSubjects) {
             events = eventStore.query(EventQuery(queryTags(allSubjects, article, period))).events

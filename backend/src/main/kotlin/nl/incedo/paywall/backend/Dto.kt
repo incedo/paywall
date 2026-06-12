@@ -4,10 +4,13 @@ import kotlinx.serialization.Serializable
 import nl.incedo.paywall.access.AccessDecision
 import nl.incedo.paywall.access.StrategyConfig
 
+/**
+ * AC-07: there is deliberately no userId field — logged-in identity comes
+ * exclusively from the validated CIAM JWT in the Authorization header.
+ */
 @Serializable
 data class DecideRequest(
     val visitorId: String,
-    val userId: String? = null,
     val articleId: String,
     /** "free" or "premium" (PW-01). */
     val tier: String,
@@ -23,7 +26,6 @@ data class DecideRequest(
 data class ClientEventRequest(
     val type: String,
     val visitorId: String,
-    val userId: String? = null,
     val articleId: String? = null,
     val channel: String = "web",
     val context: Map<String, String> = emptyMap(),

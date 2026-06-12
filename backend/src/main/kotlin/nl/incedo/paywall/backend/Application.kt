@@ -1,5 +1,6 @@
 package nl.incedo.paywall.backend
 
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -25,6 +26,7 @@ import nl.incedo.paywall.analytics.VariantStatsProjection
 import nl.incedo.paywall.analytics.wallEventShardTags
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
+import nl.incedo.paywall.backend.auth.CiamJwtValidator
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.core.ArticleId
@@ -89,10 +91,26 @@ fun main() {
         clock = { System.currentTimeMillis() },
         currentPeriod = ::currentPeriod,
     )
-    embeddedServer(CIO, port = 8080) { module(service, eventStore) }.start(wait = true)
+
+    // TS-04: Ory Hydra issues the tokens; JWKS via its public endpoint, e.g.
+    // CIAM_JWKS_URL=http://localhost:4444/.well-known/jwks.json
+    // CIAM_ISSUER=http://localhost:4444/
+    val jwtValidator = System.getenv("CIAM_JWKS_URL")?.let { jwks ->
+        CiamJwtValidator.fromJwksUrl(
+            jwksUrl = jwks,
+            issuer = System.getenv("CIAM_ISSUER") ?: jwks.substringBefore(".well-known").trimEnd('/') + "/",
+        )
+    }
+
+    embeddedServer(CIO, port = 8080) { module(service, eventStore, jwtValidator) }.start(wait = true)
 }
 
-fun Application.module(service: AccessService, eventStore: EventStore) {
+fun Application.module(
+    service: AccessService,
+    eventStore: EventStore,
+    /** Null = no CIAM configured: every request is anonymous (AC-07 fallback). */
+    jwtValidator: CiamJwtValidator? = null,
+) {
     install(ContentNegotiation) {
         json(Json { ignoreUnknownKeys = true })
     }
@@ -111,8 +129,11 @@ fun Application.module(service: AccessService, eventStore: EventStore) {
                     return@post
                 }
             }
+            // AC-07: identity exclusively from the validated CIAM JWT;
+            // anything not provably authentic degrades to anonymous
+            val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
             val outcome = service.decide(
-                subject = Subject(VisitorId(request.visitorId), request.userId?.let(::UserId)),
+                subject = Subject(VisitorId(request.visitorId), userId),
                 article = Article(ArticleId(request.articleId), tier),
                 channel = request.channel,
             )
@@ -147,7 +168,8 @@ fun Application.module(service: AccessService, eventStore: EventStore) {
                 )
                 return@post
             }
-            val subject = Subject(VisitorId(request.visitorId), request.userId?.let(::UserId))
+            val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
+            val subject = Subject(VisitorId(request.visitorId), userId)
             val variant = VariantAssigner.assign(subject.visitorId, defaultExperiment)
             eventStore.append(
                 listOf(
