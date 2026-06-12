@@ -56,35 +56,6 @@ data class GateInfo(
     val meterLimit: Int? = null,
 )
 
-@Serializable
-data class SaveWallRequest(
-    val name: String,
-    val wallType: String,
-    val title: String,
-    val body: String,
-    val primaryCta: String,
-    val secondaryCta: String,
-    val channels: Set<String> = setOf("web"),
-    val actor: String = "console",
-    /** Optimistic concurrency: the version the editor was looking at (ADM-06). */
-    val expectedVersion: Int? = null,
-)
-
-@Serializable
-data class WallResponse(
-    val id: String,
-    val name: String,
-    val wallType: String,
-    val title: String,
-    val body: String,
-    val primaryCta: String,
-    val secondaryCta: String,
-    val channels: Set<String>,
-    val status: String,
-    val version: Int,
-    val lastEditedBy: String,
-)
-
 /** ADM-04 subject inspector: everything support/QA needs about one subject. */
 @Serializable
 data class SubjectInspectorResponse(
@@ -113,20 +84,6 @@ data class InspectorWallEvent(
 data class MeterResetRequest(
     val actor: String,
     val reason: String,
-)
-
-@Serializable
-data class VariantStatsResponse(
-    val variant: String,
-    val visitors: Int,
-    val articleReads: Int,
-    val wallsShown: Int,
-    val gateCtaClicks: Int,
-    val gateCtr: Double,
-    val registrations: Int,
-    val checkoutStarts: Int,
-    val conversions: Int,
-    val conversionRate: Double,
 )
 
 /**

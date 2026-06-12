@@ -8,6 +8,7 @@ import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
@@ -16,6 +17,9 @@ import io.ktor.server.routing.routing
 import java.time.YearMonth
 import java.time.ZoneId
 import kotlinx.serialization.json.Json
+import nl.incedo.paywall.api.SaveWallRequest
+import nl.incedo.paywall.api.VariantStatsResponse
+import nl.incedo.paywall.api.WallResponse
 import nl.incedo.paywall.access.Article
 import nl.incedo.paywall.access.ContentTier
 import nl.incedo.paywall.access.StrategyConfig
@@ -150,6 +154,13 @@ fun Application.module(
 ) {
     install(ContentNegotiation) {
         json(Json { ignoreUnknownKeys = true })
+    }
+    // Dev CORS for the Wasm console; in production every request enters
+    // through the Worker on the same origin (INF-01), so this disappears.
+    install(CORS) {
+        anyHost()
+        allowHeader(HttpHeaders.ContentType)
+        allowHeader(HttpHeaders.Authorization)
     }
     routing {
         get("/health") {

@@ -1,5 +1,8 @@
 package nl.incedo.paywall.backend
 
+import nl.incedo.paywall.api.SaveWallRequest
+import nl.incedo.paywall.api.VariantStatsResponse
+import nl.incedo.paywall.api.WallResponse
 import nl.incedo.paywall.core.WallId
 import nl.incedo.paywall.core.port.AppendCondition
 import nl.incedo.paywall.core.port.EventQuery

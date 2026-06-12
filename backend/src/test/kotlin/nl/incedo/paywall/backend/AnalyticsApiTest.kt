@@ -13,6 +13,9 @@ import io.ktor.server.testing.testApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import nl.incedo.paywall.api.SaveWallRequest
+import nl.incedo.paywall.api.VariantStatsResponse
+import nl.incedo.paywall.api.WallResponse
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.analytics.wallEventShardTags

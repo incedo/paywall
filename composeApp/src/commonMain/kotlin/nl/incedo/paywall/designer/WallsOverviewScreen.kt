@@ -13,7 +13,6 @@ import androidx.compose.ui.Modifier
 import nl.incedo.paywall.model.Channel
 import nl.incedo.paywall.model.WallStatus
 import nl.incedo.paywall.model.WallSummary
-import nl.incedo.paywall.model.demoWalls
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
 import nl.incedo.paywall.ui.CrmDivider
@@ -23,8 +22,12 @@ import nl.incedo.paywall.ui.CrmText
 
 /** Walls overview (design "Wall Designer", variant B1): all walls in one table. */
 @Composable
-fun WallsOverviewScreen(onOpenWall: (WallSummary) -> Unit) {
-    val walls = demoWalls
+fun WallsOverviewScreen(
+    walls: List<WallSummary>,
+    statusMessage: String?,
+    onOpenWall: (WallSummary) -> Unit,
+    onNewWall: () -> Unit,
+) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.xl),
         verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg),
@@ -40,12 +43,12 @@ fun WallsOverviewScreen(onOpenWall: (WallSummary) -> Unit) {
                 val draft = walls.count { it.status == WallStatus.Draft }
                 val paused = walls.count { it.status == WallStatus.Paused }
                 CrmText(
-                    "${walls.size} walls · $live live · $draft draft · $paused paused",
+                    statusMessage ?: "${walls.size} walls · $live live · $draft draft · $paused paused",
                     style = CrmTheme.typography.bodySmall,
                     color = CrmTheme.colors.onSurfaceVariant,
                 )
             }
-            CrmPrimaryButton("New wall")
+            CrmPrimaryButton("New wall", onClick = onNewWall)
         }
 
         CrmCard {

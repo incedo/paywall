@@ -12,6 +12,9 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.testApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import nl.incedo.paywall.api.SaveWallRequest
+import nl.incedo.paywall.api.VariantStatsResponse
+import nl.incedo.paywall.api.WallResponse
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
 import nl.incedo.paywall.metering.MeterPeriod
 
