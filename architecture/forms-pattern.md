@@ -1,14 +1,14 @@
 # Design System — Forms Pattern
 
 **Status**: DRAFT
-**Last Updated**: 2026-04-16
+**Last Updated**: 2026-06-12
 **Depends On**: architecture/design-system.md
 
 ---
 
 ## 1. Overview
 
-Forms are the primary interaction pattern in the CRM — contacts, companies, deals, invoices, subscriptions, and settings all use forms. This pattern defines consistent rules for layout, validation, field types, and behavior across all platforms.
+Forms are the primary interaction pattern in the admin console — the wall editor's config panel, targeting & publishing panel, experiment setup, plan/pricing configuration, and settings all use forms. This pattern defines consistent rules for layout, validation, field types, and behavior across all platforms.
 
 Inspired by [Carbon Design System Forms Pattern](https://carbondesignsystem.com/patterns/forms-pattern/).
 
@@ -55,18 +55,17 @@ Inspired by [Carbon Design System Forms Pattern](https://carbondesignsystem.com/
 
 | Data type | Component | Notes |
 |-----------|-----------|-------|
-| Short text | `CrmInputField` | Single-line, optional placeholder |
-| Long text | `CrmTextArea` | Multi-line, rows + maxLength |
-| Email | `CrmInputField` | Validation regex, error on invalid |
-| Number | `CrmInputField` | Type filter (digits only) |
-| Currency | `CrmInputField` | Formatted with symbol, 2 decimals |
-| Date | `CrmDatePicker` | Calendar popup/sheet |
-| Single select | `CrmSelectField` | Dropdown |
+| Short text | `CrmInputField` | Single-line, optional placeholder (wall title, CTA labels) |
+| Long text | `CrmTextArea` | Multi-line, rows + maxLength (wall body copy) |
+| Number | `CrmInputField` | Type filter (digits only) — meter limit, traffic split % |
+| Currency | `CrmInputField` | Formatted with symbol, 2 decimals (plan price) |
+| Date | `CrmDatePicker` | Calendar popup/sheet (scheduled publish, experiment end) |
+| Single select | `CrmSelectField` | Dropdown (wall type, audience attribute) |
 | Multi select | `CrmSelectField(multi=true)` | Chips in input |
-| Boolean toggle | `CrmSwitch` | On/off with label |
+| Boolean toggle | `CrmSwitch` | On/off with label (A/B test enabled, dark preview) |
 | Yes/No choice | `CrmRadio` group | Two options |
-| Multi choice | `CrmCheckbox` group | Multiple options |
-| File | `CrmFileUpload` | Drop zone + browse |
+| Multi choice | `CrmCheckbox` group / `CrmToggleChip` row | Channel selection |
+| File | `CrmFileUpload` | Drop zone + browse (gate artwork, V2) |
 | Rich text | `CrmTextArea` | Markdown support (V2) |
 
 ---
@@ -85,7 +84,7 @@ Inspired by [Carbon Design System Forms Pattern](https://carbondesignsystem.com/
 |----------------|---------|-------------|
 | COMPACT (phone) | 1 | Full width |
 | MEDIUM (tablet) | 2 | Half width, full for TextArea/FileUpload |
-| EXPANDED (desktop) | 2-3 | Configured per form |
+| EXPANDED (desktop) | 2-3 | Configured per form (the designer's config panel is a fixed single column) |
 | LARGE (wide desktop) | 3 | Max 400dp per field |
 
 ### Required fields
@@ -97,6 +96,7 @@ Inspired by [Carbon Design System Forms Pattern](https://carbondesignsystem.com/
 - Inputs replaced with `CrmText` showing the value
 - No edit affordance (no border, no hover)
 - Background matches surface (no surfaceVariant)
+- Used for published wall versions in the version history panel
 
 ---
 
@@ -117,8 +117,15 @@ Inspired by [Carbon Design System Forms Pattern](https://carbondesignsystem.com/
 - Field stays in error state until valid
 
 ### Error summary (for long forms)
-- Toast/snackbar: "Please fix N errors before saving" (CrmSnackbar, ERROR variant)
+- Toast/snackbar: "Please fix N errors before publishing" (CrmSnackbar, ERROR variant)
 - Scroll to first error field and focus it
+
+### Example rules (wall editor)
+- Title: required, non-blank — "Title is required"
+- Primary CTA: required — "Primary CTA label is required"
+- Meter limit: integer ≥ 1 (metered walls only, MT-*) — "Meter limit must be at least 1"
+- Channels: at least one `Channel` selected — "Select at least one channel"
+- A/B traffic split: 0–100, variants must sum to 100%
 
 ---
 
@@ -132,13 +139,13 @@ Inspired by [Carbon Design System Forms Pattern](https://carbondesignsystem.com/
 
 | Action | Variant | Position | Behavior |
 |--------|---------|----------|----------|
-| Save / Submit | PRIMARY | Right | Validates, submits if valid |
+| Publish / Save | PRIMARY | Right | Validates, submits if valid |
 | Cancel | GHOST | Left of primary | Confirms if dirty ("Unsaved changes") |
-| Delete | DANGER | Far left, separated | Opens CrmDialog confirm |
+| Delete / Unpublish | DANGER | Far left, separated | Opens CrmDialog confirm |
 | Save Draft | SECONDARY | Left of primary | Saves without validation |
 
 ### Dirty state
-- Track changes via state holder
+- Track changes via state holder (compare against the last saved `WallDefinition`)
 - Show dot indicator on tab/nav if form has unsaved changes
 - Confirm dialog on navigation away: "You have unsaved changes. Discard?"
 
@@ -160,59 +167,57 @@ Groups related fields with a heading. Adds consistent spacing between fields.
 
 ---
 
-## 8. CRM-Specific Form Patterns
+## 8. Paywall-Specific Form Patterns
 
-### Contact form
+### Wall editor — config panel (ADM-11/12)
 ```
-Section: Basic Information
-  - First name (required, InputField)
-  - Last name (required, InputField)
-  - Email (optional, InputField with email validation)
-  - Phone (optional, InputField)
+Section: Wall Type
+  - Type (Radio/segmented: Hard / Metered / Freemium / Dynamic — WallType)
+  - Meter limit (required for Metered, InputField, integer ≥ 1, MT-*)
 
-Section: Company & Role
-  - Company (optional, SelectField → companies)
-  - Job title (optional, InputField)
-
-Section: Classification
-  - Tags (optional, multi-select chips)
-  - Customer tier (Radio: Self-serve / Business / Enterprise)
-
-Section: Notes
-  - Notes (optional, TextArea, rows=4)
-```
-
-### Deal form
-```
-Section: Deal Details
+Section: Copy
   - Title (required, InputField)
-  - Company (required, SelectField)
-  - Value (optional, InputField, currency format)
-  - Close date (optional, DatePicker)
-
-Section: Pipeline
-  - Stage (SelectField: Prospecting → Closed Won/Lost)
-  - Probability (InputField, 0-100%)
-
-Section: Notes
-  - Notes (optional, TextArea)
-  - Tags (optional, multi-select)
+  - Body (required, TextArea, rows=4)
+  - Primary CTA (required, InputField)
+  - Secondary CTA (optional, InputField)
 ```
 
-### Invoice form
+The panel binds directly to `WallDefinition` — every field change calls
+`onDefinitionChange(definition.copy(title = newValue))` and the live preview
+re-renders from the new definition.
+
+### Wall editor — targeting & publishing panel
 ```
-Section: Invoice Details
-  - Contact (required, SelectField)
-  - Subscription (optional, SelectField)
-  - Currency (SelectField: EUR/USD/GBP)
-  - Due date (required, DatePicker)
+Section: Audience
+  - Audience conditions (dynamic rows: attribute SelectField, operator, value)
+  - [+ Add Condition] button
 
-Section: Line Items (dynamic)
-  - [DataTable: Description | Qty | Unit Price | Tax | Total]
-  - [+ Add Line Item] button
+Section: Channels
+  - Channels (required, CrmToggleChip group: Web / Mobile app / Chat /
+    In-product / Email / SMS — at least one selected)
 
-Section: Totals (read-only)
-  - Subtotal, Tax, Total
+Section: Experiment
+  - A/B test enabled (Switch)
+  - Traffic split (InputField, 0-100%)
+
+Section: Publishing
+  - Status (read-only Badge: Live / Draft / Paused)
+  - Version history (read-only timeline)
+```
+
+### Plan / pricing form (pricing wall, PW-*)
+```
+Section: Plan Details
+  - Plan name (required, InputField)
+  - Price (required, InputField, currency format)
+  - Billing period (SegmentedToggle: Monthly / Annual)
+
+Section: Features (dynamic)
+  - [DataTable: Feature line | Included]
+  - [+ Add Feature] button
+
+Section: Presentation (read-only preview)
+  - Rendered CrmPlanCard
 ```
 
 ---
@@ -220,8 +225,8 @@ Section: Totals (read-only)
 ## 9. Accessibility
 
 - All inputs have associated labels (no floating labels — always visible above)
-- Required fields announced to screen readers: "First name, required"
-- Error messages associated via semantics: `error("Name is required")`
+- Required fields announced to screen readers: "Title, required"
+- Error messages associated via semantics: `error("Title is required")`
 - Tab order follows visual order (top-to-bottom, left-to-right)
 - Enter key submits form from any field
 - Escape key in dialog forms closes without saving (with dirty confirm)

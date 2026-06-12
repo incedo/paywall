@@ -1,7 +1,7 @@
 # Design System — Token-Based, Multiplatform
 
 **Status**: AGREED
-**Last Updated**: 2026-04-16
+**Last Updated**: 2026-06-12
 **Depends On**: architecture/module-structure.md
 **Derived Artifacts**: architecture/testing/testing.md (Component Workbench), architecture/forms-pattern.md
 
@@ -9,13 +9,13 @@
 
 ## 1. Overview
 
-The CRM uses a **custom design system** built from scratch on Compose Foundation primitives — no Material dependency. Following the approach from [Custom Design System Using Jetpack Compose](https://medium.com/better-programming/custom-design-system-using-jetpack-compose-17a59b1ae38d), the system defines its own design tokens (colors, typography, spacing, shapes, elevation) and builds all components from `BasicText`, `Box`, `Row`, `Column`, `Layout`, `Image`, `Spacer`, and `Modifier`.
+The paywall platform uses a **custom design system** built from scratch on Compose Foundation primitives — no Material dependency. The system is a faithful port of the Incedo CRM design system (hence the `Crm*` API names, which are kept as-is). Following the approach from [Custom Design System Using Jetpack Compose](https://medium.com/better-programming/custom-design-system-using-jetpack-compose-17a59b1ae38d), the system defines its own design tokens (colors, typography, spacing, shapes, elevation) and builds all components from `BasicText`, `Box`, `Row`, `Column`, `Layout`, `Image`, `Spacer`, and `Modifier`.
 
 ### Why No Material?
-- **Full control**: CRM-specific visual language, not constrained by Material Design spec
+- **Full control**: Our own visual language for the admin console and the gate components, not constrained by Material Design spec
 - **Consistency across platforms**: Same tokens and components on web, desktop, Android, and iOS
-- **Lighter bundle**: No Material library weight — important for WASM
-- **Token-driven**: Change tokens at the foundation layer, all components update automatically
+- **Lighter bundle**: No Material library weight — important for WASM (the public web channel and the admin console both ship as Wasm SPAs)
+- **Token-driven**: Change tokens at the foundation layer, all components update automatically — the wall editor's live preview re-themes for free
 
 ### Platform Targets
 The design system compiles to **all** Compose Multiplatform targets:
@@ -34,11 +34,12 @@ The design system compiles to **all** Compose Multiplatform targets:
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  SCREENS / TEMPLATES                                     │
-│  TransactionHistory, Dashboard, ContactDetail, Pipeline  │
+│  WallsOverview, WallDesigner, ExperimentsDashboard,      │
+│  SubjectInspector, PricingWall, ContentGate              │
 ├─────────────────────────────────────────────────────────┤
 │  ORGANISMS                                               │
-│  NavBar, DataTable, KanbanBoard, ActivityTimeline,       │
-│  ContactCard, DealCard, SearchBar, FormSection           │
+│  NavBar, DataTable, GatePreview, VersionTimeline,        │
+│  WallCard, PlanCard, SearchBar, FormSection              │
 ├─────────────────────────────────────────────────────────┤
 │  MOLECULES                                               │
 │  Button, InputField, SelectField, Badge, Tag, Avatar,    │
@@ -89,13 +90,14 @@ data class CrmColors(
     val info: Color,
     val onInfo: Color,
 
-    // Pipeline stages (CRM-specific)
-    val stageProspecting: Color,
-    val stageQualification: Color,
-    val stageProposal: Color,
-    val stageNegotiation: Color,
-    val stageClosedWon: Color,
-    val stageClosedLost: Color,
+    // Wall status accents (paywall-specific)
+    val statusLive: Color,
+    val statusDraft: Color,
+    val statusPaused: Color,
+    val typeHard: Color,
+    val typeMetered: Color,
+    val typeFreemium: Color,
+    val typeDynamic: Color,
 
     // Misc
     val border: Color,
@@ -148,8 +150,8 @@ data class CrmTypography(
     val labelSmall: TextStyle,
 
     // Code / Data
-    val code: TextStyle,       // Monospace for IDs, technical data
-    val data: TextStyle,       // Tabular numbers for currencies, counts
+    val code: TextStyle,       // Monospace for wall IDs, audience condition expressions
+    val data: TextStyle,       // Tabular numbers for prices, conversion rates, meter counts
 )
 
 val LocalCrmTypography = staticCompositionLocalOf { defaultCrmTypography() }
@@ -364,7 +366,7 @@ JSON theme loader extended to support new token categories:
 
 ## 4. Theme Provider (Pluggable)
 
-Themes are pluggable via the `CrmDesignTheme` data class. Callers can provide a fully custom theme — different brand colors, typography, spacing — without touching any component code.
+Themes are pluggable via the `CrmDesignTheme` data class. Callers can provide a fully custom theme — different brand colors, typography, spacing — without touching any component code. This is how the publisher's brand is applied to the public gate components while the admin console keeps its own theme.
 
 ```kotlin
 /** Bundle of all token sets — the single entry point for theming. */
@@ -403,9 +405,11 @@ fun CrmTheme(darkTheme: Boolean = false, content: @Composable () -> Unit) {
 }
 ```
 
+The dark/light toggle is also what powers the wall designer's live-preview theme switch (`WallDefinition.darkPreview`): the preview pane wraps the gate renderer in a nested `CrmTheme(darkTheme = definition.darkPreview)`.
+
 ### Custom Theme Example
 ```kotlin
-val AcmeTheme = CrmDesignTheme(
+val PublisherTheme = CrmDesignTheme(
     colors = LightCrmColors.copy(
         primary = Color(0xFF6200EE),
         primaryVariant = Color(0xFF3700B3),
@@ -414,7 +418,7 @@ val AcmeTheme = CrmDesignTheme(
 )
 
 // Usage:
-CrmTheme(theme = AcmeTheme) { App() }
+CrmTheme(theme = PublisherTheme) { App() }
 ```
 
 ### No Magic Numbers Rule
@@ -425,7 +429,7 @@ All components **must** use theme tokens — never hardcoded `dp`, `sp`, color, 
 ## 4a. JSON Theme Loader (Runtime Configuration)
 
 Themes can be loaded from JSON files at runtime — no recompilation needed. This enables:
-- Per-tenant branding (white-label)
+- Per-publisher branding of the gate components (the gate's appearance is content, not code — GAP-10)
 - User-selected themes (light, dark, custom)
 - Theme hot-reload during development
 
@@ -433,7 +437,7 @@ Themes can be loaded from JSON files at runtime — no recompilation needed. Thi
 
 ```json
 {
-  "name": "Acme Corp",
+  "name": "Publisher Brand",
   "base": "light",
   "colors": {
     "primary": "#6200EE",
@@ -544,54 +548,54 @@ Similarly built on `Image`, `Box`, and `Spacer` foundation composables.
 
 ## 6. Molecule Components
 
-| Component | Built From | CRM Usage |
+| Component | Built From | Paywall Usage |
 |-----------|-----------|-----------|
-| CrmButton | Surface + Row + CrmText + CrmIcon | Actions, form submits |
-| CrmIconButton | Surface + Box + CrmIcon | Toolbar actions |
-| CrmInputField | BasicTextField + Box + CrmText | Form inputs |
-| CrmSelectField | CrmInputField + Popup + Column | Dropdowns (company selector) |
-| CrmBadge | Surface + CrmText | Status indicators, counts |
-| CrmTag | Surface + Row + CrmText + CrmIconButton | Contact/deal tags |
-| CrmChip | Surface + Row + CrmText | Filter chips |
-| CrmAvatar | Surface + CrmText/Image | User/contact avatars |
-| CrmTab | Surface + CrmText | Tab navigation |
-| CrmDialog | Foundation Dialog + CrmSurface | Confirmations, forms |
+| CrmButton | Surface + Row + CrmText + CrmIcon | Actions, CTAs in gate cards, publish/save |
+| CrmIconButton | Surface + Box + CrmIcon | Designer toolbar actions |
+| CrmInputField | BasicTextField + Box + CrmText | Wall editor config inputs |
+| CrmSelectField | CrmInputField + Popup + Column | Dropdowns (wall type, audience attribute) |
+| CrmBadge | Surface + CrmText | Status indicators (Live/Draft/Paused), variant counts |
+| CrmTag | Surface + Row + CrmText + CrmIconButton | Wall type / channel tags in the overview table |
+| CrmChip | Surface + Row + CrmText | Channel toggle chips, filter chips |
+| CrmAvatar | Surface + CrmText/Image | Staff user avatar in the console nav bar |
+| CrmTab | Surface + CrmText | Tab navigation (Config / Targeting / History) |
+| CrmDialog | Foundation Dialog + CrmSurface | Publish confirmations, forms |
 | CrmSnackbar | CrmSurface + CrmText + CrmButton | Notifications |
 | CrmTooltip | Popup + CrmSurface + CrmText | Hover info |
 
 ---
 
-## 7. Organism Components (CRM-Specific)
+## 7. Organism Components (Paywall-Specific)
 
-| Component | Composition | CRM Usage |
+| Component | Composition | Paywall Usage |
 |-----------|------------|-----------|
-| CrmNavBar | Row + CrmTab + CrmAvatar | Top navigation |
+| CrmNavBar | Row + CrmTab + CrmAvatar | Admin console top navigation |
 | CrmSideNav | Column + CrmButton + CrmIcon | Side navigation (desktop) |
-| CrmDataTable | Column + Row + CrmText + sorting + pagination | Contact/company lists |
-| CrmKanbanBoard | Row + Column + CrmDealCard + drag/drop | Deal pipeline |
-| CrmDealCard | CrmSurface + CrmText + CrmBadge | Single deal in kanban |
-| CrmContactCard | CrmSurface + CrmAvatar + CrmText + CrmTag | Contact summary |
-| CrmActivityItem | Row + CrmIcon + CrmText + timestamp | Timeline entry |
-| CrmTimeline | LazyColumn + CrmActivityItem + date headers | Activity feed |
-| CrmSearchBar | CrmInputField + CrmIcon + debounce | Global/entity search |
-| CrmFormSection | Column + CrmText (heading) + content slot | Grouped form fields |
-| CrmEmptyState | Column + CrmIcon + CrmText + CrmButton | Empty list placeholders |
-| CrmConfirmDialog | CrmDialog + CrmText + CrmButton pair | Delete confirmations |
+| CrmDataTable | Column + Row + CrmText + sorting + pagination | Walls overview table (ADM-10), experiment results |
+| CrmGatePreview | CrmSurface + gate renderer + device frame | Live preview pane in the wall designer (ADM-12) |
+| CrmPlanCard | CrmSurface + CrmText + CrmBadge + CrmCheckRow | Single plan in the pricing wall (PW-*) |
+| CrmWallCard | CrmSurface + CrmTag + CrmText + CrmBadge | Wall summary card (compact layouts) |
+| CrmUsageMeter | Column + Row + CrmText + progress track | Metered gate "3 of 3 free articles" (MT-*) |
+| CrmTimeline | LazyColumn + CrmActivityItem + date headers | Version history in the publishing panel |
+| CrmSearchBar | CrmInputField + CrmIcon + debounce | Walls / subjects search |
+| CrmFormSection | Column + CrmText (heading) + content slot | Grouped wall editor fields |
+| CrmEmptyState | Column + CrmIcon + CrmText + CrmButton | Empty walls list placeholder |
+| CrmConfirmDialog | CrmDialog + CrmText + CrmButton pair | Unpublish/delete confirmations |
 
 ---
 
-## 7a. Input Components (Missing — CRM is form-heavy)
+## 7a. Input Components (Missing — the wall editor is form-heavy)
 
 All input components follow the Carbon/Material pattern: label above, helper text below, error state with red border + message. Every input respects `CrmTheme.focus.minTouchTarget` (48dp) on touch devices.
 
-| Component | Signature | CRM Usage | Interaction |
+| Component | Signature | Paywall Usage | Interaction |
 |-----------|-----------|-----------|-------------|
-| CrmCheckbox | `checked: Boolean, onCheckedChange, label?, enabled` | Bulk selection in tables, filter toggles | Tap/click toggles. Space key when focused. |
-| CrmRadio | `selected: Boolean, onClick, label?` | Single-select options (status filter, deal stage) | Tap/click selects. Arrow keys cycle group. |
-| CrmSwitch | `checked: Boolean, onCheckedChange, label?` | Feature toggles (auto-renew, notifications) | Tap/click toggles. Drag thumb on touch. |
-| CrmTextArea | `value, onValueChange, label?, rows, maxLength?` | Contact notes, email body, ticket reply | Multi-line input. Character counter at maxLength. |
-| CrmDatePicker | `value: LocalDate?, onValueChange, label?` | Deal close date, activity due date, invoice dates | Tap opens calendar popover. Type date directly. |
-| CrmFileUpload | `onFilesSelected, accept?, maxSize?, multiple?` | Attachments (V2) | Drag-drop zone + click to browse. Progress bar during upload. |
+| CrmCheckbox | `checked: Boolean, onCheckedChange, label?, enabled` | Bulk selection in walls table, channel selection | Tap/click toggles. Space key when focused. |
+| CrmRadio | `selected: Boolean, onClick, label?` | Single-select options (wall type, A/B traffic split preset) | Tap/click selects. Arrow keys cycle group. |
+| CrmSwitch | `checked: Boolean, onCheckedChange, label?` | Feature toggles (A/B test on/off, dark preview) | Tap/click toggles. Drag thumb on touch. |
+| CrmTextArea | `value, onValueChange, label?, rows, maxLength?` | Wall body copy, audience condition notes | Multi-line input. Character counter at maxLength. |
+| CrmDatePicker | `value: LocalDate?, onValueChange, label?` | Scheduled publish date, experiment end date | Tap opens calendar popover. Type date directly. |
+| CrmFileUpload | `onFilesSelected, accept?, maxSize?, multiple?` | Gate artwork/illustration assets (V2) | Drag-drop zone + click to browse. Progress bar during upload. |
 
 ### Interaction per platform
 
@@ -608,20 +612,20 @@ All input components follow the Carbon/Material pattern: label above, helper tex
 
 ## 7b. Feedback Components (Missing — no user feedback UX)
 
-| Component | Signature | CRM Usage | Behavior |
+| Component | Signature | Paywall Usage | Behavior |
 |-----------|-----------|-----------|----------|
-| CrmSnackbar | `message, action?, variant, duration` | "Contact saved", "Invoice sent", "Error: network" | Slides up from bottom. Auto-dismisses after `CrmTheme.animation.slow`. Action button optional. |
+| CrmSnackbar | `message, action?, variant, duration` | "Wall published", "Draft saved", "Error: network" | Slides up from bottom. Auto-dismisses after `CrmTheme.animation.slow`. Action button optional. |
 | CrmSpinner | `size: Dp` | Loading states during API calls | Indeterminate rotation. Centered in container. |
-| CrmProgressBar | `progress: Float, label?` | Multi-step wizards, file upload | Horizontal bar, 0→1 fill. Optional percentage label. |
+| CrmProgressBar | `progress: Float, label?` | Publish wizard steps, asset upload | Horizontal bar, 0→1 fill. Optional percentage label. |
 | CrmSkeletonLoader | `width, height, shape` | Content placeholders during fetch | Shimmer animation (pulse). Matches shape of target content. |
-| CrmEmptyState | `icon, title, subtitle?, action?, onAction?` | Empty contact list, no search results | Centered column. Icon (xxl size) + title (h2) + body + CTA button. |
+| CrmEmptyState | `icon, title, subtitle?, action?, onAction?` | Empty walls list, no experiment results yet | Centered column. Icon (xxl size) + title (h2) + body + CTA button. |
 
 ### Snackbar variants
 
 | Variant | Color | Icon | Use case |
 |---------|-------|------|----------|
 | DEFAULT | surface + onSurface | none | Neutral info |
-| SUCCESS | successContainer + success | checkmark | "Saved", "Sent" |
+| SUCCESS | successContainer + success | checkmark | "Published", "Saved" |
 | ERROR | errorContainer + error | alert | "Failed", "Network error" |
 | WARNING | warningContainer + warning | triangle | "Unsaved changes" |
 
@@ -637,11 +641,11 @@ All input components follow the Carbon/Material pattern: label above, helper tex
 
 ## 7c. Overlay Components (Missing — Dialog is the only overlay)
 
-| Component | Signature | CRM Usage | Behavior |
+| Component | Signature | Paywall Usage | Behavior |
 |-----------|-----------|-----------|----------|
-| CrmDrawer | `visible, onDismiss, side: START/END, width?` | Filter panel, edit form side-panel, mobile nav | Slides in from side. Scrim behind (overlay opacity). Swipe to dismiss on touch. |
-| CrmMenu | `expanded, onDismiss, anchor` | Row actions (edit/delete), 3-dot overflow | Positioned below anchor. Keyboard: Arrow keys navigate, Enter selects, Escape closes. |
-| CrmPopover | `visible, onDismiss, anchor, content` | Tooltip-like rich content, color picker | Arrow pointing to anchor. Click outside dismisses. |
+| CrmDrawer | `visible, onDismiss, side: START/END, width?` | Targeting & publishing side-panel on narrow widths, mobile nav | Slides in from side. Scrim behind (overlay opacity). Swipe to dismiss on touch. |
+| CrmMenu | `expanded, onDismiss, anchor` | Walls table row actions (duplicate/pause/delete), 3-dot overflow | Positioned below anchor. Keyboard: Arrow keys navigate, Enter selects, Escape closes. |
+| CrmPopover | `visible, onDismiss, anchor, content` | Tooltip-like rich content, audience condition builder | Arrow pointing to anchor. Click outside dismisses. |
 | CrmBottomSheet | `visible, onDismiss, content` | Mobile-only: filters, date picker, action list | Slides up from bottom. Drag handle. Swipe down to dismiss. Half-screen default, full-screen on drag up. |
 
 ### Overlay behavior per platform
@@ -657,11 +661,11 @@ All input components follow the Carbon/Material pattern: label above, helper tex
 
 ## 7d. Navigation Components (Missing)
 
-| Component | Signature | CRM Usage |
+| Component | Signature | Paywall Usage |
 |-----------|-----------|-----------|
-| CrmBreadcrumb | `items: List<BreadcrumbItem>, onNavigate` | Contacts > John Doe > Activity |
-| CrmTabs | `tabs: List<Tab>, selectedIndex, onSelect` | Contact detail (Info / History / Notes) |
-| CrmPagination | `page, totalPages, onPageChange` | Table pagination (10/20/50 per page) |
+| CrmBreadcrumb | `items: List<BreadcrumbItem>, onNavigate` | Walls > Metered limit — invoices > History |
+| CrmTabs | `tabs: List<Tab>, selectedIndex, onSelect` | Wall designer (Config / Targeting / Versions) |
+| CrmPagination | `page, totalPages, onPageChange` | Walls table pagination (10/20/50 per page) |
 
 ### Tabs behavior
 
@@ -694,7 +698,7 @@ All input components follow the Carbon/Material pattern: label above, helper tex
 |---------|-------------|
 | Search/filter | Type to filter options in dropdown |
 | Multi-select | Checkbox per option, chips in input |
-| Option groups | Nested headers (e.g., Region > Country) |
+| Option groups | Nested headers (e.g., Channel > Web/Mobile/Email) |
 | Create option | "Add new..." at bottom of dropdown |
 
 ---
@@ -740,9 +744,9 @@ fun CrmScaffold(
 | Behavior | Compact (Mobile) | Medium (Tablet) | Expanded/Large (Desktop/Web) |
 |----------|-----------------|-----------------|------------------------------|
 | Navigation | Bottom bar | Rail | Side drawer |
-| Data tables | Card list | Compact table | Full table with columns |
-| Deal pipeline | Horizontal scroll cards | 2-column kanban | Full kanban board |
-| Contact detail | Stacked sections | 2-column | 3-column with sidebar |
+| Walls overview | Card list | Compact table | Full table with columns |
+| Wall designer workspace | Tabbed panels (config / preview / publish) | Preview + one side panel | Three panels side by side (config, live preview, targeting & publishing) |
+| Live preview | Full-screen, device toggle | Inline, device toggle | Inline web/mobile frames, light/dark toggle |
 | Forms | Full-screen | Dialog | Inline panel |
 | Search | Full-screen overlay | Expandable bar | Persistent bar |
 
@@ -760,10 +764,10 @@ All components implement consistent interaction patterns across platforms. Deskt
 | **Hover** | Background shifts by `opacity.hover` overlay | Not applicable | Not applicable |
 | **Long press** | Not used (right-click instead) | Context menu after 500ms hold | Not applicable |
 | **Double tap** | Inline edit (table cells) | Inline edit (table cells) | Not applicable |
-| **Drag** | Kanban cards, column resize | Kanban cards (with handle), drawer dismiss | Not applicable |
+| **Drag** | Preview pane reorder, column resize | Reorder (with handle), drawer dismiss | Not applicable |
 | **Swipe** | Not applicable | Table row actions (swipe left), dismiss snackbar, tab switching, bottom sheet dismiss | Not applicable |
 | **Right-click** | Context menu (CrmMenu) | Long-press → same menu | Shift+F10 |
-| **Pinch** | Not applicable | Future: zoom on images/charts | Not applicable |
+| **Pinch** | Not applicable | Future: zoom on the live preview | Not applicable |
 
 ### Focus management
 
@@ -822,7 +826,7 @@ The design system is a **separate KMP module** that all platform targets depend 
 designsystem/
   build.gradle.kts                       # KMP: all targets
   src/
-    commonMain/kotlin/crm/designsystem/
+    commonMain/kotlin/nl/incedo/paywall/designsystem/
       theme/
         CrmTheme.kt                      # Theme provider + object
         CrmColors.kt                     # Color tokens + light/dark
@@ -872,11 +876,11 @@ designsystem/
         CrmNavBar.kt
         CrmSideNav.kt
         CrmDataTable.kt                 # Enhanced: sort, pagination, selection, sticky
-        CrmKanbanBoard.kt
-        CrmDealCard.kt
-        CrmContactCard.kt
-        CrmActivityItem.kt
-        CrmTimeline.kt
+        CrmGatePreview.kt               # Live preview frame (web/mobile device chrome)
+        CrmPlanCard.kt                  # Plan in the pricing wall
+        CrmWallCard.kt                  # Wall summary card (compact layouts)
+        CrmUsageMeter.kt                # Metered gate progress
+        CrmTimeline.kt                  # Version history feed
         CrmSearchBar.kt
         CrmFormSection.kt
         CrmEmptyState.kt                # NEW: no-data placeholder
@@ -889,7 +893,7 @@ designsystem/
       layout/
         CrmScaffold.kt                  # Responsive scaffold
         CrmResponsive.kt                # WindowSizeClass helpers
-    commonTest/kotlin/crm/designsystem/
+    commonTest/kotlin/nl/incedo/paywall/designsystem/
       theme/
         CrmColorsTest.kt
         CrmTypographyTest.kt
@@ -902,7 +906,7 @@ designsystem/
 
 ```
                  ┌────────────────┐
-                 │     shared      │  Domain + Application
+                 │     shared      │  Domain + Application (WallDefinition, etc.)
                  └───────┬────────┘
                          │
                  ┌───────┴────────┐
@@ -1049,4 +1053,3 @@ kotlin {
 
 ## 13. Blogs
 - https://designstrategy.guide/the-ultimate-design-systems-resources-list/
-
