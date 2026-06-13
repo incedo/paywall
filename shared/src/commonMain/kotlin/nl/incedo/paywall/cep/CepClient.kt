@@ -50,6 +50,10 @@ data class Offer(
     /** The plan being offered (null for access_grant offers). */
     val toPlanId: String? = null,
     val discountPercent: Int? = null,
+    /** UP-02: fixed discount in minor currency units (e.g. cents); alternative to discountPercent. */
+    val discountFixed: Int? = null,
+    /** UP-02: how many billing periods the discount applies (null = indefinite). */
+    val discountDurationPeriods: Int? = null,
     /** How long the offer is valid (seconds from now). */
     val validForSeconds: Long? = null,
     /** Pause duration in months (UP-02 optional pause field). */

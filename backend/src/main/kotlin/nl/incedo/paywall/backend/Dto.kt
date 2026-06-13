@@ -258,6 +258,10 @@ data class OfferResponse(
     val offerId: String?,
     val kind: String?,
     val discountPercent: Int? = null,
+    /** UP-02: fixed discount in minor currency units (e.g. cents); alternative to discountPercent. */
+    val discountFixed: Int? = null,
+    /** UP-02: how many billing periods the discount applies (null = indefinite). */
+    val discountDurationPeriods: Int? = null,
     val validForSeconds: Long? = null,
     val cta: String? = null,
     /** UP-02: plan the subscriber is currently on (null if not subscribed or not applicable). */
@@ -623,6 +627,8 @@ fun Offer?.toOfferResponse(): OfferResponse = OfferResponse(
     offerId = this?.offerId,
     kind = this?.kind,
     discountPercent = this?.discountPercent,
+    discountFixed = this?.discountFixed,
+    discountDurationPeriods = this?.discountDurationPeriods,
     validForSeconds = this?.validForSeconds,
     cta = this?.cta,
     fromPlanId = this?.fromPlanId,

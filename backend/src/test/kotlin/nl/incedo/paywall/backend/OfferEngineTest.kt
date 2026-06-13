@@ -232,6 +232,30 @@ class OfferEngineTest {
             "UP-11: complete-tier upsell at basic checkout must be accepted (rank 1→2)")
     }
 
+    // UP-02: fixed discount and discount duration fields ----------------------------
+
+    @Test
+    fun offerResponseIncludesFixedDiscountFields() = apiTest(
+        offer = Offer(
+            offerId = "fixed-discount-offer",
+            kind = "downsell",
+            fromPlanId = "complete-monthly",
+            toPlanId = "basic-monthly",
+            discountFixed = 500,          // €5.00 in cents
+            discountDurationPeriods = 3,  // 3 billing periods
+            channels = setOf("web"),
+            source = "campaign-fixed",
+        ),
+    ) { client ->
+        // UP-02: the offer object must carry fixed discount and duration-in-periods;
+        // the API response must expose both fields so the gate can render correct copy.
+        val body = client.requestOffer(trigger = "cancel_intent")
+        assertEquals("fixed-discount-offer", body.offerId)
+        assertEquals(500, body.discountFixed, "UP-02: discountFixed must be forwarded in OfferResponse")
+        assertEquals(3, body.discountDurationPeriods, "UP-02: discountDurationPeriods must be forwarded in OfferResponse")
+        assertNull(body.discountPercent, "discountPercent must be null when using fixed discount")
+    }
+
     @Test
     fun sameRankUpsellNoLongerRejected() = apiTest(
         offer = Offer(
