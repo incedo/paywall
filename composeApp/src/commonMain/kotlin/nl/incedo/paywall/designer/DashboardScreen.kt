@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import nl.incedo.paywall.api.BypassRateResponse
+import nl.incedo.paywall.api.CohortStatsResponse
 import nl.incedo.paywall.api.VariantStatsResponse
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
@@ -21,9 +22,15 @@ import nl.incedo.paywall.ui.CrmText
  * registrations, checkouts, conversions, conversion rate with Wilson CI
  * (AN-12), and reach cost vs. control (AN-11).
  * BP-06: bypass-rate card shown when bypassRate is available.
+ * AN-13: cohort table shown when cohortStats is non-empty.
  */
 @Composable
-fun DashboardScreen(stats: List<VariantStatsResponse>, bypassRate: BypassRateResponse?, statusMessage: String?) {
+fun DashboardScreen(
+    stats: List<VariantStatsResponse>,
+    bypassRate: BypassRateResponse?,
+    cohortStats: List<CohortStatsResponse>,
+    statusMessage: String?,
+) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.xl),
         verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg),
@@ -165,6 +172,49 @@ fun DashboardScreen(stats: List<VariantStatsResponse>, bypassRate: BypassRateRes
                         Cell((row.articleReadsDeltaVsControl ?: 0).signedString())
                     }
                     if (index < withReachCost.lastIndex) CrmDivider()
+                }
+            }
+        }
+
+        // AN-13: cohort view — conversion and 30-day retention by ISO week of first visit
+        if (cohortStats.isNotEmpty()) {
+            CrmCard {
+                Column(modifier = Modifier.padding(CrmTheme.spacing.lg)) {
+                    CrmText(
+                        "Cohort analysis by week of first visit (AN-13)",
+                        style = CrmTheme.typography.label,
+                        color = CrmTheme.colors.onSurfaceVariant,
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(
+                        horizontal = CrmTheme.spacing.lg,
+                        vertical = CrmTheme.spacing.md,
+                    ),
+                ) {
+                    HeaderCell("Cohort week", 2f)
+                    HeaderCell("Visitors", 1f)
+                    HeaderCell("Conversions", 1f)
+                    HeaderCell("Conv. rate", 1f)
+                    HeaderCell("Retained 30d", 1f)
+                    HeaderCell("Retention", 1f)
+                }
+                CrmDivider()
+                cohortStats.forEachIndexed { index, row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(
+                            horizontal = CrmTheme.spacing.lg,
+                            vertical = CrmTheme.spacing.md,
+                        ),
+                    ) {
+                        CrmText(row.cohortWeek, modifier = Modifier.weight(2f))
+                        Cell(row.visitors.toString())
+                        Cell(row.conversions.toString())
+                        Cell(row.conversionRate.asPercent())
+                        Cell(row.retainedAt30Days.toString())
+                        Cell(row.retentionRate.asPercent())
+                    }
+                    if (index < cohortStats.lastIndex) CrmDivider()
                 }
             }
         }
