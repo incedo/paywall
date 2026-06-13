@@ -46,7 +46,27 @@
     without JavaScript and WebAssembly nothing renders, so this static page
     explains the situation. Enforcement is unaffected — content only exists
     behind entitlement-checked APIs (AC-01, BP-01).
+
+    Two cases:
+      1. JS disabled  → <noscript> block below is shown by the browser.
+      2. JS on, Wasm absent → inline script detects this and reveals .wasm-fallback.
 -->
+<script>
+if (typeof WebAssembly === 'undefined') {
+    document.addEventListener('DOMContentLoaded', function () {
+        var el = document.getElementById('wasm-fallback');
+        if (el) el.style.display = 'flex';
+    });
+}
+</script>
+<div id="wasm-fallback" class="fallback" style="display:none">
+    <div class="fallback-card">
+        <div class="brand">Incedo</div>
+        <h1>WebAssembly is not supported</h1>
+        <p>This application requires WebAssembly to run. Please update your browser, or try a modern browser such as Chrome, Firefox, or Safari.</p>
+        <p>Need help? <a href="mailto:support@incedo.nl">Contact support</a></p>
+    </div>
+</div>
 <noscript>
     <div class="fallback">
         <div class="fallback-card">
