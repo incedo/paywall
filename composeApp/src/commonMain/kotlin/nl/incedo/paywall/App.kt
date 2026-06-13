@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import kotlin.random.Random
 import kotlinx.coroutines.launch
 import nl.incedo.paywall.api.ConsoleApi
+import nl.incedo.paywall.api.OfferStatsResponse
 import nl.incedo.paywall.api.SaveWallRequest
 import nl.incedo.paywall.api.VariantStatsResponse
 import nl.incedo.paywall.api.WallResponse
@@ -28,6 +29,7 @@ import nl.incedo.paywall.designer.BrandsScreen
 import nl.incedo.paywall.designer.PartnersScreen
 import nl.incedo.paywall.designer.ConfigScreen
 import nl.incedo.paywall.designer.DashboardScreen
+import nl.incedo.paywall.designer.OfferStatsScreen
 import nl.incedo.paywall.designer.SubjectInspectorScreen
 import nl.incedo.paywall.designer.TemplatesScreen
 import nl.incedo.paywall.designer.WallDesignerScreen
@@ -48,6 +50,7 @@ import nl.incedo.paywall.ui.CrmTextButton
 private sealed interface ConsoleScreen {
     data object Overview : ConsoleScreen
     data object Dashboard : ConsoleScreen
+    data object OfferStats : ConsoleScreen
     data object Inspector : ConsoleScreen
     data object Config : ConsoleScreen
     data object Brands : ConsoleScreen
@@ -71,6 +74,7 @@ fun App() {
     var wallsById by remember { mutableStateOf<Map<String, WallResponse>>(emptyMap()) }
     var summaries by remember { mutableStateOf<List<WallSummary>>(emptyList()) }
     var stats by remember { mutableStateOf<List<VariantStatsResponse>>(emptyList()) }
+    var offerStats by remember { mutableStateOf<List<OfferStatsResponse>>(emptyList()) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var offline by remember { mutableStateOf(false) }
 
@@ -100,6 +104,11 @@ fun App() {
             runCatching { api.stats() }
                 .onSuccess { stats = it; statusMessage = null }
                 .onFailure { statusMessage = "Backend unreachable — no stats" }
+        }
+        if (screen is ConsoleScreen.OfferStats) {
+            runCatching { api.offerStats() }
+                .onSuccess { offerStats = it; statusMessage = null }
+                .onFailure { statusMessage = "Backend unreachable — no offer stats" }
         }
         if (screen is ConsoleScreen.Inspector || screen is ConsoleScreen.Config) {
             statusMessage = null
@@ -164,6 +173,7 @@ fun App() {
             AdminTopBar(
                 activeItem = when (screen) {
                     is ConsoleScreen.Dashboard -> "Dashboard"
+                    is ConsoleScreen.OfferStats -> "Offers"
                     is ConsoleScreen.Inspector -> "Support"
                     is ConsoleScreen.Config -> "Config"
                     is ConsoleScreen.Brands -> "Brands"
@@ -174,6 +184,7 @@ fun App() {
                 onNavigate = { item ->
                     screen = when (item) {
                         "Dashboard" -> ConsoleScreen.Dashboard
+                        "Offers" -> ConsoleScreen.OfferStats
                         "Support" -> ConsoleScreen.Inspector
                         "Config" -> ConsoleScreen.Config
                         "Brands" -> ConsoleScreen.Brands
@@ -195,6 +206,11 @@ fun App() {
                     modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 ) {
                     DashboardScreen(stats, statusMessage)
+                }
+                is ConsoleScreen.OfferStats -> Column(
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                ) {
+                    OfferStatsScreen(offerStats, statusMessage)
                 }
                 is ConsoleScreen.Inspector -> SubjectInspectorScreen(
                     onInspect = { id -> api.inspectSubject(id) },
@@ -338,7 +354,7 @@ private fun AdminTopBar(activeItem: String, onNavigate: (String) -> Unit) {
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg),
         ) {
-            listOf("Dashboard", "Walls", "Brands", "Partners", "Templates", "Support", "Config").forEach { item ->
+            listOf("Dashboard", "Offers", "Walls", "Brands", "Partners", "Templates", "Support", "Config").forEach { item ->
                 CrmTextButton(item, onClick = { onNavigate(item) })
             }
             listOf("Contacts", "Deals", "Invoices", "Subscriptions", "Tickets").forEach { item ->

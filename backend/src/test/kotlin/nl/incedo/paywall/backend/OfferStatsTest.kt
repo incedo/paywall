@@ -12,6 +12,7 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.testApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import nl.incedo.paywall.api.OfferStatsResponse
 import nl.incedo.paywall.cep.MockCepClient
 import nl.incedo.paywall.cep.Offer
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
