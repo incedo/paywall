@@ -398,6 +398,38 @@ data class PendingOfferResponse(
     val triggeredAtEpochMs: Long,
 )
 
+/**
+ * ADM-16: wall design template — brand-neutral layout/copy that can be
+ * instantiated for any brand. Theme tokens come from the target brand at
+ * render time; they are NOT stored in the template.
+ */
+@Serializable
+data class WallTemplateRequest(
+    val name: String,
+    val wallType: String,
+    val title: String,
+    val body: String,
+    val primaryCta: String,
+    val secondaryCta: String,
+    val channels: Set<String> = setOf("web"),
+    val translations: Map<String, nl.incedo.paywall.walls.WallCopy> = emptyMap(),
+)
+
+/** ADM-16: response shape for a saved wall template. */
+@Serializable
+data class WallTemplateResponse(
+    val id: String,
+    val name: String,
+    val wallType: String,
+    val title: String,
+    val body: String,
+    val primaryCta: String,
+    val secondaryCta: String,
+    val channels: Set<String>,
+    val translations: Map<String, nl.incedo.paywall.walls.WallCopy>,
+    val createdBy: String,
+)
+
 /** AN-21/US-07: GDPR account deletion request from the CIAM webhook. */
 @Serializable
 data class AccountDeletionRequest(

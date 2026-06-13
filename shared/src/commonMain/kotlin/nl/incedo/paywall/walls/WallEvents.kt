@@ -90,3 +90,21 @@ data class WallPublished(
     val actor: String,
     override val tags: Set<String> = setOf("wall:${wallId.value}", "walls"),
 ) : DomainEvent
+
+/**
+ * ADM-16: a wall design saved as a reusable template.
+ * Templates carry layout/copy without a brandId; instantiating one for a brand
+ * produces a new WallConfig with the template's fields + the target brandId.
+ * Brand theme tokens (fonts, colors) live in BrandCreated.themeJson and are
+ * applied at render time — they are deliberately NOT in the template.
+ */
+@Serializable
+data class WallTemplateCreated(
+    val templateId: String,
+    /** Human-readable template name shown in the console picker. */
+    val name: String,
+    /** The layout/copy config, always with brandId = null (templates are brand-neutral). */
+    val config: WallConfig,
+    val actor: String,
+    override val tags: Set<String> = setOf("wall-template:$templateId", "wall-templates"),
+) : DomainEvent
