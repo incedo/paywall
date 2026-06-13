@@ -205,6 +205,7 @@ fun Application.module(
                 subject = Subject(VisitorId(request.visitorId), userId),
                 article = Article(ArticleId(request.articleId), tier),
                 channel = request.channel,
+                isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]),
             )
             call.respond(DecideResponse.from(outcome))
         }
@@ -227,16 +228,29 @@ fun Application.module(
             val outcome = service.decide(
                 subject = Subject(VisitorId(visitorId), userId),
                 article = Article(stored.id, stored.tier),
+                isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]),
             )
+            // BP-03: premium pages carry noarchive so archive crawlers only
+            // snapshot the teaser and not the full body.
+            if (stored.tier == ContentTier.PREMIUM) {
+                call.response.headers.append("X-Robots-Tag", "noarchive")
+            }
             val response = when (val decision = outcome.decision) {
-                is nl.incedo.paywall.access.AccessDecision.Full -> ArticleResponse(
-                    id = stored.id.value,
-                    title = stored.title,
-                    tier = stored.tier.name.lowercase(),
-                    access = "full",
-                    body = stored.body,
-                    meterUsed = outcome.meterUsedAfter,
-                )
+                is nl.incedo.paywall.access.AccessDecision.Full -> {
+                    // BP-07: full premium responses must not be cached by shared caches
+                    // (CDN/proxy); private is sufficient since the body is personalized.
+                    if (stored.tier == ContentTier.PREMIUM) {
+                        call.response.headers.append(HttpHeaders.CacheControl, "private, no-store")
+                    }
+                    ArticleResponse(
+                        id = stored.id.value,
+                        title = stored.title,
+                        tier = stored.tier.name.lowercase(),
+                        access = "full",
+                        body = stored.body,
+                        meterUsed = outcome.meterUsedAfter,
+                    )
+                }
                 is nl.incedo.paywall.access.AccessDecision.Gated -> ArticleResponse(
                     id = stored.id.value,
                     title = stored.title,
