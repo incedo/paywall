@@ -75,14 +75,14 @@ class FgaCapTest {
         for (i in 1..10) {
             client.post("/api/v1/grants") {
                 contentType(ContentType.Application.Json)
-                setBody(GrantChangeRequest("grant-src-$i", subjectId, "art-$i", "support", expiresAt))
+                setBody(GrantChangeRequest(grantId = "grant-src-$i", subjectId = subjectId, articleId = "art-$i", grantedBy = "support", expiresAtEpochMs = expiresAt))
             }
         }
 
         // Different source: "day_pass" — should still be allowed
         val dayPass = client.post("/api/v1/grants") {
             contentType(ContentType.Application.Json)
-            setBody(GrantChangeRequest("grant-dp-1", subjectId, "art-dp", "day_pass", expiresAt))
+            setBody(GrantChangeRequest(grantId = "grant-dp-1", subjectId = subjectId, articleId = "art-dp", grantedBy = "day_pass", expiresAtEpochMs = expiresAt))
         }
         assertEquals(HttpStatusCode.Accepted, dayPass.status,
             "grants from a different source must not count against other source's cap (FGA-03)")

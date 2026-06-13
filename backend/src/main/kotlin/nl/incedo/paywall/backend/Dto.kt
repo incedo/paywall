@@ -171,8 +171,10 @@ data class GrantChangeRequest(
     val grantId: String,
     val subjectId: String,
     val articleId: String,
-    /** e.g. "day_pass", "share_token", "ad_gated", "support" */
+    /** FGA-01: source system (e.g. "day_pass", "ad_gated", "support"). */
     val grantedBy: String = "support",
+    /** FGA-01: human-readable audit reason (e.g. "support ticket 4711"). */
+    val reason: String = "",
     val expiresAtEpochMs: Long? = null,
     val active: Boolean = true,
 )
@@ -384,8 +386,10 @@ data class OfferStatsResponse(
 data class GrantAuditEntry(
     val grantId: String,
     val articleId: String,
-    /** e.g. "day_pass", "share_token", "ad_gated", "support", "ai_engine" */
+    /** FGA-01: source system (e.g. "day_pass", "ad_gated", "support", "ai_engine"). */
     val grantedBy: String,
+    /** FGA-01: human-readable audit reason. */
+    val reason: String = "",
     /** Null = no expiry. Milliseconds since epoch. */
     val expiresAtEpochMs: Long? = null,
     /** True when not revoked and not expired. */
