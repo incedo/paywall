@@ -51,6 +51,7 @@ import nl.incedo.paywall.entitlements.EntitlementGranted
 import nl.incedo.paywall.entitlements.EntitlementRevoked
 import nl.incedo.paywall.grants.GrantIssued
 import nl.incedo.paywall.grants.GrantRevoked
+import nl.incedo.paywall.grants.ShareTokenIssued
 import nl.incedo.paywall.walls.WallConfig
 import nl.incedo.paywall.walls.WallView
 import nl.incedo.paywall.core.SubjectId
@@ -172,8 +173,14 @@ fun main() {
     // INF-02: the shared secret the edge presents; absent in local dev.
     val originSecret = System.getenv("ORIGIN_SHARED_SECRET")
 
+    // BP-05: SHARE_TOKEN_SECRET must be set in production. Falls back to a
+    // random per-process key in dev (tokens valid only while the server runs).
+    val shareSecret = System.getenv("SHARE_TOKEN_SECRET")
+        ?: java.util.UUID.randomUUID().toString()
+    val shareTokenService = ShareTokenService(eventStore, shareSecret)
+
     embeddedServer(CIO, port = 8080) {
-        module(service, eventStore, jwtValidator, originSecret = originSecret, configStore = configStore)
+        module(service, eventStore, jwtValidator, originSecret = originSecret, configStore = configStore, shareTokenService = shareTokenService)
     }.start(wait = true)
 }
 
@@ -187,6 +194,8 @@ fun Application.module(
     originSecret: String? = null,
     /** API-03: hot-reloadable config; null = use defaultExperiment (tests/dev). */
     configStore: ConfigStore? = null,
+    /** BP-05: subscriber-generated signed share tokens; null = feature disabled (tests). */
+    shareTokenService: ShareTokenService? = null,
 ) {
     val originTrust = OriginTrust(originSecret)
     install(ContentNegotiation) {
@@ -735,6 +744,61 @@ fun Application.module(
             }
             eventStore.append(deletionEvents, condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to deletionEvents.size, "linksRevoked" to linked.size))
+        }
+        // BP-05: subscriber-generated signed share tokens that redeem into FGA grants.
+        // POST /api/v1/articles/{id}/share — authenticated subscriber issues a token (≤5/month).
+        post("/api/v1/articles/{id}/share") {
+            if (shareTokenService == null) {
+                call.respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to "share tokens not configured"))
+                return@post
+            }
+            val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization]) ?: run {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "authentication required (BP-05)"))
+                return@post
+            }
+            val articleId = call.parameters["id"]?.let { ArticleId(it) } ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "articleId is required"))
+                return@post
+            }
+            val subscriberSubjectId = SubjectId("user:$userId")
+            val monthPeriod = YearMonth.now(ZoneId.of("Europe/Amsterdam")).toString()
+            when (val result = shareTokenService.issue(subscriberSubjectId, articleId, monthPeriod)) {
+                is ShareTokenService.IssueResult.Success -> {
+                    val capTag = nl.incedo.paywall.grants.shareMonthTag(subscriberSubjectId, monthPeriod)
+                    val used = eventStore.query(EventQuery(setOf(capTag))).events
+                        .filterIsInstance<nl.incedo.paywall.grants.ShareTokenIssued>().size
+                    call.respond(ShareTokenResponse(
+                        token = result.issued.token,
+                        expiresAtEpochMs = result.issued.expiresAtEpochMs,
+                        remainingThisMonth = maxOf(0, SHARE_TOKEN_MONTHLY_CAP - used),
+                    ))
+                }
+                ShareTokenService.IssueResult.CapExceeded ->
+                    call.respond(HttpStatusCode.TooManyRequests, mapOf("error" to "monthly share token cap reached (BP-05)"))
+                ShareTokenService.IssueResult.NotEntitled ->
+                    call.respond(HttpStatusCode.Forbidden, mapOf("error" to "active subscription required to share"))
+            }
+        }
+        // BP-05: redeem a share token — anyone (including anonymous visitors) may redeem.
+        post("/api/v1/shares/redeem") {
+            if (shareTokenService == null) {
+                call.respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to "share tokens not configured"))
+                return@post
+            }
+            val request = call.receive<RedeemShareTokenRequest>()
+            if (request.visitorId.isBlank() || request.token.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "visitorId and token are required"))
+                return@post
+            }
+            val visitorSubjectId = SubjectId("visitor:${request.visitorId}")
+            when (val result = shareTokenService.redeem(request.token, visitorSubjectId)) {
+                is ShareTokenService.RedeemResult.Success ->
+                    call.respond(HttpStatusCode.OK, mapOf("grantId" to result.grantId))
+                ShareTokenService.RedeemResult.InvalidToken ->
+                    call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "invalid share token"))
+                ShareTokenService.RedeemResult.Expired ->
+                    call.respond(HttpStatusCode.Gone, mapOf("error" to "share token has expired"))
+            }
         }
     }
 }
