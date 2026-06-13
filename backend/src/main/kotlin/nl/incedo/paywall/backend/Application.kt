@@ -55,6 +55,7 @@ import nl.incedo.paywall.offers.offerTag
 import nl.incedo.paywall.cep.CepClient
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
+import nl.incedo.paywall.analytics.PartnerUsageProjection
 import nl.incedo.paywall.offers.OfferTriggered
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.BrandId
@@ -732,6 +733,20 @@ fun Application.module(
                             suppressed = ch.suppressed,
                         )
                     },
+                )
+            })
+        }
+        // PA-04: partner usage report — reads per partner and unique users,
+        // derived from the wall-event stream. Staff VIEWER access for contract management.
+        get("/api/v1/stats/partners") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            val events = eventStore.query(EventQuery(wallEventShardTags())).events
+            val projection = PartnerUsageProjection().also { it.applyAll(events) }
+            call.respond(projection.usage().map { u ->
+                PartnerUsageResponse(
+                    partnerId = u.partnerId,
+                    totalReads = u.totalReads,
+                    uniqueUsers = u.uniqueUsers,
                 )
             })
         }

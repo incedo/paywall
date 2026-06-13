@@ -342,6 +342,17 @@ data class OfferStatsResponse(
 )
 
 /**
+ * PA-04: partner usage stats for contract management — reads per partner and
+ * unique user count, derived from the wall-event stream.
+ */
+@Serializable
+data class PartnerUsageResponse(
+    val partnerId: String,
+    val totalReads: Int,
+    val uniqueUsers: Int,
+)
+
+/**
  * UP-08: inbound payload from the CEP when it pushes an offer for an async channel.
  * Mirrors [nl.incedo.paywall.cep.Offer] but is a serializable backend DTO.
  */
