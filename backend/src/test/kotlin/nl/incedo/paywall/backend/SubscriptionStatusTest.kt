@@ -11,6 +11,12 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.testApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import nl.incedo.paywall.cep.MockCepClient
+import nl.incedo.paywall.cep.Offer
 import nl.incedo.paywall.experiments.VariantAssigner
 import nl.incedo.paywall.core.VisitorId
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
@@ -130,6 +136,72 @@ class SubscriptionStatusTest {
         assertEquals(HttpStatusCode.Accepted, resp.status)
         // clock is frozen at `now`; grace window extends 7 days so still valid
         assertEquals("full", client.decide(vis).access, "past_due within grace period must retain access (SUB-05)")
+    }
+
+    // DN-03: payment failure trigger -----------------------------------------------
+
+    private fun dn03ApiTest(
+        cepOffer: Offer? = null,
+        block: suspend (io.ktor.client.HttpClient) -> Unit,
+    ) = testApplication {
+        val store = InMemoryEventStore()
+        val service = AccessService(
+            eventStore = store,
+            experiment = defaultExperiment,
+            clock = { now },
+            currentPeriod = { MeterPeriod("2026-06") },
+        )
+        val offerSvc = cepOffer?.let { OfferService(store, MockCepClient(fixedOffer = it), clock = { now }) }
+        application { module(service, store, offerService = offerSvc) }
+        val client = createClient { install(ContentNegotiation) { json() } }
+        block(client)
+    }
+
+    @Test
+    fun pastDueFiresPaymentFailureTriggerAndReturnsRetentionOffer() = dn03ApiTest(
+        cepOffer = Offer(
+            offerId = "cheaper-plan-offer",
+            kind = "downsell",
+            fromPlanId = "complete-monthly",
+            toPlanId = "basic-monthly",
+        ),
+    ) { client ->
+        // DN-03: past_due must call decideOffer("payment_failure") so the CEP can
+        // offer a cheaper plan; the offer ID is returned in the webhook response.
+        val vis = hardVariantVisitor("dn03-offer")
+        val resp = client.post("/api/v1/integration/entitlements") {
+            contentType(ContentType.Application.Json)
+            setBody(EntitlementChangeRequest(
+                subjectId = "visitor:$vis",
+                subscriptionRef = "sub-dn03",
+                planId = "pro",
+                status = "past_due",
+            ))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        val body = resp.body<JsonObject>()
+        val retentionOfferId = body["retentionOfferId"]?.jsonPrimitive?.contentOrNull
+        assertNotNull(retentionOfferId, "DN-03: past_due webhook must return retentionOfferId when CEP provides an offer")
+        assertEquals("cheaper-plan-offer", retentionOfferId)
+    }
+
+    @Test
+    fun pastDueWithoutOfferServiceOmitsRetentionOfferId() = dn03ApiTest(cepOffer = null) { client ->
+        // No OfferService wired — response must still be 202 without retentionOfferId (DN-03 optional path).
+        val vis = hardVariantVisitor("dn03-no-offer")
+        val resp = client.post("/api/v1/integration/entitlements") {
+            contentType(ContentType.Application.Json)
+            setBody(EntitlementChangeRequest(
+                subjectId = "visitor:$vis",
+                subscriptionRef = "sub-dn03b",
+                planId = "pro",
+                status = "past_due",
+            ))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        val body = resp.body<JsonObject>()
+        assertEquals(null, body["retentionOfferId"]?.jsonPrimitive?.contentOrNull,
+            "DN-03: no retentionOfferId in response when no OfferService configured")
     }
 
     @Test

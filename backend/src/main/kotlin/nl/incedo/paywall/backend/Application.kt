@@ -22,6 +22,10 @@ import io.ktor.server.routing.routing
 import java.time.YearMonth
 import java.time.ZoneId
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import nl.incedo.paywall.api.SaveWallRequest
 import nl.incedo.paywall.api.VariantStatsResponse
 import nl.incedo.paywall.api.WallResponse
@@ -1241,7 +1245,27 @@ fun Application.module(
             // AC-03: invalidate the per-session cache so the change takes effect
             // immediately rather than waiting for the 5-minute TTL to expire.
             service.invalidateEntitlementCache(change.subjectId)
-            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to events.map { it::class.simpleName }))
+            // DN-03: on payment failure, fire the "payment_failure" trigger so the CEP can
+            // offer a cheaper plan before the subscriber churns at grace-period expiry.
+            val paymentFailureOfferId: String? = if (change.status == "past_due" && offerService != null) {
+                val failedSubject = if (change.subjectId.startsWith("user:")) {
+                    Subject(VisitorId("_"), UserId(change.subjectId.removePrefix("user:")))
+                } else {
+                    Subject(VisitorId(change.subjectId.removePrefix("visitor:")), null)
+                }
+                val ctx = OfferService.TriggerContext(
+                    trigger = "payment_failure",
+                    channel = "web",
+                    currentPlanId = change.planId,
+                    variant = service.variantFor(failedSubject),
+                )
+                (offerService.decideOffer(failedSubject, ctx) as? OfferService.OfferDecision.Triggered)?.offer?.offerId
+            } else null
+            val responseBody = buildJsonObject {
+                putJsonArray("recorded") { events.forEach { add(it::class.simpleName) } }
+                if (paymentFailureOfferId != null) put("retentionOfferId", paymentFailureOfferId)
+            }
+            call.respond(HttpStatusCode.Accepted, responseBody)
         }
         // FGA grant management (FGA-03): issue/revoke article-scoped grants —
         // day/week passes carry TTL = pass duration (PW-08). All writes are
