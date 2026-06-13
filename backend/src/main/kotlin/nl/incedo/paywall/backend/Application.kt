@@ -826,6 +826,34 @@ fun Application.module(
                 }
             call.respond(entries)
         }
+        // PR-03: profile completeness — consent records per subject (AN-20).
+        // Returns the set of purposeIds the subject has consented to via data-gate
+        // interactions, with timestamps. Used by the CEP for segmentation.
+        get("/api/v1/subjects/{subjectId}/profile") {
+            val subjectParam = call.parameters["subjectId"]?.takeIf { it.isNotBlank() } ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId required"))
+                return@get
+            }
+            val events = eventStore.query(EventQuery(setOf("subject:$subjectParam"))).events
+            // Collect all consented purposes; last consent for the same purposeId wins.
+            val consentedPurposes = mutableMapOf<String, Long>()
+            events.filterIsInstance<DataGateConsentGiven>().forEach { consent ->
+                val existing = consentedPurposes[consent.purposeId]
+                if (existing == null || consent.consentAtEpochMs > existing) {
+                    consentedPurposes[consent.purposeId] = consent.consentAtEpochMs
+                }
+            }
+            // Completeness score: how many distinct purposes this subject has given consent for.
+            // Total = 3 known purposes in experiment phase (newsletter, survey, ad_profile).
+            val knownPurposes = 3
+            val completenessScore = if (knownPurposes > 0)
+                consentedPurposes.size.toDouble() / knownPurposes else 0.0
+            call.respond(ProfileCompletenessResponse(
+                subjectId = subjectParam,
+                consentedPurposes = consentedPurposes,
+                completenessScore = completenessScore.coerceIn(0.0, 1.0),
+            ))
+        }
         post("/api/v1/admin/subjects/{subjectId}/meter-reset") {
             // AA-01: a user-scoped support action — operator role + step-up.
             val staff = call.requireStaff(jwtValidator, StaffRole.OPERATOR, needAal2 = true) ?: return@post

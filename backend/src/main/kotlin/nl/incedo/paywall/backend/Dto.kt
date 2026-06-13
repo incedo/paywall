@@ -449,6 +449,20 @@ data class BypassRateResponse(
     val note: String = "DL-03: reported only — not auto-blocked in experiment phase",
 )
 
+/**
+ * PR-03: profile completeness for a subject — traits collected with consent (AN-20).
+ * Exposed so the CEP can segment on profile completeness without access to raw PII.
+ * Each trait maps a purposeId to when the subject consented (epoch ms).
+ */
+@Serializable
+data class ProfileCompletenessResponse(
+    val subjectId: String,
+    /** purposeId → consentAtEpochMs for each active consent record (AN-20). */
+    val consentedPurposes: Map<String, Long>,
+    /** Derived completeness score: number of consented purposes / total known purposes (0.0–1.0). */
+    val completenessScore: Double,
+)
+
 /** AN-21/US-07: GDPR account deletion request from the CIAM webhook. */
 @Serializable
 data class AccountDeletionRequest(
