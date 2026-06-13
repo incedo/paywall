@@ -111,7 +111,31 @@ class AccessService(
         channel: String = "web",
         isBot: Boolean = false,
         isSuspicious: Boolean = false,
+        /**
+         * MT-05: the edge (INF-01) verified this is a legitimate search crawler
+         * via reverse DNS / Cloudflare verified-bot signal. Never trust UA alone.
+         * When true, the decide call is exempt from metering and gating (SEO-02)
+         * and logs a bot-flagged ARTICLE_READ for analytics (AN-05).
+         */
+        isVerifiedCrawler: Boolean = false,
     ): Outcome {
+        if (isVerifiedCrawler) {
+            val variant = VariantAssigner.assign(subject, experiment)
+            val now = clock()
+            // AN-05: bot traffic is flagged in events, not silently dropped.
+            val crawlerEvent = WallEventRecorded(
+                eventType = WallEventType.ARTICLE_READ,
+                subjectId = subject.subjectId,
+                variant = variant.name,
+                channel = channel,
+                occurredAtEpochMs = now,
+                articleId = article.id,
+                context = mapOf("reason" to "verified_crawler", "bot" to "true"),
+            )
+            eventStore.append(listOf(crawlerEvent), condition = null)
+            return Outcome(nl.incedo.paywall.access.AccessDecision.Full(nl.incedo.paywall.access.AccessReason.VERIFIED_CRAWLER), variant, meterUsedAfter = 0)
+        }
+
         // EX-03: authenticated subjects use userId as the assignment key so the
         // variant is stable across devices after login.
         val variant = VariantAssigner.assign(subject, experiment)

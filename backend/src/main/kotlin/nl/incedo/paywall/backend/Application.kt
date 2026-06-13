@@ -116,6 +116,14 @@ private suspend fun io.ktor.server.application.ApplicationCall.respondSaveResult
     }
 }
 
+/**
+ * SEO-01: JSON-LD paywalled-content structured data for verified crawler responses.
+ * Tells Google this is not cloaking — the full body is provided transparently with
+ * the schema markup identifying the gated section (SEO-03 server-rendered path).
+ */
+private fun buildSeoStructuredData(articleId: String, title: String): String =
+    """{"@context":"https://schema.org","@type":"NewsArticle","headline":${kotlinx.serialization.json.Json.encodeToString(title)},"isAccessibleForFree":false,"hasPart":[{"@type":"WebPageElement","isAccessibleForFree":false,"cssSelector":".premium-content"}]}"""
+
 /** PW-24: meter period is the calendar month in Europe/Amsterdam. */
 fun currentPeriod() = nl.incedo.paywall.metering.MeterPeriod(
     YearMonth.now(ZoneId.of("Europe/Amsterdam")).toString(),
@@ -204,12 +212,17 @@ fun Application.module(
             val subject = Subject(VisitorId(request.visitorId), userId)
             val clientIp = call.request.headers["X-Forwarded-For"]?.substringBefore(",")?.trim()
                 ?: call.request.local.remoteAddress
+            // MT-05: trust the verified-bot signal only when the origin secret is
+            // configured — proves the request came through the edge (INF-02/BP-02).
+            val isVerifiedCrawler = originSecret != null &&
+                call.request.headers["X-Verified-Bot"] == "true"
             val outcome = service.decide(
                 subject = subject,
                 article = Article(ArticleId(request.articleId), tier),
                 channel = request.channel,
                 isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]),
                 isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
+                isVerifiedCrawler = isVerifiedCrawler,
             )
             call.respond(DecideResponse.from(outcome))
         }
@@ -232,14 +245,20 @@ fun Application.module(
             val subject = Subject(VisitorId(visitorId), userId)
             val clientIp = call.request.headers["X-Forwarded-For"]?.substringBefore(",")?.trim()
                 ?: call.request.local.remoteAddress
+            // MT-05: trust the verified-bot signal only when the origin secret is
+            // configured — proves the request came through the edge (INF-02/BP-02).
+            val isVerifiedCrawler = originSecret != null &&
+                call.request.headers["X-Verified-Bot"] == "true"
             val outcome = service.decide(
                 subject = subject,
                 article = Article(stored.id, stored.tier),
                 isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]),
                 isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
+                isVerifiedCrawler = isVerifiedCrawler,
             )
             // BP-03: premium pages carry noarchive so archive crawlers only
-            // snapshot the teaser and not the full body.
+            // snapshot the teaser and not the full body (also applies to verified
+            // search crawlers — noarchive suppresses Google Cache, not indexing).
             if (stored.tier == ContentTier.PREMIUM) {
                 call.response.headers.append("X-Robots-Tag", "noarchive")
             }
@@ -250,13 +269,20 @@ fun Application.module(
                     if (stored.tier == ContentTier.PREMIUM) {
                         call.response.headers.append(HttpHeaders.CacheControl, "private, no-store")
                     }
+                    val isCrawlerAccess =
+                        decision.reason == nl.incedo.paywall.access.AccessReason.VERIFIED_CRAWLER
                     ArticleResponse(
                         id = stored.id.value,
                         title = stored.title,
                         tier = stored.tier.name.lowercase(),
                         access = "full",
                         body = stored.body,
-                        meterUsed = outcome.meterUsedAfter,
+                        meterUsed = if (isCrawlerAccess) null else outcome.meterUsedAfter,
+                        // SEO-01: JSON-LD paywalled-content schema for verified crawlers
+                        // so Googlebot doesn't treat the full-body serving as cloaking.
+                        structuredData = if (isCrawlerAccess && stored.tier == ContentTier.PREMIUM) {
+                            buildSeoStructuredData(stored.id.value, stored.title)
+                        } else null,
                     )
                 }
                 is nl.incedo.paywall.access.AccessDecision.Gated -> ArticleResponse(

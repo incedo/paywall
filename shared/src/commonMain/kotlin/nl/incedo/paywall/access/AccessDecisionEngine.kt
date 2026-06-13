@@ -77,7 +77,11 @@ data class AccessRequest(
     val nowEpochMs: Long,
 )
 
-enum class AccessReason { FREE_CONTENT, ENTITLED, GRANT, METER_CREDIT, DYNAMIC_OPEN }
+enum class AccessReason {
+    FREE_CONTENT, ENTITLED, GRANT, METER_CREDIT, DYNAMIC_OPEN,
+    /** MT-05/SEO-02: verified search crawler (edge signal, not UA alone). */
+    VERIFIED_CRAWLER,
+}
 
 sealed interface AccessDecision {
     /**
