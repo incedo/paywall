@@ -11,6 +11,7 @@ import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -38,6 +39,7 @@ import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.backend.auth.CiamJwtValidator
 import nl.incedo.paywall.backend.auth.OriginTrust
+import nl.incedo.paywall.backend.auth.RequestRateLimiter
 import nl.incedo.paywall.backend.auth.StaffRole
 import nl.incedo.paywall.backend.auth.TokenFailureMonitorPlugin
 import nl.incedo.paywall.backend.auth.TokenFailureTracker
@@ -252,6 +254,8 @@ fun Application.module(
     cepClient: nl.incedo.paywall.cep.CepClient? = null,
     /** UP-01: offer decision service; auto-built from cepClient when null. */
     offerService: OfferService? = null,
+    /** NFR-04: request rate limiter; injectable for tests. */
+    rateLimiter: RequestRateLimiter? = null,
 ) {
     // UP-01: auto-construct the offer service from cepClient if not provided explicitly.
     // This keeps all test helpers that pass cepClient working without change.
@@ -276,10 +280,29 @@ fun Application.module(
             tracker = TokenFailureTracker()
         }
     }
-    // INF-02: every request except the health probe must arrive through the
-    // edge (shared secret). No-op in dev where no secret is configured.
+    // NFR-04: per-IP rate limiting on auth and checkout endpoints, plus
+    // INF-02 origin trust enforcement. CSRF is prevented by the combination of
+    // Content-Type: application/json (ContentNegotiation) and X-Origin-Secret
+    // edge verification (OriginTrust), so no additional CSRF token is required.
+    val effectiveRateLimiter = rateLimiter ?: RequestRateLimiter(windowMs = 60_000L, maxRequests = 30)
+    val rateLimitedPrefixes = listOf("/api/v1/offers", "/api/v1/integration", "/api/v1/admin", "/api/v1/grants")
+    val rateLimitedMethods = setOf("POST", "PUT", "PATCH", "DELETE")
     intercept(ApplicationCallPipeline.Plugins) {
-        if (call.request.path() != "/health" && !originTrust.verify(call)) finish()
+        val path = call.request.path()
+        if (path != "/health" && !originTrust.verify(call)) { finish(); return@intercept }
+        if (call.request.httpMethod.value in rateLimitedMethods &&
+            rateLimitedPrefixes.any { path.startsWith(it) }
+        ) {
+            val sourceIp = call.request.headers["X-Forwarded-For"]
+                ?.substringBefore(",")?.trim()
+                ?: call.request.local.remoteAddress
+            if (effectiveRateLimiter.isExceeded("$sourceIp:$path")) {
+                val retryAfter = effectiveRateLimiter.windowMs / 1_000
+                call.response.headers.append("Retry-After", retryAfter.toString())
+                call.respond(HttpStatusCode.TooManyRequests, mapOf("error" to "rate limit exceeded — retry after ${retryAfter}s (NFR-04)"))
+                finish()
+            }
+        }
     }
     routing {
         get("/health") {
