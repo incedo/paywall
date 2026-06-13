@@ -98,6 +98,8 @@ data class AccessRequest(
     val propensityScore: Int? = null,
     /** AC-13: true when the visitor dismissed the soft gate within the current session window. */
     val softGateDismissed: Boolean = false,
+    /** PW-50: true when the variant requires registration before metering/gating. */
+    val registrationWall: Boolean = false,
     val nowEpochMs: Long,
 )
 
@@ -123,6 +125,8 @@ sealed interface AccessDecision {
         val meterLimit: Int? = null,
         /** UP-12: basic subscriber hitting complete-tier content → client shows tier-upgrade offer. */
         val tierLocked: Boolean = false,
+        /** PW-50: visitor needs to register before the normal paywall strategy applies. */
+        val registrationRequired: Boolean = false,
     ) : AccessDecision
 }
 
@@ -159,6 +163,12 @@ object AccessDecisionEngine {
         }
         if (request.grant.hasLiveGrant(request.nowEpochMs)) {
             return AccessDecision.Full(AccessReason.GRANT)
+        }
+
+        // PW-50: registration wall — interpose before the variant strategy when
+        // configured and the visitor is anonymous (not logged in).
+        if (request.registrationWall && !request.subject.registered) {
+            return AccessDecision.Gated(request.strategy, registrationRequired = true)
         }
 
         return when (val strategy = request.strategy) {

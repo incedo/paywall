@@ -256,6 +256,7 @@ class AccessService(
                 cepAdvice = cepAdvice,
                 propensityScore = propensityScore,
                 softGateDismissed = softGateDismissed,
+                registrationWall = variant.registrationWall, // PW-50
                 nowEpochMs = now,
             ),
         )
