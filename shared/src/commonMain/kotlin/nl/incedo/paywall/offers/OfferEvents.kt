@@ -17,7 +17,7 @@ data class OfferTriggered(
     val kind: String,
     val source: String,
     val triggeredAtEpochMs: Long,
-    override val tags: Set<String> = setOf("subject:${subjectId.value}", offerTag(subjectId, offerId)),
+    override val tags: Set<String> = setOf("subject:${subjectId.value}", offerTag(subjectId, offerId), OFFER_EVENT_TAG),
 ) : DomainEvent
 
 @Serializable
@@ -31,7 +31,7 @@ data class OfferSuppressed(
     val suppressedAtEpochMs: Long,
     /** offerId present only when an offer was received but suppressed post-validation. */
     val offerId: String? = null,
-    override val tags: Set<String> = setOf("subject:${subjectId.value}"),
+    override val tags: Set<String> = setOf("subject:${subjectId.value}", OFFER_EVENT_TAG),
 ) : DomainEvent
 
 /**
@@ -44,7 +44,7 @@ data class OfferDeclined(
     val offerId: String,
     val channel: String,
     val declinedAtEpochMs: Long,
-    override val tags: Set<String> = setOf("subject:${subjectId.value}", offerTag(subjectId, offerId)),
+    override val tags: Set<String> = setOf("subject:${subjectId.value}", offerTag(subjectId, offerId), OFFER_EVENT_TAG),
 ) : DomainEvent
 
 /**
@@ -59,7 +59,10 @@ data class OfferAccepted(
     val kind: String,
     val channel: String,
     val acceptedAtEpochMs: Long,
-    override val tags: Set<String> = setOf("subject:${subjectId.value}", offerTag(subjectId, offerId)),
+    override val tags: Set<String> = setOf("subject:${subjectId.value}", offerTag(subjectId, offerId), OFFER_EVENT_TAG),
 ) : DomainEvent
 
 fun offerTag(subjectId: SubjectId, offerId: String): String = "offer:${subjectId.value}:$offerId"
+
+/** AN-14: global tag on every offer lifecycle event; used by OfferStatsProjection to query the full stream. */
+const val OFFER_EVENT_TAG = "offer_event"
