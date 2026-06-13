@@ -277,6 +277,18 @@ data class PartnerResponse(
     val activeCidrs: List<String>,
 )
 
+/** PAY-01/01a: plan catalogue entry returned by GET /api/v1/plans. */
+@Serializable
+data class PlanResponse(
+    val planId: String,
+    val tier: String,
+    val billingPeriod: String,
+    val rank: Int,
+    val displayName: String,
+    val priceMinorUnits: Long,
+    val currency: String,
+)
+
 /** AN-21/US-07: GDPR account deletion request from the CIAM webhook. */
 @Serializable
 data class AccountDeletionRequest(

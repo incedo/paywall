@@ -27,16 +27,29 @@ interface CepClient {
 /**
  * An offer returned by the CEP engine (UP-02).
  *
- * Only the fields relevant to the paywall experiment are included; the full
- * offer schema lives in the offer engine bounded context.
+ * [kind]: "upsell" | "downsell" | "access_grant" (FGA-07)
+ * [channels]: the channels on which this offer may be presented (UP-02a).
+ * [source]: CEP campaign/rule reference for audit trail.
  */
 data class Offer(
     val offerId: String,
-    /** Type of offer: "discount", "trial", "pause", "upgrade", "none". */
+    /** UP-02: "upsell" | "downsell" | "access_grant". */
     val kind: String,
+    /** The plan the subject is currently on (null if not subscribed). */
+    val fromPlanId: String? = null,
+    /** The plan being offered (null for access_grant offers). */
+    val toPlanId: String? = null,
     val discountPercent: Int? = null,
     /** How long the offer is valid (seconds from now). */
     val validForSeconds: Long? = null,
+    /** Pause duration in months (UP-02 optional pause field). */
+    val pauseMonths: Int? = null,
+    /** The trigger that caused this offer (e.g. "gate_shown", "cancel_intent"). */
+    val trigger: String = "",
+    /** UP-02a: channels on which this offer may be presented. Empty = all channels. */
+    val channels: Set<String> = emptySet(),
+    /** UP-02: CEP campaign/rule reference. */
+    val source: String = "",
     /** Human-readable label for the gate CTA button. */
     val cta: String? = null,
 )
