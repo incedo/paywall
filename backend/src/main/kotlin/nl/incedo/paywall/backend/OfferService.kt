@@ -1,0 +1,149 @@
+package nl.incedo.paywall.backend
+
+import kotlinx.coroutines.withTimeoutOrNull
+import nl.incedo.paywall.access.Subject
+import nl.incedo.paywall.cep.CepClient
+import nl.incedo.paywall.cep.Offer
+import nl.incedo.paywall.core.SubjectId
+import nl.incedo.paywall.core.port.EventQuery
+import nl.incedo.paywall.core.port.EventStore
+import nl.incedo.paywall.offers.OfferDeclined
+import nl.incedo.paywall.offers.OfferFrequencyDecision
+import nl.incedo.paywall.offers.OfferSuppressed
+import nl.incedo.paywall.offers.OfferTriggered
+import nl.incedo.paywall.offers.offerTag
+import nl.incedo.paywall.plans.DefaultPlans
+import nl.incedo.paywall.core.PlanId
+
+/**
+ * UP-01/01a: single entry point for all offer decisions.
+ *
+ * Flow:
+ * 1. Load frequency history for this subject + offer candidates (UP-05).
+ * 2. Call the CEP client within the configured timeout (UP-07).
+ * 3. Validate the returned offer against local guardrails (UP-09).
+ * 4. Log the outcome as an event (UP-04/AN-02).
+ *
+ * A CEP failure never blocks checkout, cancellation, or page render (NFR-11).
+ */
+class OfferService(
+    private val eventStore: EventStore,
+    private val cepClient: CepClient?,
+    private val clock: () -> Long = { System.currentTimeMillis() },
+    /** UP-07: CEP response timeout in milliseconds (default 300 ms). */
+    private val cepTimeoutMs: Long = 300L,
+    /** UP-09: maximum discount percent considered valid. */
+    private val maxDiscountPercent: Int = 50,
+    /** UP-05: cooldown in milliseconds (default 30 days). */
+    private val frequencyCooldownMs: Long = 30L * 24 * 60 * 60 * 1000,
+) {
+    data class TriggerContext(
+        val trigger: String,
+        val channel: String,
+        val currentPlanId: String? = null,
+        val variant: String = "unknown",
+    )
+
+    sealed class OfferDecision {
+        data class Triggered(val offer: Offer) : OfferDecision()
+        data class Suppressed(val reason: String) : OfferDecision()
+    }
+
+    suspend fun decideOffer(subject: Subject, context: TriggerContext): OfferDecision {
+        val subjectId = subject.userId?.let { SubjectId.of(it) } ?: SubjectId.of(subject.visitorId)
+        val now = clock()
+
+        if (cepClient == null) {
+            val suppressed = OfferSuppressed(subjectId, context.trigger, context.channel, "cep_error", now)
+            eventStore.append(listOf(suppressed), condition = null)
+            return OfferDecision.Suppressed("cep_error")
+        }
+
+        // UP-07: call CEP with timeout; treat timeout/error as suppression
+        val rawOffer = try {
+            withTimeoutOrNull(cepTimeoutMs) {
+                cepClient.requestOffer(subject, context.trigger)
+            }
+        } catch (_: Exception) {
+            null
+        }
+
+        if (rawOffer == null) {
+            val reason = "cep_timeout"
+            val suppressed = OfferSuppressed(subjectId, context.trigger, context.channel, reason, now)
+            eventStore.append(listOf(suppressed), condition = null)
+            return OfferDecision.Suppressed(reason)
+        }
+
+        // Load frequency history for this subject (UP-05)
+        val offerTags = setOf("subject:${subjectId.value}", offerTag(subjectId, rawOffer.offerId))
+        val offerEvents = eventStore.query(EventQuery(offerTags)).events
+        val frequency = OfferFrequencyDecision(frequencyCooldownMs).also { it.applyAll(offerEvents) }
+
+        // UP-02a: channel filter
+        if (rawOffer.channels.isNotEmpty() && context.channel !in rawOffer.channels) {
+            log(subjectId, context, rawOffer.offerId, "channel_mismatch", now)
+            return OfferDecision.Suppressed("channel_mismatch")
+        }
+
+        // UP-05: frequency cap check
+        if (frequency.isCapped(rawOffer.offerId, now)) {
+            log(subjectId, context, rawOffer.offerId, "capped", now)
+            return OfferDecision.Suppressed("capped")
+        }
+
+        // UP-09: local guardrails
+        val guardReason = checkGuardrails(rawOffer, context.trigger)
+        if (guardReason != null) {
+            log(subjectId, context, rawOffer.offerId, "guardrail_rejected", now)
+            return OfferDecision.Suppressed("guardrail_rejected")
+        }
+
+        // Offer passed all checks — log and return
+        val triggered = OfferTriggered(
+            subjectId = subjectId,
+            offerId = rawOffer.offerId,
+            trigger = context.trigger,
+            channel = context.channel,
+            kind = rawOffer.kind,
+            source = rawOffer.source,
+            triggeredAtEpochMs = now,
+        )
+        eventStore.append(listOf(triggered), condition = null)
+        return OfferDecision.Triggered(rawOffer)
+    }
+
+    private suspend fun log(subjectId: SubjectId, context: TriggerContext, offerId: String?, reason: String, now: Long) {
+        val suppressed = OfferSuppressed(subjectId, context.trigger, context.channel, reason, now, offerId)
+        eventStore.append(listOf(suppressed), condition = null)
+    }
+
+    /**
+     * UP-09: validate the offer from the CEP against local guardrails.
+     * Returns the rejection reason, or null when the offer passes.
+     */
+    private fun checkGuardrails(offer: Offer, trigger: String): String? {
+        val fromPlanId = offer.fromPlanId
+        val toPlanId = offer.toPlanId
+        // Plans in the offer must exist in the catalogue
+        if (fromPlanId != null && DefaultPlans.findById(PlanId(fromPlanId)) == null) {
+            return "unknown_from_plan"
+        }
+        if (toPlanId != null && DefaultPlans.findById(PlanId(toPlanId)) == null) {
+            return "unknown_to_plan"
+        }
+        // Tier transition must be coherent with rank (PAY-01a)
+        val fromRank = DefaultPlans.rankOf(fromPlanId?.let { PlanId(it) })
+        val toRank = DefaultPlans.rankOf(toPlanId?.let { PlanId(it) })
+        when (offer.kind) {
+            "upsell" -> if (toRank <= fromRank) return "rank_incoherent_upsell"
+            "downsell" -> if (toRank >= fromRank && toPlanId != null) return "rank_incoherent_downsell"
+        }
+        // Discount within configured bounds
+        if ((offer.discountPercent ?: 0) > maxDiscountPercent) return "discount_exceeds_max"
+        // DN-02: cancellation can never be blocked — a cancel_intent trigger must not
+        // result in an offer kind that prevents the subscriber from cancelling.
+        // All offer kinds are valid during cancel_intent; we only gate non-cancel triggers.
+        return null
+    }
+}

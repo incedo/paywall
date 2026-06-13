@@ -45,6 +45,8 @@ import nl.incedo.paywall.plans.DefaultPlans
 import nl.incedo.paywall.brands.BrandDecision
 import nl.incedo.paywall.brands.BrandThemeUpdated
 import nl.incedo.paywall.brands.brandTag
+import nl.incedo.paywall.offers.OfferDeclined
+import nl.incedo.paywall.offers.offerTag
 import nl.incedo.paywall.cep.CepClient
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
@@ -203,6 +205,8 @@ fun main() {
 
     // API-07: mock CEP client for the experiment; replace with real HTTP client in production.
     val cepClient = nl.incedo.paywall.cep.MockCepClient()
+    // UP-01: offer decision service — wraps the CEP client with guardrails and logging.
+    val offerService = OfferService(eventStore, cepClient)
 
     embeddedServer(CIO, port = 8080) {
         module(
@@ -212,6 +216,7 @@ fun main() {
             shareTokenService = shareTokenService,
             webhookVerifier = webhookVerifier,
             cepClient = cepClient,
+            offerService = offerService,
         )
     }.start(wait = true)
 }
@@ -232,7 +237,13 @@ fun Application.module(
     webhookVerifier: WebhookVerifier = WebhookVerifier(null),
     /** API-07: CEP outbound client; null = no offer engine in tests. */
     cepClient: nl.incedo.paywall.cep.CepClient? = null,
+    /** UP-01: offer decision service; auto-built from cepClient when null. */
+    offerService: OfferService? = null,
 ) {
+    // UP-01: auto-construct the offer service from cepClient if not provided explicitly.
+    // This keeps all test helpers that pass cepClient working without change.
+    @Suppress("NAME_SHADOWING")
+    val offerService = offerService ?: cepClient?.let { OfferService(eventStore, it) }
     val originTrust = OriginTrust(originSecret)
     install(ContentNegotiation) {
         json(Json { ignoreUnknownKeys = true })
@@ -820,18 +831,21 @@ fun Application.module(
             eventStore.append(deletionEvents, condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to deletionEvents.size, "linksRevoked" to linked.size))
         }
-        // API-07: outbound CEP offer request — resolves what offer (if any) to show a subject.
+        // UP-01/01a: outbound CEP offer request via OfferService (guardrails + logging).
         // The mock CEP returns a fixed configurable offer; replace with a real HTTP client in prod.
         post("/api/v1/offers/request") {
-            if (cepClient == null) {
-                call.respond(OfferResponse(offerId = null, kind = null))
-                return@post
-            }
             val request = call.receive<DecideRequest>()
             val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
             val subject = Subject(VisitorId(request.visitorId), userId)
             val trigger = call.request.queryParameters["trigger"] ?: "gate_shown"
-            val offer = cepClient.requestOffer(subject, trigger)
+            val channel = request.channel
+            if (offerService == null) {
+                call.respond(OfferResponse(offerId = null, kind = null))
+                return@post
+            }
+            val ctx = OfferService.TriggerContext(trigger = trigger, channel = channel)
+            val decision = offerService.decideOffer(subject, ctx)
+            val offer = (decision as? OfferService.OfferDecision.Triggered)?.offer
             call.respond(OfferResponse(
                 offerId = offer?.offerId,
                 kind = offer?.kind,
@@ -839,6 +853,34 @@ fun Application.module(
                 validForSeconds = offer?.validForSeconds,
                 cta = offer?.cta,
             ))
+        }
+        // UP-05: record an explicit offer decline so frequency capping suppresses
+        // the same offer_id for 30 days across all channels (cross-channel cap).
+        post("/api/v1/offers/decline") {
+            val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
+            val visitorId = call.request.queryParameters["visitorId"]
+                ?: call.request.headers["X-Visitor-Id"]
+            if (visitorId.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "visitorId is required"))
+                return@post
+            }
+            val offerId = call.request.queryParameters["offerId"]
+                ?: run {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "offerId is required"))
+                    return@post
+                }
+            val channel = call.request.queryParameters["channel"] ?: "web"
+            val subject = Subject(VisitorId(visitorId), userId)
+            val subjectId = userId?.let { nl.incedo.paywall.core.SubjectId.of(it) }
+                ?: nl.incedo.paywall.core.SubjectId.of(VisitorId(visitorId))
+            val event = OfferDeclined(
+                subjectId = subjectId,
+                offerId = offerId,
+                channel = channel,
+                declinedAtEpochMs = System.currentTimeMillis(),
+            )
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "OfferDeclined"))
         }
         // BP-05: subscriber-generated signed share tokens that redeem into FGA grants.
         // POST /api/v1/articles/{id}/share — authenticated subscriber issues a token (≤5/month).
@@ -972,15 +1014,7 @@ fun Application.module(
         // for upsell/downsell logic. Configuration-driven; no auth required (public).
         get("/api/v1/plans") {
             call.respond(DefaultPlans.all.map { p ->
-                mapOf(
-                    "planId" to p.planId.value,
-                    "tier" to p.tier,
-                    "billingPeriod" to p.billingPeriod,
-                    "rank" to p.rank,
-                    "displayName" to p.displayName,
-                    "priceMinorUnits" to p.priceMinorUnits,
-                    "currency" to p.currency,
-                )
+                PlanResponse(p.planId.value, p.tier, p.billingPeriod, p.rank, p.displayName, p.priceMinorUnits, p.currency)
             })
         }
         // ── Partner management (PA-01/02/03/05 / IPW-01) ─────────────────────
