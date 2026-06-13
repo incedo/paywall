@@ -399,6 +399,10 @@ fun Application.module(
             // configured — proves the request came through the edge (INF-02/BP-02).
             val isVerifiedCrawler = originSecret != null &&
                 call.request.headers["X-Verified-Bot"] == "true"
+            // INF-09: Cloudflare bot management score forwarded by the Worker as a
+            // trusted header. Only read when origin secret is configured (INF-02).
+            val cfBotScore = if (originSecret != null)
+                parseCfBotScore(call.request.headers["X-CF-Bot-Score"]) else null
             // NFR-14: correlation ID for structured log tracing. Echoed in the response
             // header so clients can correlate their requests with the event store.
             val correlationId = call.request.headers["X-Request-ID"]
@@ -441,7 +445,8 @@ fun Application.module(
                 subject = subject,
                 article = Article(ArticleId(request.articleId), tier),
                 channel = request.channel,
-                isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]),
+                // INF-09: CF bot score supplements UA-based detection (either signal flags as bot).
+                isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]) || isBotByCfScore(cfBotScore),
                 isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
                 isVerifiedCrawler = isVerifiedCrawler,
                 forceVariant = forceVariant,
@@ -495,10 +500,13 @@ fun Application.module(
             // configured — proves the request came through the edge (INF-02/BP-02).
             val isVerifiedCrawler = originSecret != null &&
                 call.request.headers["X-Verified-Bot"] == "true"
+            // INF-09: Cloudflare bot management score (trusted when origin secret present).
+            val cfBotScoreArticle = if (originSecret != null)
+                parseCfBotScore(call.request.headers["X-CF-Bot-Score"]) else null
             val outcome = service.decide(
                 subject = subject,
                 article = Article(stored.id, stored.tier),
-                isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]),
+                isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]) || isBotByCfScore(cfBotScoreArticle),
                 isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
                 isVerifiedCrawler = isVerifiedCrawler,
             )
