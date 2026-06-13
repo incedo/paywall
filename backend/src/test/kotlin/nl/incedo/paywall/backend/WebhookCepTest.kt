@@ -161,4 +161,75 @@ class WebhookCepTest {
         val body = resp.body<OfferResponse>()
         assertNull(body.offerId)
     }
+
+    // ── API-08: CEP advice endpoint authentication ────────────────────────────
+
+    @Test
+    fun cepAdviceWithNoSecretAcceptsAll() = apiTest { client ->
+        val resp = client.post("/api/v1/integration/cep-advice") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"subjectId":"user:u1","gate":true}""")
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+    }
+
+    @Test
+    fun cepAdviceWithSecretRejectsUnsigned() = apiTest(
+        webhookVerifier = WebhookVerifier(webhookSecret),
+    ) { client ->
+        val resp = client.post("/api/v1/integration/cep-advice") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"subjectId":"user:u1","gate":true}""")
+        }
+        assertEquals(HttpStatusCode.Unauthorized, resp.status, "API-08: unsigned CEP advice must be rejected")
+    }
+
+    @Test
+    fun cepAdviceWithValidSignatureAccepted() = apiTest(
+        webhookVerifier = WebhookVerifier(webhookSecret),
+    ) { client ->
+        val body = """{"subjectId":"user:u1","gate":true}"""
+        val resp = client.post("/api/v1/integration/cep-advice") {
+            contentType(ContentType.Application.Json)
+            header(WebhookVerifier.SIGNATURE_HEADER, sign(body))
+            setBody(body)
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status, "API-08: signed CEP advice must be accepted")
+    }
+
+    // ── UP-06: variant passed to CEP ─────────────────────────────────────────
+
+    @Test
+    fun offerRequestPassesVariantToCep() = run {
+        // UP-06: verify the variant string is forwarded to the CEP; test uses a
+        // capturing stub that records the last variant it received.
+        var capturedVariant: String? = null
+        val capturingCep = object : nl.incedo.paywall.cep.CepClient {
+            override suspend fun requestOffer(
+                subject: nl.incedo.paywall.access.Subject,
+                trigger: String,
+                currentPlanId: String?,
+                variant: String?,
+            ): nl.incedo.paywall.cep.Offer? {
+                capturedVariant = variant
+                return null
+            }
+        }
+        testApplication {
+            val store = nl.incedo.paywall.core.adapter.InMemoryEventStore()
+            val service = AccessService(
+                eventStore = store, experiment = defaultExperiment,
+                clock = { now }, currentPeriod = { nl.incedo.paywall.metering.MeterPeriod("2026-06") },
+            )
+            val offerService = OfferService(eventStore = store, cepClient = capturingCep, clock = { now })
+            application { module(service, store, cepClient = capturingCep, offerService = offerService) }
+            val client = createClient { install(ContentNegotiation) { json() } }
+            client.post("/api/v1/offers/request?trigger=gate_shown") {
+                contentType(ContentType.Application.Json)
+                setBody(DecideRequest(visitorId = "vis-up06", articleId = "a-1", tier = "premium"))
+            }
+        }
+        val v = capturedVariant
+        assert(!v.isNullOrEmpty() && v != "unknown") { "UP-06: variant must not be null/unknown but was '$v'" }
+    }
 }

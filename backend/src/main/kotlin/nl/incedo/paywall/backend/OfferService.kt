@@ -62,10 +62,11 @@ class OfferService(
             return OfferDecision.Suppressed("cep_error")
         }
 
-        // UP-07: call CEP with timeout; treat timeout/error as suppression
+        // UP-07: call CEP with timeout; treat timeout/error as suppression.
+        // UP-06: pass the variant so the CEP can tailor offer strategies per A/B arm.
         val rawOffer = try {
             withTimeoutOrNull(cepTimeoutMs) {
-                cepClient.requestOffer(subject, context.trigger, context.currentPlanId)
+                cepClient.requestOffer(subject, context.trigger, context.currentPlanId, context.variant)
             }
         } catch (_: Exception) {
             null

@@ -32,7 +32,7 @@ class RetentionCapTest {
     private val visitor = Subject(VisitorId("vis-dn05"), userId = null)
 
     private fun stubCep(kind: String = "downsell") = object : CepClient {
-        override suspend fun requestOffer(subject: Subject, trigger: String, currentPlanId: String?) = Offer(
+        override suspend fun requestOffer(subject: Subject, trigger: String, currentPlanId: String?, variant: String?) = Offer(
             offerId = "offer-retention",
             kind = kind,
             source = "cep",

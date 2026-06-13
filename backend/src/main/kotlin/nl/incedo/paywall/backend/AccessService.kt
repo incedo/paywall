@@ -90,6 +90,16 @@ class AccessService(
     }
 
     /**
+     * UP-06: return the current variant name for a subject (EX-03 applies: userId key
+     * wins over visitorId). Used by the offer endpoint to pass variant context to the
+     * CEP so offer strategies can be A/B-tested alongside paywall variants.
+     */
+    suspend fun variantFor(subject: Subject): String {
+        val exp = experimentLoader?.invoke() ?: experiment
+        return VariantAssigner.assign(subject, exp).name
+    }
+
+    /**
      * AC-06: record the client IP for an authenticated user and return true
      * when the number of distinct IPs exceeds the suspicious threshold.
      * Anonymous (no userId) requests are not tracked — no stable identity.
@@ -125,6 +135,12 @@ class AccessService(
          * and logs a bot-flagged ARTICLE_READ for analytics (AN-05).
          */
         isVerifiedCrawler: Boolean = false,
+        /**
+         * EX-05: staff debug override — when set, bypasses VariantAssigner and
+         * uses the named variant. Unknown names fall back to normal assignment.
+         * Analytics events are suppressed so QA runs do not pollute funnel data.
+         */
+        forceVariant: String? = null,
     ): Outcome {
         if (isVerifiedCrawler) {
             val variant = VariantAssigner.assign(subject, experimentLoader?.invoke() ?: experiment)
@@ -149,7 +165,13 @@ class AccessService(
 
         // EX-03: authenticated subjects use userId as the assignment key so the
         // variant is stable across devices after login.
-        val variant = VariantAssigner.assign(subject, currentExperiment)
+        // EX-05: staff debug override uses the forced variant name when present.
+        val variant = if (forceVariant != null) {
+            currentExperiment.variants.firstOrNull { it.name == forceVariant }
+                ?: VariantAssigner.assign(subject, currentExperiment)
+        } else {
+            VariantAssigner.assign(subject, currentExperiment)
+        }
         val period = currentPeriod()
         val now = clock()
 
@@ -221,7 +243,10 @@ class AccessService(
             usedAfter += 1
         }
 
-        logWallEvent(subject, article, variant, channel, decision, grant, now, isBot, isSuspicious, propensityScore)
+        // EX-05: suppress analytics for debug overrides so QA runs don't skew funnel data.
+        if (forceVariant == null) {
+            logWallEvent(subject, article, variant, channel, decision, grant, now, isBot, isSuspicious, propensityScore)
+        }
 
         val meterLimit = (variant.strategy as? StrategyConfig.Metered)?.let { strategy ->
             if (subject.registered) strategy.registeredLimit ?: strategy.limit else strategy.limit
