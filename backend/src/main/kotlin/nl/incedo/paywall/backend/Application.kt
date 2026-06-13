@@ -1660,6 +1660,8 @@ fun Application.module(
             val fromPlanId = call.request.queryParameters["fromPlanId"]
             val toPlanId = call.request.queryParameters["toPlanId"]
             val discountPercent = call.request.queryParameters["discountPercent"]?.toIntOrNull()
+            val discountFixed = call.request.queryParameters["discountFixed"]?.toIntOrNull() // UP-02
+            val discountDurationPeriods = call.request.queryParameters["discountDurationPeriods"]?.toIntOrNull() // UP-02
             val subjectId = userId?.let { nl.incedo.paywall.core.SubjectId.of(it) }
                 ?: nl.incedo.paywall.core.SubjectId.of(VisitorId(visitorId))
             val acceptedAt = System.currentTimeMillis()
@@ -1673,6 +1675,8 @@ fun Application.module(
                     fromPlanId = fromPlanId, // DN-06
                     toPlanId = toPlanId, // DN-06
                     discountPercent = discountPercent, // DN-06
+                    discountFixed = discountFixed, // UP-02
+                    discountDurationPeriods = discountDurationPeriods, // UP-02
                 ),
             )
             // FGA-07: access_grant kind automatically issues a grant on accept.

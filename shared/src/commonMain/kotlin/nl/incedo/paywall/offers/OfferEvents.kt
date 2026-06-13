@@ -70,6 +70,10 @@ data class OfferAccepted(
     val toPlanId: String? = null,
     /** DN-06: discount applied if any (for discount offer revenue accounting). */
     val discountPercent: Int? = null,
+    /** UP-02: fixed discount in minor currency units; alternative to discountPercent. */
+    val discountFixed: Int? = null,
+    /** UP-02: how many billing periods the discount applies (null = indefinite). */
+    val discountDurationPeriods: Int? = null,
     override val tags: Set<String> = setOf("subject:${subjectId.value}", offerTag(subjectId, offerId), OFFER_EVENT_TAG),
 ) : DomainEvent
 
