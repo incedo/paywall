@@ -1168,14 +1168,34 @@ fun Application.module(
             val channel = call.request.queryParameters["channel"] ?: "web"
             val subjectId = userId?.let { nl.incedo.paywall.core.SubjectId.of(it) }
                 ?: nl.incedo.paywall.core.SubjectId.of(VisitorId(visitorId))
-            val event = OfferAccepted(
-                subjectId = subjectId,
-                offerId = offerId,
-                kind = kind,
-                channel = channel,
-                acceptedAtEpochMs = System.currentTimeMillis(),
+            val acceptedAt = System.currentTimeMillis()
+            val events = mutableListOf<nl.incedo.paywall.core.DomainEvent>(
+                OfferAccepted(
+                    subjectId = subjectId,
+                    offerId = offerId,
+                    kind = kind,
+                    channel = channel,
+                    acceptedAtEpochMs = acceptedAt,
+                ),
             )
-            eventStore.append(listOf(event), condition = null)
+            // FGA-07: access_grant kind automatically issues a grant on accept.
+            // articleId and grantTtlSeconds must be supplied; grantedBy defaults to "cep_offer".
+            if (kind == "access_grant") {
+                val articleId = call.request.queryParameters["articleId"]
+                val grantTtlSeconds = call.request.queryParameters["grantTtlSeconds"]?.toLongOrNull()
+                    ?: 72L * 3600 // default 72 h
+                val grantedBy = call.request.queryParameters["grantedBy"] ?: "cep_offer"
+                if (articleId != null) {
+                    events += GrantIssued(
+                        grantId = GrantId("cep-$offerId"),
+                        subjectId = subjectId,
+                        articleId = ArticleId(articleId),
+                        grantedBy = grantedBy,
+                        expiresAtEpochMs = acceptedAt + grantTtlSeconds * 1_000,
+                    )
+                }
+            }
+            eventStore.append(events, condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "OfferAccepted"))
         }
         // UP-08: CEP-initiated offer push for async channels (email, chat).
