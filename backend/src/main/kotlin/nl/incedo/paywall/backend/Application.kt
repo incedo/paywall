@@ -342,6 +342,7 @@ fun Application.module(
                 isVerifiedCrawler = isVerifiedCrawler,
                 forceVariant = forceVariant,
                 correlationId = correlationId,
+                externalScore = request.externalScore, // DY-06
             )
             call.respond(DecideResponse.from(outcome))
         }
