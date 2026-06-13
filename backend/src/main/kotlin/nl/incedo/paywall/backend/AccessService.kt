@@ -141,6 +141,12 @@ class AccessService(
          * Analytics events are suppressed so QA runs do not pollute funnel data.
          */
         forceVariant: String? = null,
+        /**
+         * NFR-14: correlation ID for structured log tracing. When provided, it is
+         * included in the WallEventRecorded context so decisions are traceable
+         * across the origin log, event store, and CEP.
+         */
+        correlationId: String? = null,
     ): Outcome {
         if (isVerifiedCrawler) {
             val variant = VariantAssigner.assign(subject, experimentLoader?.invoke() ?: experiment)
@@ -245,7 +251,7 @@ class AccessService(
 
         // EX-05: suppress analytics for debug overrides so QA runs don't skew funnel data.
         if (forceVariant == null) {
-            logWallEvent(subject, article, variant, channel, decision, grant, now, isBot, isSuspicious, propensityScore)
+            logWallEvent(subject, article, variant, channel, decision, grant, now, isBot, isSuspicious, propensityScore, correlationId)
         }
 
         val meterLimit = (variant.strategy as? StrategyConfig.Metered)?.let { strategy ->
@@ -311,6 +317,7 @@ class AccessService(
         isBot: Boolean,
         isSuspicious: Boolean,
         propensityScore: Int,
+        correlationId: String? = null,
     ) {
         val event: WallEventRecorded? = when (decision) {
             is AccessDecision.Gated -> WallEventRecorded(
@@ -327,6 +334,7 @@ class AccessService(
                     put("score", propensityScore.toString()) // PW-43
                     if (isBot) put("bot", "true")
                     if (isSuspicious) put("suspicious_ip", "true")
+                    correlationId?.let { put("request_id", it) } // NFR-14
                 },
             )
             is AccessDecision.Full -> when {
@@ -345,6 +353,7 @@ class AccessService(
                             put("score", propensityScore.toString())
                             if (isBot) put("bot", "true")
                             if (isSuspicious) put("suspicious_ip", "true")
+                            correlationId?.let { put("request_id", it) } // NFR-14
                         },
                     )
                 decision.countsTowardMeter ->
@@ -360,6 +369,7 @@ class AccessService(
                             put("score", propensityScore.toString()) // PW-43
                             if (isBot) put("bot", "true")
                             if (isSuspicious) put("suspicious_ip", "true")
+                            correlationId?.let { put("request_id", it) } // NFR-14
                         },
                     )
                 else -> null // entitled/free full reads are page views, not funnel events
