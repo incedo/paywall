@@ -176,6 +176,13 @@ fun currentPeriod() = nl.incedo.paywall.metering.MeterPeriod(
     YearMonth.now(ZoneId.of("Europe/Amsterdam")).toString(),
 )
 
+/** MT-06/UP-13: calendar period one month before [current]. */
+fun previousPeriod(current: nl.incedo.paywall.metering.MeterPeriod): nl.incedo.paywall.metering.MeterPeriod {
+    val (year, month) = current.value.split("-").map { it.toInt() }
+    return if (month == 1) nl.incedo.paywall.metering.MeterPeriod("${year - 1}-12")
+    else nl.incedo.paywall.metering.MeterPeriod("$year-${(month - 1).toString().padStart(2, '0')}")
+}
+
 fun main() {
     // DATABASE_URL selects the PostgreSQL event store (Q-1); without it the
     // server runs on the in-memory store for local experimentation.
@@ -1414,6 +1421,67 @@ fun Application.module(
                 .sortedByDescending { it.triggeredAtEpochMs }
                 .map { PendingOfferResponse(it.offerId, it.kind, it.channel, it.triggeredAtEpochMs) }
             call.respond(pending)
+        }
+        // UP-13: engagement-based upsell — a basic monthly subscriber with high engagement
+        // (meter count >= threshold) in 2 consecutive months receives an annual/complete offer.
+        // Trigger context is "account_view" so CEP can return an upgrade-tailored offer.
+        // The threshold is configurable via the `threshold` query param (default 5).
+        post("/api/v1/offers/account-view") {
+            val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
+            val visitorId = call.request.queryParameters["visitorId"]
+                ?: call.request.headers["X-Visitor-Id"]
+            if (visitorId.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "visitorId is required"))
+                return@post
+            }
+            if (offerService == null) {
+                call.respond(OfferResponse(offerId = null, kind = null))
+                return@post
+            }
+            val threshold = call.request.queryParameters["threshold"]?.toIntOrNull() ?: 5
+            val subject = Subject(VisitorId(visitorId), userId)
+            val subjectId = userId?.let { SubjectId.of(it) } ?: SubjectId.of(VisitorId(visitorId))
+            val currentPer = currentPeriod()
+            val previousPer = previousPeriod(currentPer)
+            // Load events for both the current and previous meter period in one query.
+            val tags = buildSet {
+                add("subject:${subjectId.value}")
+                add(meterTag(subjectId, currentPer))
+                add(meterTag(subjectId, previousPer))
+            }
+            val events = eventStore.query(EventQuery(tags)).events
+            val now = System.currentTimeMillis()
+            val entitlement = nl.incedo.paywall.entitlements.EntitlementDecision().also { it.applyAll(events) }
+            // UP-13: only trigger for basic subscribers (rank-1) who are NOT already on complete (rank-2).
+            val isBasicSubscriber = entitlement.hasValidEntitlement(now) &&
+                !entitlement.hasValidEntitlementForTier(now, minRank = 2)
+            if (!isBasicSubscriber) {
+                call.respond(OfferResponse(offerId = null, kind = null))
+                return@post
+            }
+            // Count premium reads in each period as the engagement proxy (DY-01 input data).
+            val currentMeter = nl.incedo.paywall.metering.MeterDecision(currentPer).also { it.applyAll(events) }
+            val previousMeter = nl.incedo.paywall.metering.MeterDecision(previousPer).also { it.applyAll(events) }
+            val highEngagement = currentMeter.used >= threshold && previousMeter.used >= threshold
+            if (!highEngagement) {
+                call.respond(OfferResponse(offerId = null, kind = null))
+                return@post
+            }
+            val ctx = OfferService.TriggerContext(
+                trigger = "account_view",
+                channel = "account",
+                currentPlanId = "basic-monthly", // UP-13: basic monthly → annual or complete offer
+                variant = service.variantFor(subject),
+            )
+            val decision = offerService.decideOffer(subject, ctx)
+            val offer = (decision as? OfferService.OfferDecision.Triggered)?.offer
+            call.respond(OfferResponse(
+                offerId = offer?.offerId,
+                kind = offer?.kind,
+                discountPercent = offer?.discountPercent,
+                validForSeconds = offer?.validForSeconds,
+                cta = offer?.cta,
+            ))
         }
         // BP-05: subscriber-generated signed share tokens that redeem into FGA grants.
         // POST /api/v1/articles/{id}/share — authenticated subscriber issues a token (≤5/month).
