@@ -4,6 +4,10 @@ import com.auth0.jwk.JwkProvider
 import com.auth0.jwk.JwkProviderBuilder
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
+import com.auth0.jwt.exceptions.InvalidClaimException
+import com.auth0.jwt.exceptions.JWTDecodeException
+import com.auth0.jwt.exceptions.SignatureVerificationException
+import com.auth0.jwt.exceptions.TokenExpiredException
 import java.net.URL
 import java.security.interfaces.RSAPublicKey
 import java.util.concurrent.TimeUnit
@@ -58,22 +62,39 @@ class CiamJwtValidator(
         return StaffPrincipal(userId = UserId(sub), role = role, aal2 = aal2)
     }
 
-    private fun verify(authorizationHeader: String?): com.auth0.jwt.interfaces.DecodedJWT? {
+    private fun verify(authorizationHeader: String?) = verifyWithReason(authorizationHeader).first
+
+    /**
+     * NFR-24: validates the token and classifies the failure reason so callers
+     * can log structured diagnostics without re-parsing.
+     * Returns (jwt, null) on success; (null, reason) on failure.
+     * Reason values: "missing", "missing_kid", "unknown_key", "expired",
+     * "bad_signature", "wrong_claim", "malformed", "invalid".
+     */
+    fun verifyWithReason(authorizationHeader: String?): Pair<com.auth0.jwt.interfaces.DecodedJWT?, String?> {
         val token = authorizationHeader
             ?.takeIf { it.startsWith("Bearer ") }
             ?.removePrefix("Bearer ")
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
-            ?: return null
+            ?: return null to "missing"
         return try {
-            val keyId = JWT.decode(token).keyId ?: return null
-            val publicKey = jwkProvider.get(keyId).publicKey as? RSAPublicKey ?: return null
+            val keyId = JWT.decode(token).keyId ?: return null to "missing_kid"
+            val publicKey = jwkProvider.get(keyId).publicKey as? RSAPublicKey ?: return null to "unknown_key"
             JWT.require(Algorithm.RSA256(publicKey, null))
                 .withIssuer(issuer)
                 .build()
-                .verify(token)
+                .verify(token) to null
+        } catch (_: TokenExpiredException) {
+            null to "expired"
+        } catch (_: SignatureVerificationException) {
+            null to "bad_signature"
+        } catch (_: InvalidClaimException) {
+            null to "wrong_claim"
+        } catch (_: JWTDecodeException) {
+            null to "malformed"
         } catch (_: Exception) {
-            null // AC-07: degrade to anonymous — never an error page
+            null to "invalid"
         }
     }
 }
