@@ -38,6 +38,12 @@ private const val ENTITLEMENT_CACHE_TTL_MS = 5 * 60 * 1000L
 
 private data class CachedEntitlement(val valid: Boolean, val expiresAtMs: Long)
 
+// FGA-05: grant check results are cached per subject+article for ≤ 60 s.
+// Invalidated immediately when a grant is issued or revoked (FGA-05 freshness).
+private const val GRANT_CACHE_TTL_MS = 60_000L
+
+private data class CachedGrantResult(val hasGrant: Boolean, val grantedBy: String?, val expiresAtMs: Long)
+
 // AC-06: flag when the same authenticated identity is seen from more than
 // this many distinct IPs — a signal for account-sharing analysis.
 private const val SUSPICIOUS_IP_THRESHOLD = 5
@@ -58,6 +64,7 @@ class AccessService(
 ) {
 
     private val entitlementCache = ConcurrentHashMap<String, CachedEntitlement>()
+    private val grantCache = ConcurrentHashMap<String, CachedGrantResult>()
 
     /** AC-06: per-user set of distinct IPs seen in this process's lifetime. */
     private val ipsByUser = ConcurrentHashMap<String, MutableSet<String>>()
@@ -67,6 +74,12 @@ class AccessService(
     fun invalidateEntitlementCache(subjectId: String) {
         val userId = subjectId.removePrefix("user:")
         if (userId != subjectId) entitlementCache.remove(userId)
+    }
+
+    /** FGA-05: invalidate the grant result cache for a subject+article pair.
+     *  Called from the grants endpoint after every GrantIssued/GrantRevoked append. */
+    fun invalidateGrantCache(subjectId: String, articleId: String) {
+        grantCache.remove("$subjectId#$articleId")
     }
 
     /**
@@ -140,7 +153,7 @@ class AccessService(
 
         val meter = MeterDecision(period).also { it.applyAll(events) }
         val entitlement = cachedEntitlement(subject, events, now)
-        val grant = GrantDecision(article.id).also { it.applyAll(events) }
+        val grant = cachedGrant(article.id, allSubjects, events, now)
         // CEP advice arrives as published events (same union query — they are
         // subject-tagged); the access layer acts on them, it never calls the CEP.
         val cepAdvice = CepAdviceDecision().also { it.applyAll(events) }
@@ -170,7 +183,7 @@ class AccessService(
             usedAfter += 1
         }
 
-        logWallEvent(subject, article, variant, channel, decision, now, isBot, isSuspicious, propensityScore)
+        logWallEvent(subject, article, variant, channel, decision, grant, now, isBot, isSuspicious, propensityScore)
 
         val meterLimit = (variant.strategy as? StrategyConfig.Metered)?.let { strategy ->
             if (subject.registered) strategy.registeredLimit ?: strategy.limit else strategy.limit
@@ -220,8 +233,9 @@ class AccessService(
 
     /**
      * AN-01/02: server-side funnel logging. A gate logs WALL_SHOWN with the
-     * decision context (AN-03); a counted read logs ARTICLE_READ (MT-04 —
-     * teaser/gate views never count as reads).
+     * decision context (AN-03); a counted metered read or FGA grant read logs
+     * ARTICLE_READ (MT-04 / FGA-04). Other full reads (entitled, free) are
+     * page views and are not tracked here — the client emits those.
      */
     private suspend fun logWallEvent(
         subject: Subject,
@@ -229,12 +243,13 @@ class AccessService(
         variant: Variant,
         channel: String,
         decision: AccessDecision,
+        grant: GrantDecision,
         now: Long,
         isBot: Boolean,
         isSuspicious: Boolean,
         propensityScore: Int,
     ) {
-        val event = when (decision) {
+        val event: WallEventRecorded? = when (decision) {
             is AccessDecision.Gated -> WallEventRecorded(
                 eventType = WallEventType.WALL_SHOWN,
                 subjectId = subject.subjectId,
@@ -246,13 +261,30 @@ class AccessService(
                     put("wallType", variant.name)
                     decision.meterUsed?.let { put("meterUsed", it.toString()) }
                     decision.meterLimit?.let { put("meterLimit", it.toString()) }
-                    put("score", propensityScore.toString()) // PW-43: decision logged on every premium view
+                    put("score", propensityScore.toString()) // PW-43
                     if (isBot) put("bot", "true")
                     if (isSuspicious) put("suspicious_ip", "true")
                 },
             )
-            is AccessDecision.Full ->
-                if (decision.countsTowardMeter) {
+            is AccessDecision.Full -> when {
+                // FGA-04: grant-based access is distinguishable in analytics by granted_by.
+                decision.reason == nl.incedo.paywall.access.AccessReason.GRANT ->
+                    WallEventRecorded(
+                        eventType = WallEventType.ARTICLE_READ,
+                        subjectId = subject.subjectId,
+                        variant = variant.name,
+                        channel = channel,
+                        occurredAtEpochMs = now,
+                        articleId = article.id,
+                        context = buildMap {
+                            put("reason", "fga_grant")
+                            put("granted_by", grant.liveGrantedBy(now) ?: "unknown")
+                            put("score", propensityScore.toString())
+                            if (isBot) put("bot", "true")
+                            if (isSuspicious) put("suspicious_ip", "true")
+                        },
+                    )
+                decision.countsTowardMeter ->
                     WallEventRecorded(
                         eventType = WallEventType.ARTICLE_READ,
                         subjectId = subject.subjectId,
@@ -267,11 +299,37 @@ class AccessService(
                             if (isSuspicious) put("suspicious_ip", "true")
                         },
                     )
-                } else {
-                    null // entitled/grant/free full reads are page views, not funnel reads
-                }
+                else -> null // entitled/free full reads are page views, not funnel events
+            }
         }
         if (event != null) eventStore.append(listOf(event), condition = null)
+    }
+
+    /**
+     * FGA-05: return the grant decision for the subject+article, using a 60-second
+     * per-subject+article cache. Subject-scoped filtering prevents cross-subject
+     * grant leakage via the shared article tag in the union event query.
+     */
+    private fun cachedGrant(
+        articleId: nl.incedo.paywall.core.ArticleId,
+        subjects: Set<SubjectId>,
+        events: List<nl.incedo.paywall.core.DomainEvent>,
+        now: Long,
+    ): GrantDecision {
+        // Use the lexicographically smallest subject ID as the stable cache key.
+        val primarySubject = subjects.minByOrNull { it.value } ?: return GrantDecision(articleId, subjects)
+        val cacheKey = "${primarySubject.value}#${articleId.value}"
+        val cached = grantCache[cacheKey]
+        if (cached != null && cached.expiresAtMs > now) {
+            return GrantDecision.ofCached(articleId, cached.hasGrant, cached.grantedBy)
+        }
+        val decision = GrantDecision(articleId, subjects).also { it.applyAll(events) }
+        grantCache[cacheKey] = CachedGrantResult(
+            hasGrant = decision.hasLiveGrant(now),
+            grantedBy = decision.liveGrantedBy(now),
+            expiresAtMs = now + GRANT_CACHE_TTL_MS,
+        )
+        return decision
     }
 
     private fun queryTags(subjects: Set<SubjectId>, article: Article, period: MeterPeriod): Set<String> =

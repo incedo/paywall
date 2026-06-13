@@ -552,6 +552,8 @@ fun Application.module(
                 )
             }
             eventStore.append(listOf(event), condition = null)
+            // FGA-05: invalidate the 60s grant result cache so the change takes effect immediately.
+            service.invalidateGrantCache(change.subjectId, change.articleId)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to event::class.simpleName))
         }
         // AN-04: the wall-event stream is exportable for offline analysis.
