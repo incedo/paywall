@@ -1038,32 +1038,48 @@ fun Application.module(
             val subjectId = SubjectId(change.subjectId)
             val subscriptionRef = SubscriptionId(change.subscriptionRef)
             val planId = PlanId(change.planId ?: "unknown")
+            // NFR-03/SUB-02: idempotency — payment providers retry on timeout; skip duplicates.
+            val webhookTag: Set<String> = if (change.webhookEventId != null) {
+                val dup = eventStore.query(EventQuery(setOf("webhook:${change.webhookEventId}"))).events
+                if (dup.isNotEmpty()) {
+                    call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "already_processed"))
+                    return@post
+                }
+                setOf("webhook:${change.webhookEventId}")
+            } else emptySet()
             // SUB-07: status field takes precedence over legacy active boolean.
             val gracePeriodMs = 7 * 24 * 60 * 60 * 1000L
             val nowMs = System.currentTimeMillis()
             val events: List<DomainEvent> = when (change.status) {
                 "active" -> listOf(
-                    EntitlementGranted(subjectId, planId, subscriptionRef, change.validUntilEpochMs),
+                    EntitlementGranted(subjectId, planId, subscriptionRef, change.validUntilEpochMs,
+                        tags = setOf("subject:${subjectId.value}") + webhookTag),
                     SubscriptionResumed(subjectId, subscriptionRef, nowMs), // clears paused state if any
                 )
                 "canceled" -> listOf( // SUB-03: retain access until current_period_end
-                    EntitlementGranted(subjectId, planId, subscriptionRef, change.validUntilEpochMs),
+                    EntitlementGranted(subjectId, planId, subscriptionRef, change.validUntilEpochMs,
+                        tags = setOf("subject:${subjectId.value}") + webhookTag),
                     MailSent(subjectId, "cancellation_confirmation", nowMs, planId.value, subscriptionRef.value), // US-10
                 )
                 "past_due" -> listOf( // SUB-05: 7-day grace period with access retained
-                    EntitlementGranted(subjectId, planId, subscriptionRef, nowMs + gracePeriodMs),
+                    EntitlementGranted(subjectId, planId, subscriptionRef, nowMs + gracePeriodMs,
+                        tags = setOf("subject:${subjectId.value}") + webhookTag),
                     MailSent(subjectId, "payment_failure", nowMs, planId.value, subscriptionRef.value), // US-10
                 )
                 "paused" -> listOf( // SUB-07: billing suspended → access off
-                    SubscriptionPaused(subjectId, subscriptionRef, planId, nowMs),
+                    SubscriptionPaused(subjectId, subscriptionRef, planId, nowMs,
+                        tags = setOf("subject:${subjectId.value}") + webhookTag),
                 )
                 "expired" -> listOf(
-                    EntitlementRevoked(subjectId, subscriptionRef),
+                    EntitlementRevoked(subjectId, subscriptionRef,
+                        tags = setOf("subject:${subjectId.value}") + webhookTag),
                 )
                 else -> if (change.active) { // legacy boolean path
-                    listOf(EntitlementGranted(subjectId, planId, subscriptionRef, change.validUntilEpochMs))
+                    listOf(EntitlementGranted(subjectId, planId, subscriptionRef, change.validUntilEpochMs,
+                        tags = setOf("subject:${subjectId.value}") + webhookTag))
                 } else {
-                    listOf(EntitlementRevoked(subjectId, subscriptionRef))
+                    listOf(EntitlementRevoked(subjectId, subscriptionRef,
+                        tags = setOf("subject:${subjectId.value}") + webhookTag))
                 }
             }
             eventStore.append(events, condition = null)
