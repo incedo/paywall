@@ -45,6 +45,8 @@ import nl.incedo.paywall.plans.DefaultPlans
 import nl.incedo.paywall.brands.BrandDecision
 import nl.incedo.paywall.brands.BrandThemeUpdated
 import nl.incedo.paywall.brands.brandTag
+import nl.incedo.paywall.grants.DataGateConsentGiven
+import nl.incedo.paywall.offers.OfferAccepted
 import nl.incedo.paywall.offers.OfferDeclined
 import nl.incedo.paywall.offers.offerTag
 import nl.incedo.paywall.cep.CepClient
@@ -889,6 +891,49 @@ fun Application.module(
             call.respond(HttpStatusCode.Created,
                 mapOf("grantId" to grantId.value, "expiresAtEpochMs" to (now + grantTtlMs).toString()))
         }
+        // DG-02/03: verified data-gate completion webhook from the CIAM or survey platform.
+        // On verified completion: record explicit consent (DG-03), issue a 7-day grant
+        // for the triggering article (default), granted_by=data_gate (DG-02).
+        post("/api/v1/integration/data-gate-completion") {
+            val rawBody = call.receive<ByteArray>()
+            if (!webhookVerifier.verify(rawBody, call.request.headers[WebhookVerifier.SIGNATURE_HEADER])) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "invalid webhook signature (NFR-03)"))
+                return@post
+            }
+            val req = try {
+                kotlinx.serialization.json.Json.decodeFromString<DataGateCompletionRequest>(rawBody.decodeToString())
+            } catch (_: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid request body (DG-02)"))
+                return@post
+            }
+            if (req.subjectId.isBlank() || req.purposeId.isBlank() || req.completionId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId, purposeId and completionId are required (DG-02)"))
+                return@post
+            }
+            val subjectId = SubjectId(req.subjectId)
+            val now = System.currentTimeMillis()
+            // Idempotency: use completionId as the grantId so replays don't double-grant.
+            val grantId = GrantId("dg-${req.completionId}")
+            val grantTtlMs = 7L * 24 * 60 * 60 * 1000 // DG-02: 7-day TTL
+            val grant = nl.incedo.paywall.grants.GrantIssued(
+                grantId = grantId,
+                subjectId = subjectId,
+                articleId = req.articleId?.let { ArticleId(it) } ?: ArticleId("*"),
+                grantedBy = "data_gate",
+                expiresAtEpochMs = now + grantTtlMs,
+            )
+            // DG-03: record explicit consent alongside the grant
+            val consent = DataGateConsentGiven(
+                subjectId = subjectId,
+                purposeId = req.purposeId,
+                grantId = grantId,
+                consentAtEpochMs = now,
+            )
+            eventStore.append(listOf(consent, grant), condition = null)
+            if (req.articleId != null) service.invalidateGrantCache(req.subjectId, req.articleId)
+            call.respond(HttpStatusCode.Created,
+                mapOf("grantId" to grantId.value, "expiresAtEpochMs" to (now + grantTtlMs).toString()))
+        }
         // UP-01/01a: outbound CEP offer request via OfferService (guardrails + logging).
         // The mock CEP returns a fixed configurable offer; replace with a real HTTP client in prod.
         post("/api/v1/offers/request") {
@@ -939,6 +984,36 @@ fun Application.module(
             )
             eventStore.append(listOf(event), condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "OfferDeclined"))
+        }
+        // DN-05/DN-06: record an accepted offer for retention cap tracking and
+        // conversion analytics. Retention kinds (downsell/discount/pause) count against
+        // the rolling 12-month cap enforced in OfferService.
+        post("/api/v1/offers/accept") {
+            val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
+            val visitorId = call.request.queryParameters["visitorId"]
+                ?: call.request.headers["X-Visitor-Id"]
+            if (visitorId.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "visitorId is required"))
+                return@post
+            }
+            val offerId = call.request.queryParameters["offerId"]
+                ?: run {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "offerId is required"))
+                    return@post
+                }
+            val kind = call.request.queryParameters["kind"] ?: "unknown"
+            val channel = call.request.queryParameters["channel"] ?: "web"
+            val subjectId = userId?.let { nl.incedo.paywall.core.SubjectId.of(it) }
+                ?: nl.incedo.paywall.core.SubjectId.of(VisitorId(visitorId))
+            val event = OfferAccepted(
+                subjectId = subjectId,
+                offerId = offerId,
+                kind = kind,
+                channel = channel,
+                acceptedAtEpochMs = System.currentTimeMillis(),
+            )
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "OfferAccepted"))
         }
         // BP-05: subscriber-generated signed share tokens that redeem into FGA grants.
         // POST /api/v1/articles/{id}/share — authenticated subscriber issues a token (≤5/month).

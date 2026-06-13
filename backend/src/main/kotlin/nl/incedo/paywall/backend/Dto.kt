@@ -302,6 +302,21 @@ data class AdCompletionRequest(
     val adPlayId: String,
 )
 
+/**
+ * DG-02: data-gate completion webhook payload from CIAM or survey platform.
+ * Records explicit GDPR consent (DG-03) and issues a 7-day grant (DG-02).
+ */
+@Serializable
+data class DataGateCompletionRequest(
+    val subjectId: String,
+    /** Human-readable purpose, e.g. "newsletter_signup_article_access". */
+    val purposeId: String,
+    /** Provider-assigned completion ID for idempotency tracking. */
+    val completionId: String,
+    /** Optional — if null the grant applies to any article ("*"). */
+    val articleId: String? = null,
+)
+
 /** AN-21/US-07: GDPR account deletion request from the CIAM webhook. */
 @Serializable
 data class AccountDeletionRequest(

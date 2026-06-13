@@ -7,6 +7,7 @@ import nl.incedo.paywall.cep.Offer
 import nl.incedo.paywall.core.SubjectId
 import nl.incedo.paywall.core.port.EventQuery
 import nl.incedo.paywall.core.port.EventStore
+import nl.incedo.paywall.offers.OfferAccepted
 import nl.incedo.paywall.offers.OfferDeclined
 import nl.incedo.paywall.offers.OfferFrequencyDecision
 import nl.incedo.paywall.offers.OfferSuppressed
@@ -36,6 +37,8 @@ class OfferService(
     private val maxDiscountPercent: Int = 50,
     /** UP-05: cooldown in milliseconds (default 30 days). */
     private val frequencyCooldownMs: Long = 30L * 24 * 60 * 60 * 1000,
+    /** DN-05: retention offer cap window in milliseconds (default 12 months). */
+    private val retentionCapWindowMs: Long = 365L * 24 * 60 * 60 * 1000,
 ) {
     data class TriggerContext(
         val trigger: String,
@@ -92,6 +95,20 @@ class OfferService(
             return OfferDecision.Suppressed("capped")
         }
 
+        // DN-05: at most one accepted retention offer (downsell/discount/pause) per
+        // rolling 12 months — prevents cancel-to-discount farming.
+        if (isRetentionKind(rawOffer.kind)) {
+            val subjectEvents = eventStore.query(EventQuery(setOf("subject:${subjectId.value}"))).events
+            val retentionAcceptedAt = subjectEvents
+                .filterIsInstance<OfferAccepted>()
+                .filter { isRetentionKind(it.kind) }
+                .maxOfOrNull { it.acceptedAtEpochMs }
+            if (retentionAcceptedAt != null && now - retentionAcceptedAt < retentionCapWindowMs) {
+                log(subjectId, context, rawOffer.offerId, "retention_cap", now)
+                return OfferDecision.Suppressed("retention_cap")
+            }
+        }
+
         // UP-09: local guardrails
         val guardReason = checkGuardrails(rawOffer, context.trigger)
         if (guardReason != null) {
@@ -112,6 +129,10 @@ class OfferService(
         eventStore.append(listOf(triggered), condition = null)
         return OfferDecision.Triggered(rawOffer)
     }
+
+    /** DN-05: offer kinds that count as retention offers for the 12-month cap. */
+    private fun isRetentionKind(kind: String): Boolean =
+        kind in setOf("downsell", "discount", "pause")
 
     private suspend fun log(subjectId: SubjectId, context: TriggerContext, offerId: String?, reason: String, now: Long) {
         val suppressed = OfferSuppressed(subjectId, context.trigger, context.channel, reason, now, offerId)

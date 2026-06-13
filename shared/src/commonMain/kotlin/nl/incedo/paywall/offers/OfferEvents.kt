@@ -47,4 +47,19 @@ data class OfferDeclined(
     override val tags: Set<String> = setOf("subject:${subjectId.value}", offerTag(subjectId, offerId)),
 ) : DomainEvent
 
+/**
+ * DN-05/DN-06: recorded when a subject explicitly accepts an offer.
+ * Used for the rolling-12-month retention-offer cap (DN-05) and for measuring
+ * retention value per offer type (AN-10).
+ */
+@Serializable
+data class OfferAccepted(
+    val subjectId: SubjectId,
+    val offerId: String,
+    val kind: String,
+    val channel: String,
+    val acceptedAtEpochMs: Long,
+    override val tags: Set<String> = setOf("subject:${subjectId.value}", offerTag(subjectId, offerId)),
+) : DomainEvent
+
 fun offerTag(subjectId: SubjectId, offerId: String): String = "offer:${subjectId.value}:$offerId"
