@@ -4,11 +4,14 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCallPipeline
+import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.request.path
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
@@ -32,6 +35,9 @@ import nl.incedo.paywall.analytics.wallEventShardTags
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.backend.auth.CiamJwtValidator
+import nl.incedo.paywall.backend.auth.OriginTrust
+import nl.incedo.paywall.backend.auth.StaffRole
+import nl.incedo.paywall.backend.auth.requireStaff
 import nl.incedo.paywall.backend.content.ArticleRepository
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
@@ -143,7 +149,12 @@ fun main() {
         )
     }
 
-    embeddedServer(CIO, port = 8080) { module(service, eventStore, jwtValidator) }.start(wait = true)
+    // INF-02: the shared secret the edge presents; absent in local dev.
+    val originSecret = System.getenv("ORIGIN_SHARED_SECRET")
+
+    embeddedServer(CIO, port = 8080) {
+        module(service, eventStore, jwtValidator, originSecret = originSecret)
+    }.start(wait = true)
 }
 
 fun Application.module(
@@ -152,7 +163,10 @@ fun Application.module(
     /** Null = no CIAM configured: every request is anonymous (AC-07 fallback). */
     jwtValidator: CiamJwtValidator? = null,
     articles: ArticleRepository = ArticleRepository(),
+    /** INF-02: shared secret the edge presents; null = no edge in front (dev). */
+    originSecret: String? = null,
 ) {
+    val originTrust = OriginTrust(originSecret)
     install(ContentNegotiation) {
         json(Json { ignoreUnknownKeys = true })
     }
@@ -162,6 +176,12 @@ fun Application.module(
         anyHost()
         allowHeader(HttpHeaders.ContentType)
         allowHeader(HttpHeaders.Authorization)
+        allowHeader(OriginTrust.ORIGIN_SECRET_HEADER)
+    }
+    // INF-02: every request except the health probe must arrive through the
+    // edge (shared secret). No-op in dev where no secret is configured.
+    intercept(ApplicationCallPipeline.Plugins) {
+        if (call.request.path() != "/health" && !originTrust.verify(call)) finish()
     }
     routing {
         get("/health") {
@@ -285,9 +305,11 @@ fun Application.module(
         // content, versioned via events, optimistic concurrency per ADM-06.
         val wallService = WallService(eventStore)
         get("/api/v1/walls") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
             call.respond(wallService.list().map { it.toResponse() })
         }
         get("/api/v1/walls/{id}") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
             val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
                 ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wall id required"))
             val view = wallService.get(WallId(id))
@@ -295,6 +317,7 @@ fun Application.module(
             call.respond(view.toResponse())
         }
         post("/api/v1/walls/{id}") {
+            val staff = call.requireStaff(jwtValidator, StaffRole.OPERATOR) ?: return@post
             val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
                 ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wall id required"))
             val request = call.receive<SaveWallRequest>()
@@ -310,22 +333,26 @@ fun Application.module(
                 secondaryCta = request.secondaryCta, channels = request.channels,
             )
             val wallId = WallId(id)
+            // The actor is the authenticated staff subject, not client-supplied (ADM-03 audit).
+            val actor = staff.userId.value
             val result = if (wallService.get(wallId) == null) {
-                wallService.create(wallId, config, request.actor)
+                wallService.create(wallId, config, actor)
             } else {
-                wallService.update(wallId, config, request.actor, request.expectedVersion)
+                wallService.update(wallId, config, actor, request.expectedVersion)
             }
             call.respondSaveResult(result)
         }
         post("/api/v1/walls/{id}/publish") {
+            val staff = call.requireStaff(jwtValidator, StaffRole.ADMIN) ?: return@post
             val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
                 ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wall id required"))
-            call.respondSaveResult(wallService.publish(WallId(id), actor = "console"))
+            call.respondSaveResult(wallService.publish(WallId(id), actor = staff.userId.value))
         }
         // ADM-04: subject inspector — meter state, entitlements, identity
         // links and recent wall events for one person, plus the audited
         // meter-reset support action.
         get("/api/v1/admin/subjects/{subjectId}") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
             val subjectParam = call.parameters["subjectId"]?.takeIf { it.isNotBlank() }
                 ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subject id required"))
             val subjectId = SubjectId(subjectParam)
@@ -385,18 +412,20 @@ fun Application.module(
             )
         }
         post("/api/v1/admin/subjects/{subjectId}/meter-reset") {
+            // AA-01: a user-scoped support action — operator role + step-up.
+            val staff = call.requireStaff(jwtValidator, StaffRole.OPERATOR, needAal2 = true) ?: return@post
             val subjectParam = call.parameters["subjectId"]?.takeIf { it.isNotBlank() }
                 ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subject id required"))
             val request = call.receive<MeterResetRequest>()
-            if (request.actor.isBlank() || request.reason.isBlank()) {
-                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "actor and reason are required (audited action)"))
+            if (request.reason.isBlank()) {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "reason is required (audited action)"))
             }
             eventStore.append(
                 listOf(
                     nl.incedo.paywall.metering.MeterReset(
                         subjectId = SubjectId(subjectParam),
                         period = currentPeriod(),
-                        actor = request.actor,
+                        actor = staff.userId.value,
                         reason = request.reason,
                     ),
                 ),
@@ -407,6 +436,7 @@ fun Application.module(
         // Experiment dashboard numbers (AN-10): per-variant funnel stats,
         // rebuilt from the wall-event stream (projection — DM-04/DM-08).
         get("/api/v1/stats") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
             val events = eventStore.query(EventQuery(wallEventShardTags())).events
             val projection = VariantStatsProjection().also { it.applyAll(events) }
             val response = projection.stats().map { (variant, s) ->
@@ -454,6 +484,8 @@ fun Application.module(
         // day/week passes carry TTL = pass duration (PW-08). All writes are
         // events, hence audited by construction (ADM-03).
         post("/api/v1/grants") {
+            // AA-01: user-scoped grant administration — operator role + step-up.
+            call.requireStaff(jwtValidator, StaffRole.OPERATOR, needAal2 = true) ?: return@post
             val change = call.receive<GrantChangeRequest>()
             if (change.grantId.isBlank() || change.subjectId.isBlank() || change.articleId.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "grantId, subjectId and articleId are required"))
@@ -481,6 +513,7 @@ fun Application.module(
         // CSV here; Parquet via the warehouse pipeline later. `since` pages
         // by store position so exports can run incrementally.
         get("/api/v1/export/wall-events.csv") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
             val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0L
             val result = eventStore.query(EventQuery(wallEventShardTags(), since = since))
             val rows = result.events.filterIsInstance<WallEventRecorded>()
