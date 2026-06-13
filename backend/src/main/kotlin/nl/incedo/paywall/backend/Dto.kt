@@ -289,6 +289,19 @@ data class PlanResponse(
     val currency: String,
 )
 
+/**
+ * AG-02: verified ad-completion signal from the third-party ad player.
+ * The paywall issues a 24h grant for the triggering article, subject to a
+ * daily cap of 2 rewarded unlocks per subject.
+ */
+@Serializable
+data class AdCompletionRequest(
+    val subjectId: String,
+    val articleId: String,
+    /** Provider-assigned ad play ID for idempotency tracking. */
+    val adPlayId: String,
+)
+
 /** AN-21/US-07: GDPR account deletion request from the CIAM webhook. */
 @Serializable
 data class AccountDeletionRequest(
@@ -307,6 +320,11 @@ data class DecideResponse(
     val meterLimit: Int? = null,
     /** PW-23: one credit remaining — show the soft registration/subscribe banner. */
     val nudge: Boolean = false,
+    /**
+     * ADM-14: wall design version assigned to this variant, if any. The gate
+     * renderer resolves brand → wall design → this override when non-null.
+     */
+    val wallDesignId: String? = null,
 ) {
     companion object {
         fun from(outcome: AccessService.Outcome): DecideResponse = when (val d = outcome.decision) {
@@ -318,6 +336,7 @@ data class DecideResponse(
                 meterLimit = outcome.meterLimit,
                 // PW-23: soft banner when exactly one free credit remains
                 nudge = outcome.meterLimit?.let { it - outcome.meterUsedAfter == 1 } ?: false,
+                wallDesignId = outcome.variant.wallDesignId, // ADM-14
             )
             is AccessDecision.Gated -> DecideResponse(
                 access = "gate",
@@ -325,6 +344,7 @@ data class DecideResponse(
                 wallType = d.strategy.wallTypeName(),
                 meterUsed = d.meterUsed,
                 meterLimit = d.meterLimit,
+                wallDesignId = outcome.variant.wallDesignId, // ADM-14
             )
         }
 

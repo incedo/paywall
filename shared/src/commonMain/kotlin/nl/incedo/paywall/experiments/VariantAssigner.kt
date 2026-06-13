@@ -27,6 +27,12 @@ data class Variant(
     val name: String,
     val strategy: StrategyConfig,
     val weight: Int,
+    /**
+     * ADM-14: optional reference to a specific wall design version. When set,
+     * the gate renderer uses this design instead of the default for the brand.
+     * Enables copy/layout A/B tests through the standard experiment framework (PW-07).
+     */
+    val wallDesignId: String? = null,
 )
 
 /**
