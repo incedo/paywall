@@ -36,6 +36,7 @@ import nl.incedo.paywall.api.SaveWallRequest
 import nl.incedo.paywall.api.SubjectInspectorResponse
 import nl.incedo.paywall.api.VariantStatsResponse
 import nl.incedo.paywall.api.WallResponse
+import nl.incedo.paywall.api.WallVersionSummary
 import nl.incedo.paywall.access.Article
 import nl.incedo.paywall.access.ContentTier
 import nl.incedo.paywall.access.StrategyConfig
@@ -96,6 +97,9 @@ import nl.incedo.paywall.partners.PartnerMemberRemoved
 import nl.incedo.paywall.partners.PartnerOffboarded
 import nl.incedo.paywall.partners.partnerTag
 import nl.incedo.paywall.walls.WallConfig
+import nl.incedo.paywall.walls.WallConfigChanged
+import nl.incedo.paywall.walls.WallCreated
+import nl.incedo.paywall.walls.WallPublished
 import nl.incedo.paywall.walls.WallTemplateCreated
 import nl.incedo.paywall.walls.WallView
 import nl.incedo.paywall.core.SubjectId
@@ -691,6 +695,35 @@ fun Application.module(
             } else {
                 call.respondSaveResult(result)
             }
+        }
+        // ADM-13: version history for the rollback picker in the wall editor console.
+        // Returns one entry per config-change and publish event, newest first.
+        get("/api/v1/walls/{id}/history") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wall id required"))
+            val events = eventStore.query(EventQuery(setOf("wall:$id"))).events
+            val history = mutableListOf<WallVersionSummary>()
+            var version = 0
+            var status = "draft"
+            events.forEach { ev ->
+                when (ev) {
+                    is WallCreated -> {
+                        version = 1; status = "draft"
+                        history.add(WallVersionSummary(version, status, ev.actor))
+                    }
+                    is WallConfigChanged -> {
+                        version++; status = "draft"
+                        history.add(WallVersionSummary(version, status, ev.actor))
+                    }
+                    is WallPublished -> {
+                        status = "published"
+                        history.removeLastOrNull()
+                        history.add(WallVersionSummary(version, status, ev.actor))
+                    }
+                }
+            }
+            call.respond(history.asReversed())
         }
         // ADM-16: wall design templates — brand-neutral layout/copy that can be
         // instantiated for any brand. Theme tokens come from the target brand at

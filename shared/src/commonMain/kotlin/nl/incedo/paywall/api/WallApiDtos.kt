@@ -56,6 +56,19 @@ data class WallResponse(
     val translations: Map<String, WallCopy> = emptyMap(),
 )
 
+/**
+ * ADM-13: one entry in the audit history of a wall design.
+ * Returned by GET /api/v1/walls/{id}/history (newest first).
+ */
+@Serializable
+data class WallVersionSummary(
+    val version: Int,
+    /** "draft" or "published" — state after this event. */
+    val status: String,
+    /** Staff user who recorded this change. */
+    val actor: String,
+)
+
 /** AN-10/AN-11/AN-12 dashboard numbers per variant. */
 @Serializable
 data class VariantStatsResponse(

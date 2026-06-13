@@ -12,14 +12,18 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import nl.incedo.paywall.api.WallVersionSummary
 import nl.incedo.paywall.model.Channel
 import nl.incedo.paywall.model.WallDefinition
 import nl.incedo.paywall.model.WallType
@@ -54,10 +58,15 @@ fun WallDesignerScreen(
     onBack: () -> Unit,
     onSaveDraft: () -> Unit,
     onPublish: () -> Unit,
+    onLoadHistory: suspend () -> List<WallVersionSummary> = { emptyList() },
+    onRollback: suspend (Int) -> Unit = {},
 ) {
     var mobilePreview by remember { mutableStateOf(false) }
     var visitorContext by remember { mutableStateOf(0) } // 0=anonymous 1=registered 2=subscriber
     var gateContext by remember { mutableStateOf(0) }    // 0=paywall 1=registration 2=consent 3=nudge
+    var history by remember { mutableStateOf<List<WallVersionSummary>>(emptyList()) }
+
+    LaunchedEffect(wallName) { history = runCatching { onLoadHistory() }.getOrDefault(emptyList()) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         DesignerToolbar(wallName, wallStatus, onBack, onSaveDraft, onPublish)
@@ -87,6 +96,8 @@ fun WallDesignerScreen(
             PublishPanel(
                 definition = definition,
                 onDefinitionChange = onDefinitionChange,
+                history = history,
+                onRollback = onRollback,
                 modifier = Modifier
                     .width(300.dp)
                     .verticalScroll(rememberScrollState())
@@ -281,8 +292,12 @@ private fun PreviewPanel(
 private fun PublishPanel(
     definition: WallDefinition,
     onDefinitionChange: (WallDefinition) -> Unit,
+    history: List<WallVersionSummary>,
+    onRollback: suspend (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg)) {
         CrmText("Audience", style = CrmTheme.typography.h3)
         Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
@@ -338,16 +353,35 @@ private fun PublishPanel(
         CrmDivider()
 
         CrmText("Version history", style = CrmTheme.typography.h3)
-        Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm)) {
-            Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xxs)) {
-                CrmText("v3 — draft", style = CrmTheme.typography.bodySmall)
-                CrmText("Edited 2 min ago by M. Visser", style = CrmTheme.typography.caption, color = CrmTheme.colors.onSurfaceVariant)
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xxs)) {
-                CrmText("v2 — published", style = CrmTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm)) {
-                    CrmText("4 Jun 2026", style = CrmTheme.typography.caption, color = CrmTheme.colors.onSurfaceVariant)
-                    CrmText("Restore", style = CrmTheme.typography.caption, color = CrmTheme.colors.link)
+        if (history.isEmpty()) {
+            CrmText("No history yet", style = CrmTheme.typography.caption, color = CrmTheme.colors.onSurfaceVariant)
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm)) {
+                history.forEachIndexed { index, entry ->
+                    Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xxs)) {
+                        CrmText(
+                            "v${entry.version} — ${entry.status}",
+                            style = CrmTheme.typography.bodySmall,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CrmText(
+                                entry.actor,
+                                style = CrmTheme.typography.caption,
+                                color = CrmTheme.colors.onSurfaceVariant,
+                            )
+                            // Restore available for all versions except the latest (index 0)
+                            if (index > 0) {
+                                CrmTextButton(
+                                    "Restore",
+                                    onClick = { scope.launch { onRollback(entry.version) } },
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
