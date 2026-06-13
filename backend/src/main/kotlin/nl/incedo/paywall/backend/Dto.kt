@@ -145,6 +145,8 @@ data class EntitlementChangeRequest(
     val active: Boolean = true,
     /** SUB-07: subscription status from the payment provider. */
     val status: String? = null,
+    /** NFR-03/SUB-02: provider-assigned event ID for idempotent processing (e.g. Stripe-Event-Id). */
+    val webhookEventId: String? = null,
 )
 
 /**
