@@ -28,6 +28,23 @@ data class Subject(
     val subjectId: SubjectId get() = userId?.let { SubjectId.of(it) } ?: SubjectId.of(visitorId)
 }
 
+/**
+ * DY-01: configurable weights for the heuristic propensity scorer.
+ * Defaults match the original hard-coded values so existing experiments
+ * need no migration.
+ */
+@Serializable
+data class ScorerWeights(
+    /** Points per premium read consumed this month (strongest conversion predictor). */
+    val meterWeight: Int = 8,
+    /** Points per wall/read event in the last 30 days. */
+    val activityWeight: Int = 3,
+    /** Cap on tenure contribution — each day up to this limit contributes 1 point. */
+    val tenureCap: Int = 60,
+    /** DY-01: bonus added when the subject is a registered (logged-in) visitor. */
+    val registeredBonus: Int = 5,
+)
+
 /** Per-variant strategy configuration (PW-05/06): parameters are config, not code. */
 @Serializable
 sealed interface StrategyConfig {
@@ -53,6 +70,8 @@ sealed interface StrategyConfig {
         val tSoft: Int = 40,
         /** DY-02: upper threshold — at or above this the hard-gate copy is used (default 70). */
         val tHard: Int = 70,
+        /** DY-01: per-variant scorer weights; defaults preserve the original heuristic. */
+        val scorerWeights: ScorerWeights = ScorerWeights(),
     ) : StrategyConfig
 }
 

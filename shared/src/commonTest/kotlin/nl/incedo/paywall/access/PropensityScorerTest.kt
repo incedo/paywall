@@ -37,7 +37,7 @@ class PropensityScorerTest {
 
     @Test
     fun scorerReturnsZeroForFreshVisitorWithNoHistory() {
-        val score = HeuristicPropensityScorer.score(emptyList(), meterUsed = 0, nowEpochMs = now)
+        val score = HeuristicPropensityScorer().score(emptyList(), meterUsed = 0, nowEpochMs = now, isRegistered = false)
         assertEquals(0, score)
     }
 
@@ -46,7 +46,7 @@ class PropensityScorerTest {
         // DY-01: score must stay in [0, 100]
         val events = List(20) { wallEvent(WallEventType.ARTICLE_READ) } +
             List(30) { meterIncrement() }
-        val score = HeuristicPropensityScorer.score(events, meterUsed = 30, nowEpochMs = now)
+        val score = HeuristicPropensityScorer().score(events, meterUsed = 30, nowEpochMs = now, isRegistered = false)
         assertTrue(score in 0..100, "score $score out of [0, 100]")
         assertEquals(100, score, "heavy user should hit the cap")
     }
@@ -55,11 +55,35 @@ class PropensityScorerTest {
     fun eventsOlderThan30DaysDoNotCountAsRecentActivity() {
         val thirtyOneDaysAgo = 31L * 24 * 3600 * 1000
         val events = List(10) { wallEvent(WallEventType.PAGE_VIEW, ageMs = thirtyOneDaysAgo) }
-        val score = HeuristicPropensityScorer.score(events, meterUsed = 0, nowEpochMs = now)
+        val score = HeuristicPropensityScorer().score(events, meterUsed = 0, nowEpochMs = now, isRegistered = false)
         // Recent activity = 0; tenure contributes (days since first ≈ 31, capped at 60)
         val tenureScore = minOf(31, 60)
         assertEquals(tenureScore, score, "only tenure contributes for events older than 30 days")
     }
+
+    // ── DY-01: registered visitor bonus ─────────────────────────────────────────
+
+    @Test
+    fun registeredVisitorReceivesBonus() {
+        // DY-01: registered y/n factor — default registeredBonus = 5
+        val anonymousScore = HeuristicPropensityScorer().score(emptyList(), meterUsed = 0, nowEpochMs = now, isRegistered = false)
+        val registeredScore = HeuristicPropensityScorer().score(emptyList(), meterUsed = 0, nowEpochMs = now, isRegistered = true)
+        assertEquals(0, anonymousScore)
+        assertEquals(ScorerWeights().registeredBonus, registeredScore,
+            "registered visitor must receive the configured registeredBonus score")
+    }
+
+    @Test
+    fun customWeightsAreApplied() {
+        // DY-01: weights in configuration — verify they override defaults
+        val weights = ScorerWeights(meterWeight = 10, activityWeight = 0, tenureCap = 0, registeredBonus = 0)
+        val events = listOf(wallEvent(WallEventType.ARTICLE_READ))
+        val score = HeuristicPropensityScorer(weights).score(events, meterUsed = 3, nowEpochMs = now, isRegistered = false)
+        // meterUsed=3 × meterWeight=10 = 30; activity ignored; tenure=0; no bonus
+        assertEquals(30, score, "custom meterWeight must be used instead of default")
+    }
+
+    // ── DY-02: engine threshold mapping ─────────────────────────────────────────
 
     @Test
     fun dynamicStrategyGatesWhenScoreExceedsTSoft() {

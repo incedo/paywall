@@ -60,7 +60,7 @@ class AccessService(
     private val clock: () -> Long,
     private val currentPeriod: () -> MeterPeriod,
     /** DY-04: pluggable scorer; defaults to the phase-1 heuristic (DY-01). */
-    private val propensityScorer: PropensityScorer = HeuristicPropensityScorer,
+    private val propensityScorer: PropensityScorer = HeuristicPropensityScorer(),
     /**
      * API-03: when set, this loader is called on every decide() to obtain the
      * current (hot-reloadable) experiment config. Takes precedence over
@@ -193,9 +193,12 @@ class AccessService(
         // subject-tagged); the access layer acts on them, it never calls the CEP.
         val cepAdvice = CepAdviceDecision().also { it.applyAll(events) }
 
-        // DY-01: compute the heuristic score once per decide(); only meaningful
-        // for dynamic strategy but computed regardless (cheap, always available).
-        val propensityScore = propensityScorer.score(events, meter.used, now)
+        // DY-01: compute the heuristic score once per decide(). For dynamic variants,
+        // use the strategy's configured weights so each A/B arm can tune independently.
+        val scorer = (variant.strategy as? StrategyConfig.Dynamic)
+            ?.let { HeuristicPropensityScorer(it.scorerWeights) }
+            ?: propensityScorer
+        val propensityScore = scorer.score(events, meter.used, now, subject.registered)
 
         val decision = AccessDecisionEngine.decide(
             AccessRequest(
