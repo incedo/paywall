@@ -3,10 +3,11 @@ package nl.incedo.paywall.core.port
 import nl.incedo.paywall.core.DomainEvent
 
 /**
- * Event store port (hexagonal): the single write target of the system.
- * Append conditions implement DCB optimistic concurrency — an append is
- * rejected when new events matching the decision's query have appeared
- * since the decision model was built.
+ * DM-01: event store port (hexagonal) — the single write target of the system.
+ * Events are append-only; no update or delete operation is exposed. Append
+ * conditions implement DCB optimistic concurrency — an append is rejected when
+ * new events matching the decision's query have appeared since the decision
+ * model was built.
  */
 interface EventStore {
     suspend fun query(query: EventQuery): EventQueryResult
