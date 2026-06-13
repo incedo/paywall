@@ -994,6 +994,23 @@ fun Application.module(
                 )
             })
         }
+        // AN-13: cohort view — conversion and 30-day retention by ISO week of
+        // first visit. Rebuilt on demand from the full wall-event stream.
+        get("/api/v1/stats/cohorts") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            val events = eventStore.query(EventQuery(wallEventShardTags())).events
+            val projection = CohortProjection().also { it.applyAll(events) }
+            call.respond(projection.cohorts().map { c ->
+                CohortStatsResponse(
+                    cohortWeek = c.cohortWeek,
+                    visitors = c.visitors,
+                    conversions = c.conversions,
+                    conversionRate = c.conversionRate,
+                    retainedAt30Days = c.retainedAt30Days,
+                    retentionRate = c.retentionRate,
+                )
+            })
+        }
         // Integration inbound (AC-02, EA-*): entitlement changes from the
         // external subscription administration. The paywall enforces; it
         // never manages subscriptions (scope boundary).

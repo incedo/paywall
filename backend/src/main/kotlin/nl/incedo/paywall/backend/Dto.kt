@@ -551,3 +551,14 @@ data class DecideResponse(
         }
     }
 }
+
+/** AN-13: one row in the cohort report (week of first visit). */
+@Serializable
+data class CohortStatsResponse(
+    val cohortWeek: String,
+    val visitors: Int,
+    val conversions: Int,
+    val conversionRate: Double,
+    val retainedAt30Days: Int,
+    val retentionRate: Double,
+)
