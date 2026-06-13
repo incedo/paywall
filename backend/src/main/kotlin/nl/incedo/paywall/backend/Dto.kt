@@ -3,6 +3,7 @@ package nl.incedo.paywall.backend
 import kotlinx.serialization.Serializable
 import nl.incedo.paywall.access.AccessDecision
 import nl.incedo.paywall.access.StrategyConfig
+import nl.incedo.paywall.cep.Offer
 
 /**
  * AC-07: there is deliberately no userId field — logged-in identity comes
@@ -213,8 +214,11 @@ data class RedeemShareTokenRequest(
 )
 
 /**
- * API-07: response from POST /api/v1/offers/request — the outbound CEP call result.
+ * API-07/UP-02: response from POST /api/v1/offers/request — the outbound CEP call result.
  * Returns null offer when the CEP decides no offer applies.
+ *
+ * All fields from the UP-02 offer object are exposed so the client can render the offer
+ * without further lookups (gate copy, checkout pre-fill, decline flow).
  */
 @Serializable
 data class OfferResponse(
@@ -223,6 +227,18 @@ data class OfferResponse(
     val discountPercent: Int? = null,
     val validForSeconds: Long? = null,
     val cta: String? = null,
+    /** UP-02: plan the subscriber is currently on (null if not subscribed or not applicable). */
+    val fromPlanId: String? = null,
+    /** UP-02: plan being offered (null for access_grant offers). */
+    val toPlanId: String? = null,
+    /** UP-02: pause duration in months; non-null only for pause offers. */
+    val pauseMonths: Int? = null,
+    /** UP-02: CEP campaign/rule reference for audit trail. */
+    val source: String? = null,
+    /** UP-02: trigger that caused this offer (e.g. "cancel_intent", "gate_shown"). */
+    val trigger: String? = null,
+    /** UP-02a: channels on which this offer may be presented; empty = all channels. */
+    val channels: Set<String> = emptySet(),
 )
 
 /**
@@ -294,7 +310,7 @@ data class PartnerResponse(
     val activeCidrs: List<String>,
 )
 
-/** PAY-01/01a: plan catalogue entry returned by GET /api/v1/plans. */
+/** PAY-01/01a/02: plan catalogue entry returned by GET /api/v1/plans. */
 @Serializable
 data class PlanResponse(
     val planId: String,
@@ -304,6 +320,10 @@ data class PlanResponse(
     val displayName: String,
     val priceMinorUnits: Long,
     val currency: String,
+    /** PAY-02: intro price in minor units; null when no introductory offer exists. */
+    val introPriceMinorUnits: Long? = null,
+    /** PAY-02: number of billing periods at the intro price; null when no intro offer. */
+    val introPeriodsCount: Int? = null,
 )
 
 /**
@@ -561,4 +581,19 @@ data class CohortStatsResponse(
     val conversionRate: Double,
     val retainedAt30Days: Int,
     val retentionRate: Double,
+)
+
+/** UP-02: maps a nullable [Offer] domain object to its API representation. */
+fun Offer?.toOfferResponse(): OfferResponse = OfferResponse(
+    offerId = this?.offerId,
+    kind = this?.kind,
+    discountPercent = this?.discountPercent,
+    validForSeconds = this?.validForSeconds,
+    cta = this?.cta,
+    fromPlanId = this?.fromPlanId,
+    toPlanId = this?.toPlanId,
+    pauseMonths = this?.pauseMonths,
+    source = this?.source,
+    trigger = this?.trigger,
+    channels = this?.channels ?: emptySet(),
 )

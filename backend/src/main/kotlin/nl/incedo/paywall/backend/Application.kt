@@ -1401,13 +1401,7 @@ fun Application.module(
             )
             val decision = offerService.decideOffer(subject, ctx)
             val offer = (decision as? OfferService.OfferDecision.Triggered)?.offer
-            call.respond(OfferResponse(
-                offerId = offer?.offerId,
-                kind = offer?.kind,
-                discountPercent = offer?.discountPercent,
-                validForSeconds = offer?.validForSeconds,
-                cta = offer?.cta,
-            ))
+            call.respond(offer.toOfferResponse())
         }
         // UP-05: record an explicit offer decline so frequency capping suppresses
         // the same offer_id for 30 days across all channels (cross-channel cap).
@@ -1607,13 +1601,7 @@ fun Application.module(
             )
             val decision = offerService.decideOffer(subject, ctx)
             val offer = (decision as? OfferService.OfferDecision.Triggered)?.offer
-            call.respond(OfferResponse(
-                offerId = offer?.offerId,
-                kind = offer?.kind,
-                discountPercent = offer?.discountPercent,
-                validForSeconds = offer?.validForSeconds,
-                cta = offer?.cta,
-            ))
+            call.respond(offer.toOfferResponse())
         }
         // BP-05: subscriber-generated signed share tokens that redeem into FGA grants.
         // POST /api/v1/articles/{id}/share — authenticated subscriber issues a token (≤5/month).
@@ -1743,11 +1731,15 @@ fun Application.module(
                 .map { (id, b) -> BrandResponse(id, b.name, b.domain, b.locale, b.themeJson) }
                 .sortedBy { it.brandId })
         }
-        // PAY-01/01a: plan catalogue — two tiers × two billing periods, with ranks
+        // PAY-01/01a/02: plan catalogue — two tiers × two billing periods, with ranks
         // for upsell/downsell logic. Configuration-driven; no auth required (public).
+        // PAY-02: introPriceMinorUnits/introPeriodsCount exposed when an intro offer exists.
         get("/api/v1/plans") {
             call.respond(DefaultPlans.all.map { p ->
-                PlanResponse(p.planId.value, p.tier, p.billingPeriod, p.rank, p.displayName, p.priceMinorUnits, p.currency)
+                PlanResponse(p.planId.value, p.tier, p.billingPeriod, p.rank, p.displayName, p.priceMinorUnits, p.currency,
+                    introPriceMinorUnits = p.introPriceMinorUnits,
+                    introPeriodsCount = p.introPeriodsCount,
+                )
             })
         }
         // ── Partner management (PA-01/02/03/05 / IPW-01) ─────────────────────
