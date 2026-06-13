@@ -12,6 +12,7 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import nl.incedo.paywall.experiments.ExperimentDefinition
 
 /**
  * Console → backend adapter (ADM-01: the console owns no logic; everything
@@ -56,4 +57,33 @@ class ConsoleApi(private val baseUrl: String = "http://localhost:8080") {
     }
 
     suspend fun stats(): List<VariantStatsResponse> = client.get("$baseUrl/api/v1/stats").body()
+
+    // ── ADM-04: subject inspector ─────────────────────────────────────────────
+
+    suspend fun inspectSubject(subjectId: String): SubjectInspectorResponse =
+        client.get("$baseUrl/api/v1/admin/subjects/$subjectId").body()
+
+    suspend fun subjectGrants(subjectId: String): List<GrantAuditEntry> =
+        client.get("$baseUrl/api/v1/admin/subjects/$subjectId/grants").body()
+
+    suspend fun resetMeter(subjectId: String, actor: String, reason: String): Boolean {
+        val response = client.post("$baseUrl/api/v1/admin/subjects/$subjectId/meter-reset") {
+            contentType(ContentType.Application.Json)
+            setBody(MeterResetRequest(actor = actor, reason = reason))
+        }
+        return response.status.isSuccess()
+    }
+
+    // ── ADM-02: experiment config management ──────────────────────────────────
+
+    suspend fun getConfig(): ExperimentConfigResponse =
+        client.get("$baseUrl/api/v1/admin/config").body()
+
+    suspend fun publishConfig(experiment: ExperimentDefinition): Boolean {
+        val response = client.post("$baseUrl/api/v1/admin/config") {
+            contentType(ContentType.Application.Json)
+            setBody(PublishExperimentConfigRequest(experiment))
+        }
+        return response.status.isSuccess()
+    }
 }

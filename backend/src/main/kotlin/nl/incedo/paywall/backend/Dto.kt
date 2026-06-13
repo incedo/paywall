@@ -3,6 +3,13 @@ package nl.incedo.paywall.backend
 import kotlinx.serialization.Serializable
 import nl.incedo.paywall.access.AccessDecision
 import nl.incedo.paywall.access.StrategyConfig
+import nl.incedo.paywall.api.CiamSession
+import nl.incedo.paywall.api.ExperimentConfigResponse
+import nl.incedo.paywall.api.GrantAuditEntry
+import nl.incedo.paywall.api.InspectorWallEvent
+import nl.incedo.paywall.api.MeterResetRequest
+import nl.incedo.paywall.api.PublishExperimentConfigRequest
+import nl.incedo.paywall.api.SubjectInspectorResponse
 import nl.incedo.paywall.cep.Offer
 
 /**
@@ -65,39 +72,8 @@ data class GateInfo(
     val meterLimit: Int? = null,
 )
 
-/** ADM-04/MT-11 subject inspector: everything support/QA needs about one subject. */
-@Serializable
-data class SubjectInspectorResponse(
-    val subjectId: String,
-    /** Assigned variant (EX-01) — only for visitor subjects. */
-    val variant: String? = null,
-    val meterPeriod: String,
-    val meterUsed: Int,
-    /** MT-11: article IDs counted toward the meter this period. */
-    val meteredArticles: List<String>,
-    val entitled: Boolean,
-    val liveGrants: List<String>,
-    val linkedSubjects: List<String>,
-    val recentWallEvents: List<InspectorWallEvent>,
-    /** ADM-04: active CIAM sessions for this subject (read-only from Ory Kratos). Empty for anonymous visitors. */
-    val sessions: List<CiamSession> = emptyList(),
-)
-
-@Serializable
-data class InspectorWallEvent(
-    val type: String,
-    val articleId: String? = null,
-    val variant: String,
-    val channel: String,
-    val occurredAtEpochMs: Long,
-)
-
-/** ADM-04: meter reset is a support action — audited with actor and reason. */
-@Serializable
-data class MeterResetRequest(
-    val actor: String,
-    val reason: String,
-)
+// SubjectInspectorResponse, InspectorWallEvent, CiamSession, MeterResetRequest
+// are defined in shared module (nl.incedo.paywall.api.AdminApiDtos) and imported above.
 
 /**
  * Inbound integration payload: the CEP publishes gate advice as events.
@@ -212,23 +188,8 @@ data class GrantChangeRequest(
     val active: Boolean = true,
 )
 
-/**
- * MT-10/ADM-02/API-03: experiment config read and write DTOs.
- * GET /api/v1/admin/config returns [ExperimentConfigResponse].
- * POST /api/v1/admin/config takes [PublishExperimentConfigRequest].
- */
-@Serializable
-data class ExperimentConfigResponse(
-    val experiment: nl.incedo.paywall.experiments.ExperimentDefinition,
-    val publishedBy: String?,
-    val publishedAtEpochMs: Long?,
-    val isDefault: Boolean,
-)
-
-@Serializable
-data class PublishExperimentConfigRequest(
-    val experiment: nl.incedo.paywall.experiments.ExperimentDefinition,
-)
+// ExperimentConfigResponse and PublishExperimentConfigRequest are defined in
+// shared module (nl.incedo.paywall.api.AdminApiDtos) and imported above.
 
 /**
  * BP-05: response from POST /api/v1/articles/{id}/share.
@@ -414,24 +375,7 @@ data class OfferStatsResponse(
     val channels: Map<String, OfferChannelStatsResponse>,
 )
 
-/**
- * FGA-08: full audit trail entry for a single grant — shown in the
- * internal admin/debug endpoint (GET /api/v1/admin/subjects/{id}/grants).
- * Includes who granted what and whether the grant is still live.
- */
-@Serializable
-data class GrantAuditEntry(
-    val grantId: String,
-    val articleId: String,
-    /** FGA-01: source system (e.g. "day_pass", "ad_gated", "support", "ai_engine"). */
-    val grantedBy: String,
-    /** FGA-01: human-readable audit reason. */
-    val reason: String = "",
-    /** Null = no expiry. Milliseconds since epoch. */
-    val expiresAtEpochMs: Long? = null,
-    /** True when not revoked and not expired. */
-    val isLive: Boolean,
-)
+// GrantAuditEntry is defined in shared module (nl.incedo.paywall.api.AdminApiDtos) and imported above.
 
 /**
  * PA-04: partner usage stats for contract management — reads per partner and

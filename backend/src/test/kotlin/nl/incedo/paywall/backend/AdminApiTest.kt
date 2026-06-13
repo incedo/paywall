@@ -14,6 +14,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import nl.incedo.paywall.api.CiamSession
+import nl.incedo.paywall.api.ExperimentConfigResponse
+import nl.incedo.paywall.api.MeterResetRequest
+import nl.incedo.paywall.api.PublishExperimentConfigRequest
+import nl.incedo.paywall.api.SubjectInspectorResponse
 import nl.incedo.paywall.core.VisitorId
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
 import nl.incedo.paywall.access.StrategyConfig

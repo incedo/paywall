@@ -24,7 +24,9 @@ import nl.incedo.paywall.api.ConsoleApi
 import nl.incedo.paywall.api.SaveWallRequest
 import nl.incedo.paywall.api.VariantStatsResponse
 import nl.incedo.paywall.api.WallResponse
+import nl.incedo.paywall.designer.ConfigScreen
 import nl.incedo.paywall.designer.DashboardScreen
+import nl.incedo.paywall.designer.SubjectInspectorScreen
 import nl.incedo.paywall.designer.WallDesignerScreen
 import nl.incedo.paywall.designer.WallsOverviewScreen
 import nl.incedo.paywall.model.WallDefinition
@@ -43,6 +45,8 @@ import nl.incedo.paywall.ui.CrmTextButton
 private sealed interface ConsoleScreen {
     data object Overview : ConsoleScreen
     data object Dashboard : ConsoleScreen
+    data object Inspector : ConsoleScreen
+    data object Config : ConsoleScreen
     data class Designer(val wallId: String) : ConsoleScreen
 }
 
@@ -90,6 +94,9 @@ fun App() {
             runCatching { api.stats() }
                 .onSuccess { stats = it; statusMessage = null }
                 .onFailure { statusMessage = "Backend unreachable — no stats" }
+        }
+        if (screen is ConsoleScreen.Inspector || screen is ConsoleScreen.Config) {
+            statusMessage = null
         }
     }
 
@@ -151,10 +158,17 @@ fun App() {
             AdminTopBar(
                 activeItem = when (screen) {
                     is ConsoleScreen.Dashboard -> "Dashboard"
+                    is ConsoleScreen.Inspector -> "Support"
+                    is ConsoleScreen.Config -> "Config"
                     else -> "Walls"
                 },
                 onNavigate = { item ->
-                    screen = if (item == "Dashboard") ConsoleScreen.Dashboard else ConsoleScreen.Overview
+                    screen = when (item) {
+                        "Dashboard" -> ConsoleScreen.Dashboard
+                        "Support" -> ConsoleScreen.Inspector
+                        "Config" -> ConsoleScreen.Config
+                        else -> ConsoleScreen.Overview
+                    }
                 },
             )
             CrmDivider()
@@ -170,6 +184,16 @@ fun App() {
                 ) {
                     DashboardScreen(stats, statusMessage)
                 }
+                is ConsoleScreen.Inspector -> SubjectInspectorScreen(
+                    onInspect = { id -> api.inspectSubject(id) },
+                    onGrants = { id -> api.subjectGrants(id) },
+                    onMeterReset = { id -> api.resetMeter(id, "console", "manual reset via admin console") },
+                    statusMessage = statusMessage,
+                )
+                is ConsoleScreen.Config -> ConfigScreen(
+                    onLoadConfig = { api.getConfig() },
+                    statusMessage = statusMessage,
+                )
                 is ConsoleScreen.Designer -> WallDesignerScreen(
                     wallName = editingName,
                     wallStatus = editingStatus,
@@ -237,7 +261,7 @@ private fun AdminTopBar(activeItem: String, onNavigate: (String) -> Unit) {
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg),
         ) {
-            listOf("Dashboard", "Walls").forEach { item ->
+            listOf("Dashboard", "Walls", "Support", "Config").forEach { item ->
                 CrmTextButton(item, onClick = { onNavigate(item) })
             }
             listOf("Contacts", "Deals", "Invoices", "Subscriptions", "Tickets").forEach { item ->
