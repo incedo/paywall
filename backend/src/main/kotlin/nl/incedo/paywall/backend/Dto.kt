@@ -289,6 +289,19 @@ data class PlanResponse(
     val currency: String,
 )
 
+/**
+ * AG-02: verified ad-completion signal from the third-party ad player.
+ * The paywall issues a 24h grant for the triggering article, subject to a
+ * daily cap of 2 rewarded unlocks per subject.
+ */
+@Serializable
+data class AdCompletionRequest(
+    val subjectId: String,
+    val articleId: String,
+    /** Provider-assigned ad play ID for idempotency tracking. */
+    val adPlayId: String,
+)
+
 /** AN-21/US-07: GDPR account deletion request from the CIAM webhook. */
 @Serializable
 data class AccountDeletionRequest(

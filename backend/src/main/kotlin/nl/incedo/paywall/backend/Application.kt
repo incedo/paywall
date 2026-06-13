@@ -831,6 +831,49 @@ fun Application.module(
             eventStore.append(deletionEvents, condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to deletionEvents.size, "linksRevoked" to linked.size))
         }
+        // AG-02: verified ad-completion webhook from the third-party ad player.
+        // Issues a 24-hour grant for the triggering article, daily cap = 2 per subject.
+        post("/api/v1/integration/ad-completion") {
+            val rawBody = call.receive<ByteArray>()
+            if (!webhookVerifier.verify(rawBody, call.request.headers[WebhookVerifier.SIGNATURE_HEADER])) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "invalid webhook signature (NFR-03)"))
+                return@post
+            }
+            val req = kotlinx.serialization.json.Json.decodeFromString<AdCompletionRequest>(rawBody.decodeToString())
+            if (req.subjectId.isBlank() || req.articleId.isBlank() || req.adPlayId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId, articleId and adPlayId are required"))
+                return@post
+            }
+            val subjectId = SubjectId(req.subjectId)
+            val now = System.currentTimeMillis()
+            // AG-02: daily cap = 2 ad-gated unlocks per subject per calendar day (Amsterdam).
+            val todayStart = java.time.LocalDate.now(ZoneId.of("Europe/Amsterdam"))
+                .atStartOfDay(ZoneId.of("Europe/Amsterdam")).toInstant().toEpochMilli()
+            val subjectEvents = eventStore.query(EventQuery(setOf("subject:${subjectId.value}"))).events
+            val adGrantsToday = subjectEvents
+                .filterIsInstance<nl.incedo.paywall.grants.GrantIssued>()
+                .count { it.grantedBy == "ad_gated" && (it.expiresAtEpochMs ?: 0) >= todayStart }
+            val dailyCap = 2
+            if (adGrantsToday >= dailyCap) {
+                call.respond(HttpStatusCode.TooManyRequests,
+                    mapOf("error" to "daily ad-gated unlock cap reached ($dailyCap/day) (AG-02)"))
+                return@post
+            }
+            // Idempotency: use adPlayId as the grantId so replays are no-ops.
+            val grantId = GrantId("ad-${req.adPlayId}")
+            val grantTtlMs = 24L * 60 * 60 * 1000
+            val event = nl.incedo.paywall.grants.GrantIssued(
+                grantId = grantId,
+                subjectId = subjectId,
+                articleId = ArticleId(req.articleId),
+                grantedBy = "ad_gated",
+                expiresAtEpochMs = now + grantTtlMs,
+            )
+            eventStore.append(listOf(event), condition = null)
+            service.invalidateGrantCache(req.subjectId, req.articleId)
+            call.respond(HttpStatusCode.Created,
+                mapOf("grantId" to grantId.value, "expiresAtEpochMs" to (now + grantTtlMs).toString()))
+        }
         // UP-01/01a: outbound CEP offer request via OfferService (guardrails + logging).
         // The mock CEP returns a fixed configurable offer; replace with a real HTTP client in prod.
         post("/api/v1/offers/request") {
