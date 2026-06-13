@@ -496,6 +496,12 @@ data class DecideResponse(
      * Anonymous visitors see a registration wall; once registered the normal gate applies.
      */
     val registrationRequired: Boolean = false,
+    /**
+     * DY-05: what each other (non-assigned, non-killed) variant would have decided for
+     * this exact request, computed from the same decision models. Key = variant name,
+     * value = "gate" | "full". Empty when forceVariant is active (EX-05 debug mode).
+     */
+    val counterfactuals: Map<String, String> = emptyMap(),
 ) {
     companion object {
         fun from(outcome: AccessService.Outcome): DecideResponse = when (val d = outcome.decision) {
@@ -508,6 +514,7 @@ data class DecideResponse(
                 // PW-23: soft banner when exactly one free credit remains
                 nudge = outcome.meterLimit?.let { it - outcome.meterUsedAfter == 1 } ?: false,
                 wallDesignId = outcome.variant.wallDesignId, // ADM-14
+                counterfactuals = outcome.counterfactuals, // DY-05
             )
             is AccessDecision.Gated -> DecideResponse(
                 access = "gate",
@@ -518,6 +525,7 @@ data class DecideResponse(
                 wallDesignId = outcome.variant.wallDesignId, // ADM-14
                 tierLocked = d.tierLocked, // UP-12
                 registrationRequired = d.registrationRequired, // PW-50
+                counterfactuals = outcome.counterfactuals, // DY-05
             )
         }
 
