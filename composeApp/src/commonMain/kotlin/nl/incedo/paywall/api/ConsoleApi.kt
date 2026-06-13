@@ -150,6 +150,53 @@ class ConsoleApi(private val baseUrl: String = "http://localhost:8080") {
         else SaveOutcome.Failed("Instantiate failed (${response.status.value})")
     }
 
+    // ── ADM-03: partner management (PA-01/02/03/05, IPW-01) ──────────────────
+
+    suspend fun partners(): List<PartnerResponse> =
+        client.get("$baseUrl/api/v1/admin/partners").body()
+
+    suspend fun getPartner(partnerId: String): PartnerResponse =
+        client.get("$baseUrl/api/v1/admin/partners/$partnerId").body()
+
+    suspend fun createPartner(request: CreatePartnerRequest): Boolean {
+        val response = client.post("$baseUrl/api/v1/admin/partners") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        return response.status.isSuccess()
+    }
+
+    suspend fun addPartnerMember(partnerId: String, subjectId: String): Boolean {
+        val response = client.post("$baseUrl/api/v1/admin/partners/$partnerId/members") {
+            contentType(ContentType.Application.Json)
+            setBody(AddPartnerMemberRequest(subjectId = subjectId))
+        }
+        return response.status.isSuccess()
+    }
+
+    suspend fun removePartnerMember(partnerId: String, subjectId: String): Boolean {
+        val response = client.post("$baseUrl/api/v1/admin/partners/$partnerId/members/remove") {
+            contentType(ContentType.Application.Json)
+            setBody(AddPartnerMemberRequest(subjectId = subjectId))
+        }
+        return response.status.isSuccess()
+    }
+
+    suspend fun addPartnerIpRange(partnerId: String, cidr: String, active: Boolean = true): Boolean {
+        val response = client.post("$baseUrl/api/v1/admin/partners/$partnerId/ip-ranges") {
+            contentType(ContentType.Application.Json)
+            setBody(PartnerIpRangeRequest(cidr = cidr, active = active))
+        }
+        return response.status.isSuccess()
+    }
+
+    suspend fun offboardPartner(partnerId: String): Boolean {
+        val response = client.post("$baseUrl/api/v1/admin/partners/$partnerId/offboard") {
+            contentType(ContentType.Application.Json)
+        }
+        return response.status.isSuccess()
+    }
+
     // ── ADM-10: brand management ──────────────────────────────────────────────
 
     suspend fun brands(): List<BrandResponse> =

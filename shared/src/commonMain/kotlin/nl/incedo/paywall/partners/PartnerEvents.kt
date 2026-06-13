@@ -15,7 +15,8 @@ data class PartnerCreated(
     /** The plan tier granted to all partner members (e.g. "complete"). */
     val planId: String = "complete",
     val createdAtEpochMs: Long,
-    override val tags: Set<String> = setOf(partnerTag(partnerId)),
+    // "partners" catalog tag enables GET /api/v1/admin/partners listing projection (DM-05).
+    override val tags: Set<String> = setOf(partnerTag(partnerId), "partners"),
 ) : DomainEvent
 
 /** PA-02: member added to a partner; writes are seat-capped (PA-05). */
