@@ -307,6 +307,11 @@ data class DecideResponse(
     val meterLimit: Int? = null,
     /** PW-23: one credit remaining — show the soft registration/subscribe banner. */
     val nudge: Boolean = false,
+    /**
+     * ADM-14: wall design version assigned to this variant, if any. The gate
+     * renderer resolves brand → wall design → this override when non-null.
+     */
+    val wallDesignId: String? = null,
 ) {
     companion object {
         fun from(outcome: AccessService.Outcome): DecideResponse = when (val d = outcome.decision) {
@@ -318,6 +323,7 @@ data class DecideResponse(
                 meterLimit = outcome.meterLimit,
                 // PW-23: soft banner when exactly one free credit remains
                 nudge = outcome.meterLimit?.let { it - outcome.meterUsedAfter == 1 } ?: false,
+                wallDesignId = outcome.variant.wallDesignId, // ADM-14
             )
             is AccessDecision.Gated -> DecideResponse(
                 access = "gate",
@@ -325,6 +331,7 @@ data class DecideResponse(
                 wallType = d.strategy.wallTypeName(),
                 meterUsed = d.meterUsed,
                 meterLimit = d.meterLimit,
+                wallDesignId = outcome.variant.wallDesignId, // ADM-14
             )
         }
 
