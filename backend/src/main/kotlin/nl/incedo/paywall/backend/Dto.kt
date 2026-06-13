@@ -148,6 +148,24 @@ data class GrantChangeRequest(
     val active: Boolean = true,
 )
 
+/**
+ * MT-10/ADM-02/API-03: experiment config read and write DTOs.
+ * GET /api/v1/admin/config returns [ExperimentConfigResponse].
+ * POST /api/v1/admin/config takes [PublishExperimentConfigRequest].
+ */
+@Serializable
+data class ExperimentConfigResponse(
+    val experiment: nl.incedo.paywall.experiments.ExperimentDefinition,
+    val publishedBy: String?,
+    val publishedAtEpochMs: Long?,
+    val isDefault: Boolean,
+)
+
+@Serializable
+data class PublishExperimentConfigRequest(
+    val experiment: nl.incedo.paywall.experiments.ExperimentDefinition,
+)
+
 /** AN-21/US-07: GDPR account deletion request from the CIAM webhook. */
 @Serializable
 data class AccountDeletionRequest(

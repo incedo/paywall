@@ -61,6 +61,13 @@ class AccessService(
     private val currentPeriod: () -> MeterPeriod,
     /** DY-04: pluggable scorer; defaults to the phase-1 heuristic (DY-01). */
     private val propensityScorer: PropensityScorer = HeuristicPropensityScorer,
+    /**
+     * API-03: when set, this loader is called on every decide() to obtain the
+     * current (hot-reloadable) experiment config. Takes precedence over
+     * [experiment]. Used in production via [ConfigStore]; tests use the fixed
+     * [experiment] to keep setup concise.
+     */
+    private val experimentLoader: (suspend () -> ExperimentDefinition)? = null,
 ) {
 
     private val entitlementCache = ConcurrentHashMap<String, CachedEntitlement>()
@@ -120,7 +127,7 @@ class AccessService(
         isVerifiedCrawler: Boolean = false,
     ): Outcome {
         if (isVerifiedCrawler) {
-            val variant = VariantAssigner.assign(subject, experiment)
+            val variant = VariantAssigner.assign(subject, experimentLoader?.invoke() ?: experiment)
             val now = clock()
             // AN-05: bot traffic is flagged in events, not silently dropped.
             val crawlerEvent = WallEventRecorded(
@@ -136,9 +143,13 @@ class AccessService(
             return Outcome(nl.incedo.paywall.access.AccessDecision.Full(nl.incedo.paywall.access.AccessReason.VERIFIED_CRAWLER), variant, meterUsedAfter = 0)
         }
 
+        // API-03: use the hot-reloadable config if available; fall back to the
+        // static experiment passed at construction time (tests).
+        val currentExperiment = experimentLoader?.invoke() ?: experiment
+
         // EX-03: authenticated subjects use userId as the assignment key so the
         // variant is stable across devices after login.
-        val variant = VariantAssigner.assign(subject, experiment)
+        val variant = VariantAssigner.assign(subject, currentExperiment)
         val period = currentPeriod()
         val now = clock()
 
