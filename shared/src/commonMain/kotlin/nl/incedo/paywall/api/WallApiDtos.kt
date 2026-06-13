@@ -150,3 +150,24 @@ data class VariantStatsResponse(
      */
     val articleReadsDeltaVsControl: Int? = null,
 )
+
+/** AN-14: channel breakdown within a single offer's performance stats. */
+@Serializable
+data class OfferChannelStatsResponse(
+    val triggered: Int,
+    val accepted: Int,
+    val declined: Int,
+    val suppressed: Int,
+)
+
+/** AN-14: per offer_id performance stats for the staff stats dashboard. */
+@Serializable
+data class OfferStatsResponse(
+    val offerId: String,
+    val triggered: Int,
+    val accepted: Int,
+    val declined: Int,
+    val suppressed: Int,
+    val acceptanceRate: Double,
+    val channels: Map<String, OfferChannelStatsResponse>,
+)

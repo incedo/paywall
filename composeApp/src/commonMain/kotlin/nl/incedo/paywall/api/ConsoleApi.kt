@@ -58,6 +58,9 @@ class ConsoleApi(private val baseUrl: String = "http://localhost:8080") {
 
     suspend fun stats(): List<VariantStatsResponse> = client.get("$baseUrl/api/v1/stats").body()
 
+    /** AN-14: per-offer triggered/accepted/declined/suppressed with channel breakdown. */
+    suspend fun offerStats(): List<OfferStatsResponse> = client.get("$baseUrl/api/v1/stats/offers").body()
+
     // ── ADM-04: subject inspector ─────────────────────────────────────────────
 
     suspend fun inspectSubject(subjectId: String): SubjectInspectorResponse =

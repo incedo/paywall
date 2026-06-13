@@ -17,6 +17,8 @@ import nl.incedo.paywall.api.ExperimentConfigResponse
 import nl.incedo.paywall.api.GrantAuditEntry
 import nl.incedo.paywall.api.InspectorWallEvent
 import nl.incedo.paywall.api.MeterResetRequest
+import nl.incedo.paywall.api.OfferChannelStatsResponse
+import nl.incedo.paywall.api.OfferStatsResponse
 import nl.incedo.paywall.api.PublishExperimentConfigRequest
 import nl.incedo.paywall.api.SubjectInspectorResponse
 import nl.incedo.paywall.api.UpdateBrandThemeRequest
@@ -288,28 +290,7 @@ data class DataGateCompletionRequest(
     val articleId: String? = null,
 )
 
-/** AN-14: channel breakdown within a single offer's performance stats. */
-@Serializable
-data class OfferChannelStatsResponse(
-    val triggered: Int,
-    val accepted: Int,
-    val declined: Int,
-    val suppressed: Int,
-)
-
-/** AN-14: per offer_id performance stats for the staff stats dashboard. */
-@Serializable
-data class OfferStatsResponse(
-    val offerId: String,
-    val triggered: Int,
-    val accepted: Int,
-    val declined: Int,
-    val suppressed: Int,
-    val acceptanceRate: Double,
-    val channels: Map<String, OfferChannelStatsResponse>,
-)
-
-// GrantAuditEntry is defined in shared module (nl.incedo.paywall.api.AdminApiDtos) and imported above.
+// GrantAuditEntry, OfferStatsResponse, OfferChannelStatsResponse defined in shared module and imported above.
 
 /**
  * PA-04: partner usage stats for contract management — reads per partner and

@@ -29,6 +29,8 @@ import kotlinx.serialization.json.putJsonArray
 import nl.incedo.paywall.api.AddPartnerMemberRequest
 import nl.incedo.paywall.api.BrandResponse
 import nl.incedo.paywall.api.CiamSession
+import nl.incedo.paywall.api.OfferChannelStatsResponse
+import nl.incedo.paywall.api.OfferStatsResponse
 import nl.incedo.paywall.api.CreateBrandRequest
 import nl.incedo.paywall.api.CreatePartnerRequest
 import nl.incedo.paywall.api.ExperimentConfigResponse
