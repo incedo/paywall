@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import kotlin.random.Random
 import kotlinx.coroutines.launch
+import nl.incedo.paywall.api.BypassRateResponse
 import nl.incedo.paywall.api.ConsoleApi
 import nl.incedo.paywall.api.OfferStatsResponse
 import nl.incedo.paywall.api.SaveWallRequest
@@ -75,6 +76,7 @@ fun App() {
     var summaries by remember { mutableStateOf<List<WallSummary>>(emptyList()) }
     var stats by remember { mutableStateOf<List<VariantStatsResponse>>(emptyList()) }
     var offerStats by remember { mutableStateOf<List<OfferStatsResponse>>(emptyList()) }
+    var bypassRate by remember { mutableStateOf<BypassRateResponse?>(null) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var offline by remember { mutableStateOf(false) }
 
@@ -104,6 +106,9 @@ fun App() {
             runCatching { api.stats() }
                 .onSuccess { stats = it; statusMessage = null }
                 .onFailure { statusMessage = "Backend unreachable — no stats" }
+            runCatching { api.bypassRate() }
+                .onSuccess { bypassRate = it }
+                .onFailure { /* non-fatal — bypass section hides when null */ }
         }
         if (screen is ConsoleScreen.OfferStats) {
             runCatching { api.offerStats() }
@@ -205,7 +210,7 @@ fun App() {
                 is ConsoleScreen.Dashboard -> Column(
                     modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 ) {
-                    DashboardScreen(stats, statusMessage)
+                    DashboardScreen(stats, bypassRate, statusMessage)
                 }
                 is ConsoleScreen.OfferStats -> Column(
                     modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
@@ -237,6 +242,7 @@ fun App() {
                 )
                 is ConsoleScreen.Partners -> PartnersScreen(
                     onLoadPartners = { api.partners() },
+                    onLoadUsage = { api.partnerUsage() },
                     onCreatePartner = { req -> api.createPartner(req) },
                     onAddMember = { partnerId, subjectId -> api.addPartnerMember(partnerId, subjectId) },
                     onRemoveMember = { partnerId, subjectId -> api.removePartnerMember(partnerId, subjectId) },
