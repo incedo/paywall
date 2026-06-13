@@ -26,7 +26,9 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import nl.incedo.paywall.api.BrandResponse
 import nl.incedo.paywall.api.CiamSession
+import nl.incedo.paywall.api.CreateBrandRequest
 import nl.incedo.paywall.api.ExperimentConfigResponse
 import nl.incedo.paywall.api.GrantAuditEntry
 import nl.incedo.paywall.api.InspectorWallEvent
@@ -34,6 +36,7 @@ import nl.incedo.paywall.api.MeterResetRequest
 import nl.incedo.paywall.api.PublishExperimentConfigRequest
 import nl.incedo.paywall.api.SaveWallRequest
 import nl.incedo.paywall.api.SubjectInspectorResponse
+import nl.incedo.paywall.api.UpdateBrandThemeRequest
 import nl.incedo.paywall.api.VariantStatsResponse
 import nl.incedo.paywall.api.WallResponse
 import nl.incedo.paywall.api.WallVersionSummary
