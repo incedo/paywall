@@ -35,6 +35,33 @@ data class WallDefinition(
     val requireConsentStep: Boolean = false,
 )
 
+/**
+ * PW-11: default copy per wall type — hard-paywall gate emphasises "unlimited
+ * access" rather than "you've reached your limit" (which is metered copy).
+ * The ConfigPanel swaps to these defaults when the user changes wall type,
+ * unless the title has already been customised.
+ */
+data class WallTypeCopy(val title: String, val body: String)
+
+val defaultCopyFor: Map<WallType, WallTypeCopy> = mapOf(
+    WallType.Metered to WallTypeCopy(
+        title = "You've reached this month's free limit",
+        body = "Pro includes unlimited documents, exports and payment reminders for €10 per user / month.",
+    ),
+    WallType.Hard to WallTypeCopy(
+        title = "Unlock unlimited access",
+        body = "Get Pro for unlimited documents, SEPA direct debit, CSV exports, and priority support — from €10 per user / month.",
+    ),
+    WallType.Freemium to WallTypeCopy(
+        title = "This content is for Pro members",
+        body = "Upgrade to Pro for unlimited documents and premium features — from €10 per user / month.",
+    ),
+    WallType.Dynamic to WallTypeCopy(
+        title = "Continue reading with Pro",
+        body = "Based on your reading habits, you'd benefit from unlimited access — try Pro for €10 per user / month.",
+    ),
+)
+
 enum class WallStatus(val label: String) {
     Live("Live"),
     Draft("Draft"),
