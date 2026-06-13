@@ -342,6 +342,23 @@ data class OfferStatsResponse(
 )
 
 /**
+ * FGA-08: full audit trail entry for a single grant — shown in the
+ * internal admin/debug endpoint (GET /api/v1/admin/subjects/{id}/grants).
+ * Includes who granted what and whether the grant is still live.
+ */
+@Serializable
+data class GrantAuditEntry(
+    val grantId: String,
+    val articleId: String,
+    /** e.g. "day_pass", "share_token", "ad_gated", "support", "ai_engine" */
+    val grantedBy: String,
+    /** Null = no expiry. Milliseconds since epoch. */
+    val expiresAtEpochMs: Long? = null,
+    /** True when not revoked and not expired. */
+    val isLive: Boolean,
+)
+
+/**
  * PA-04: partner usage stats for contract management — reads per partner and
  * unique user count, derived from the wall-event stream.
  */

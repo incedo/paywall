@@ -663,6 +663,39 @@ fun Application.module(
                 ),
             )
         }
+        // FGA-08: full grant audit trail for a subject — all grants ever issued
+        // (active and revoked) with grantedBy, expiry, and live status.
+        get("/api/v1/admin/subjects/{subjectId}/grants") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            val subjectParam = call.parameters["subjectId"]?.takeIf { it.isNotBlank() } ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId required"))
+                return@get
+            }
+            val now = System.currentTimeMillis()
+            val events = eventStore.query(EventQuery(setOf("subject:$subjectParam"))).events
+            val issued = mutableMapOf<String, GrantIssued>()
+            val revoked = mutableSetOf<String>()
+            events.forEach { event ->
+                when (event) {
+                    is GrantIssued -> issued[event.grantId.value] = event
+                    is GrantRevoked -> revoked.add(event.grantId.value)
+                    else -> {}
+                }
+            }
+            val entries = issued.values
+                .sortedBy { it.grantId.value }
+                .map { g ->
+                    GrantAuditEntry(
+                        grantId = g.grantId.value,
+                        articleId = g.articleId.value,
+                        grantedBy = g.grantedBy,
+                        expiresAtEpochMs = g.expiresAtEpochMs,
+                        isLive = g.grantId.value !in revoked &&
+                            (g.expiresAtEpochMs?.let { it > now } ?: true),
+                    )
+                }
+            call.respond(entries)
+        }
         post("/api/v1/admin/subjects/{subjectId}/meter-reset") {
             // AA-01: a user-scoped support action — operator role + step-up.
             val staff = call.requireStaff(jwtValidator, StaffRole.OPERATOR, needAal2 = true) ?: return@post
