@@ -243,6 +243,43 @@ class AdminApiTest {
         assertEquals(hardExperiment, body.experiment)
     }
 
+    // ADM-04: CIAM session lookup ----------------------------------------------------------
+
+    @Test
+    fun inspectorIncludesCiamSessionsForUserSubject() = testApplication {
+        val store = InMemoryEventStore()
+        val service = AccessService(
+            eventStore = store,
+            experiment = defaultExperiment,
+            clock = { now },
+            currentPeriod = { MeterPeriod(currentPeriod().value) },
+        )
+        val fakeSessions = listOf(
+            CiamSession(id = "sess-001", device = "Chrome/Mozilla", ipAddress = "1.2.3.4", lastActiveAtEpochMs = now),
+            CiamSession(id = "sess-002", device = "Safari/Mobile", ipAddress = "5.6.7.8", lastActiveAtEpochMs = now - 3600_000),
+        )
+        val ciamClient = object : CiamSessionClient {
+            override suspend fun activeSessions(userId: String): List<CiamSession> =
+                if (userId == "user-123") fakeSessions else emptyList()
+        }
+        application { module(service, store, ciamSessionClient = ciamClient) }
+        val client = createClient { install(ContentNegotiation) { json() } }
+
+        val inspector: SubjectInspectorResponse = client.get("/api/v1/admin/subjects/user:user-123").body()
+        assertEquals(2, inspector.sessions.size, "ADM-04: inspector must include CIAM sessions for user subjects")
+        assertEquals("sess-001", inspector.sessions[0].id)
+        assertEquals("Chrome/Mozilla", inspector.sessions[0].device)
+        assertEquals("1.2.3.4", inspector.sessions[0].ipAddress)
+    }
+
+    @Test
+    fun inspectorHasEmptySessionsForVisitorSubject() = apiTest { client ->
+        // Anonymous visitor: no CIAM sessions — session list must be empty (not absent).
+        val visitor = visitorIn("metered")
+        val inspector: SubjectInspectorResponse = client.get("/api/v1/admin/subjects/visitor:$visitor").body()
+        assertEquals(emptyList(), inspector.sessions, "ADM-04: visitor subjects have no CIAM sessions")
+    }
+
     @Test
     fun publishConfigAffectsDecisions() = configApiTest { client ->
         // Before publish: metered variant (from defaultExperiment) grants access

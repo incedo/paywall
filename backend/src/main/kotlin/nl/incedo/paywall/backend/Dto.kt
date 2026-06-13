@@ -79,6 +79,8 @@ data class SubjectInspectorResponse(
     val liveGrants: List<String>,
     val linkedSubjects: List<String>,
     val recentWallEvents: List<InspectorWallEvent>,
+    /** ADM-04: active CIAM sessions for this subject (read-only from Ory Kratos). Empty for anonymous visitors. */
+    val sessions: List<CiamSession> = emptyList(),
 )
 
 @Serializable
