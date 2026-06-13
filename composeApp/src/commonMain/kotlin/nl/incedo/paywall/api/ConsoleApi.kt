@@ -100,6 +100,43 @@ class ConsoleApi(private val baseUrl: String = "http://localhost:8080") {
         else SaveOutcome.Failed("Rollback failed (${response.status.value})")
     }
 
+    // ── ADM-03/FGA-03: grant management ──────────────────────────────────────
+
+    suspend fun issueGrant(
+        subjectId: String,
+        articleId: String,
+        grantId: String,
+        reason: String,
+        expiresAtEpochMs: Long? = null,
+    ): Boolean {
+        val response = client.post("$baseUrl/api/v1/grants") {
+            contentType(ContentType.Application.Json)
+            setBody(GrantChangeRequest(
+                grantId = grantId,
+                subjectId = subjectId,
+                articleId = articleId,
+                grantedBy = "support",
+                reason = reason,
+                expiresAtEpochMs = expiresAtEpochMs,
+                active = true,
+            ))
+        }
+        return response.status.isSuccess()
+    }
+
+    suspend fun revokeGrant(subjectId: String, grantId: String, articleId: String): Boolean {
+        val response = client.post("$baseUrl/api/v1/grants") {
+            contentType(ContentType.Application.Json)
+            setBody(GrantChangeRequest(
+                grantId = grantId,
+                subjectId = subjectId,
+                articleId = articleId,
+                active = false,
+            ))
+        }
+        return response.status.isSuccess()
+    }
+
     // ── ADM-10: brand management ──────────────────────────────────────────────
 
     suspend fun brands(): List<BrandResponse> =

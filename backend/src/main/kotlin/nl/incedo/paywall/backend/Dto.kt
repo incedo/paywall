@@ -6,6 +6,7 @@ import nl.incedo.paywall.access.StrategyConfig
 import nl.incedo.paywall.api.BrandResponse
 import nl.incedo.paywall.api.CiamSession
 import nl.incedo.paywall.api.CreateBrandRequest
+import nl.incedo.paywall.api.GrantChangeRequest
 import nl.incedo.paywall.api.ExperimentConfigResponse
 import nl.incedo.paywall.api.GrantAuditEntry
 import nl.incedo.paywall.api.InspectorWallEvent
@@ -173,26 +174,8 @@ data class CancellationSurveyRequest(
     val freeText: String? = null,
 )
 
-/**
- * Grant management payload (FGA-03): article-scoped access independent of
- * subscriptions — day/week passes with TTL (PW-08), share-token redemptions
- * (BP-05), support grants. `active = false` revokes.
- */
-@Serializable
-data class GrantChangeRequest(
-    val grantId: String,
-    val subjectId: String,
-    val articleId: String,
-    /** FGA-01: source system (e.g. "day_pass", "ad_gated", "support"). */
-    val grantedBy: String = "support",
-    /** FGA-01: human-readable audit reason (e.g. "support ticket 4711"). */
-    val reason: String = "",
-    val expiresAtEpochMs: Long? = null,
-    val active: Boolean = true,
-)
-
-// ExperimentConfigResponse and PublishExperimentConfigRequest are defined in
-// shared module (nl.incedo.paywall.api.AdminApiDtos) and imported above.
+// GrantChangeRequest, ExperimentConfigResponse, and PublishExperimentConfigRequest
+// are defined in the shared module (nl.incedo.paywall.api.AdminApiDtos) and imported above.
 
 /**
  * BP-05: response from POST /api/v1/articles/{id}/share.

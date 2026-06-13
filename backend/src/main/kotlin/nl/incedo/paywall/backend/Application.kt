@@ -31,6 +31,7 @@ import nl.incedo.paywall.api.CiamSession
 import nl.incedo.paywall.api.CreateBrandRequest
 import nl.incedo.paywall.api.ExperimentConfigResponse
 import nl.incedo.paywall.api.GrantAuditEntry
+import nl.incedo.paywall.api.GrantChangeRequest
 import nl.incedo.paywall.api.InspectorWallEvent
 import nl.incedo.paywall.api.MeterResetRequest
 import nl.incedo.paywall.api.PublishExperimentConfigRequest
