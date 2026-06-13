@@ -166,6 +166,24 @@ data class PublishExperimentConfigRequest(
     val experiment: nl.incedo.paywall.experiments.ExperimentDefinition,
 )
 
+/**
+ * BP-05: response from POST /api/v1/articles/{id}/share.
+ * [token] is the signed opaque token; the caller embeds it in a share URL.
+ */
+@Serializable
+data class ShareTokenResponse(
+    val token: String,
+    val expiresAtEpochMs: Long,
+    val remainingThisMonth: Int,
+)
+
+/** BP-05: request body for POST /api/v1/shares/redeem. */
+@Serializable
+data class RedeemShareTokenRequest(
+    val visitorId: String,
+    val token: String,
+)
+
 /** AN-21/US-07: GDPR account deletion request from the CIAM webhook. */
 @Serializable
 data class AccountDeletionRequest(
