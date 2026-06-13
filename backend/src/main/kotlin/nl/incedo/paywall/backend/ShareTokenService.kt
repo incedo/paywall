@@ -96,6 +96,7 @@ class ShareTokenService(
             subjectId = visitorSubjectId,
             articleId = ArticleId(payload.articleId),
             grantedBy = "share_token",
+            reason = "share token ${payload.tokenId}", // FGA-01
             expiresAtEpochMs = payload.expiresAtEpochMs,
         )
         // Idempotent: same grantId for same token — a second redemption by a

@@ -848,6 +848,7 @@ fun Application.module(
                         grantId = g.grantId.value,
                         articleId = g.articleId.value,
                         grantedBy = g.grantedBy,
+                        reason = g.reason, // FGA-01
                         expiresAtEpochMs = g.expiresAtEpochMs,
                         isLive = g.grantId.value !in revoked &&
                             (g.expiresAtEpochMs?.let { it > now } ?: true),
@@ -1118,6 +1119,7 @@ fun Application.module(
                     subjectId = SubjectId(change.subjectId),
                     articleId = ArticleId(change.articleId),
                     grantedBy = change.grantedBy,
+                    reason = change.reason, // FGA-01
                     expiresAtEpochMs = expiresAt,
                 )
             } else {
@@ -1335,6 +1337,7 @@ fun Application.module(
                 subjectId = subjectId,
                 articleId = ArticleId(req.articleId),
                 grantedBy = "ad_gated",
+                reason = "ad completion ${req.adPlayId}", // FGA-01 / AG-02
                 expiresAtEpochMs = now + grantTtlMs,
             )
             eventStore.append(listOf(event), condition = null)
@@ -1371,6 +1374,7 @@ fun Application.module(
                 subjectId = subjectId,
                 articleId = req.articleId?.let { ArticleId(it) } ?: ArticleId("*"),
                 grantedBy = "data_gate",
+                reason = "data exchange ${req.purposeId} completion ${req.completionId}", // FGA-01 / DG-02
                 expiresAtEpochMs = now + grantTtlMs,
             )
             // DG-03: record explicit consent alongside the grant
@@ -1489,6 +1493,7 @@ fun Application.module(
                         subjectId = subjectId,
                         articleId = ArticleId(articleId),
                         grantedBy = grantedBy,
+                        reason = "offer accepted $offerId", // FGA-01
                         expiresAtEpochMs = acceptedAt + grantTtlSeconds * 1_000,
                     )
                 }

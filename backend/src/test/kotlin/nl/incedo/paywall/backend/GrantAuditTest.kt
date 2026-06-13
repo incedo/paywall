@@ -44,6 +44,7 @@ class GrantAuditTest {
         articleId: String = "a-fga08",
         grantId: String = "g-fga08",
         grantedBy: String = "support",
+        reason: String = "",
         expiresAtEpochMs: Long? = null,
         active: Boolean = true,
     ) = post("/api/v1/grants") {
@@ -54,6 +55,7 @@ class GrantAuditTest {
                 subjectId = subjectId,
                 articleId = articleId,
                 grantedBy = grantedBy,
+                reason = reason,
                 expiresAtEpochMs = expiresAtEpochMs,
                 active = active,
             ),
@@ -122,5 +124,18 @@ class GrantAuditTest {
         assertEquals("a-premium-42", entry.articleId, "FGA-08: article ID must be in audit trail")
         assertEquals("ad_gated", entry.grantedBy, "FGA-08: grantedBy must be in audit trail")
         assertEquals(HttpStatusCode.OK, client.get("/api/v1/admin/subjects/visitor:fga08-d/grants").status)
+    }
+
+    @Test
+    fun auditTrailIncludesReason() = apiTest { client ->
+        // FGA-01: grant metadata must include reason so the audit trail answers "why"
+        client.issueGrant(
+            subjectId = "visitor:fga08-e",
+            grantId = "g-fga08-e",
+            grantedBy = "support",
+            reason = "support ticket 4711",
+        )
+        val entry = client.grantsFor("visitor:fga08-e").single()
+        assertEquals("support ticket 4711", entry.reason, "FGA-01: reason must appear in grant audit entry")
     }
 }
