@@ -1358,6 +1358,10 @@ fun Application.module(
                 }
             val kind = call.request.queryParameters["kind"] ?: "unknown"
             val channel = call.request.queryParameters["channel"] ?: "web"
+            // DN-06: optional offer object fields for retention value measurement (AN-10).
+            val fromPlanId = call.request.queryParameters["fromPlanId"]
+            val toPlanId = call.request.queryParameters["toPlanId"]
+            val discountPercent = call.request.queryParameters["discountPercent"]?.toIntOrNull()
             val subjectId = userId?.let { nl.incedo.paywall.core.SubjectId.of(it) }
                 ?: nl.incedo.paywall.core.SubjectId.of(VisitorId(visitorId))
             val acceptedAt = System.currentTimeMillis()
@@ -1368,6 +1372,9 @@ fun Application.module(
                     kind = kind,
                     channel = channel,
                     acceptedAtEpochMs = acceptedAt,
+                    fromPlanId = fromPlanId, // DN-06
+                    toPlanId = toPlanId, // DN-06
+                    discountPercent = discountPercent, // DN-06
                 ),
             )
             // FGA-07: access_grant kind automatically issues a grant on accept.

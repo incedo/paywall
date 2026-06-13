@@ -51,6 +51,11 @@ data class OfferDeclined(
  * DN-05/DN-06: recorded when a subject explicitly accepts an offer.
  * Used for the rolling-12-month retention-offer cap (DN-05) and for measuring
  * retention value per offer type (AN-10).
+ *
+ * [fromPlanId], [toPlanId], [discountPercent]: optional offer object fields (DN-06).
+ * Present when the client forwards them from the offer it accepted. Enables
+ * retained-revenue estimates at reporting time without a CEP round-trip.
+ * Null when not supplied (e.g. offers accepted before DN-06 was deployed).
  */
 @Serializable
 data class OfferAccepted(
@@ -59,6 +64,12 @@ data class OfferAccepted(
     val kind: String,
     val channel: String,
     val acceptedAtEpochMs: Long,
+    /** DN-06: plan the subscriber was on at acceptance (for downsell/pause revenue accounting). */
+    val fromPlanId: String? = null,
+    /** DN-06: plan the subscriber moves to (for upsell/downsell revenue delta). */
+    val toPlanId: String? = null,
+    /** DN-06: discount applied if any (for discount offer revenue accounting). */
+    val discountPercent: Int? = null,
     override val tags: Set<String> = setOf("subject:${subjectId.value}", offerTag(subjectId, offerId), OFFER_EVENT_TAG),
 ) : DomainEvent
 
