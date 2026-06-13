@@ -61,7 +61,7 @@ data class GateInfo(
     val meterLimit: Int? = null,
 )
 
-/** ADM-04 subject inspector: everything support/QA needs about one subject. */
+/** ADM-04/MT-11 subject inspector: everything support/QA needs about one subject. */
 @Serializable
 data class SubjectInspectorResponse(
     val subjectId: String,
@@ -69,6 +69,8 @@ data class SubjectInspectorResponse(
     val variant: String? = null,
     val meterPeriod: String,
     val meterUsed: Int,
+    /** MT-11: article IDs counted toward the meter this period. */
+    val meteredArticles: List<String>,
     val entitled: Boolean,
     val liveGrants: List<String>,
     val linkedSubjects: List<String>,
@@ -144,6 +146,13 @@ data class GrantChangeRequest(
     val grantedBy: String = "support",
     val expiresAtEpochMs: Long? = null,
     val active: Boolean = true,
+)
+
+/** AN-21/US-07: GDPR account deletion request from the CIAM webhook. */
+@Serializable
+data class AccountDeletionRequest(
+    /** The Ory Kratos / OIDC user ID whose account is being deleted. */
+    val userId: String,
 )
 
 @Serializable

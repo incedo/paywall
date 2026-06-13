@@ -33,3 +33,16 @@ data class IdentityUnlinked(
         "subject:${subjectB.value}",
     ),
 ) : DomainEvent
+
+/**
+ * AN-21/US-07: the user exercised their GDPR right to deletion. All identity
+ * links involving this subject are severed (see account-deletion handler), so
+ * event data is pseudonymous — keyed only by visitor_id after this point.
+ * Written before the compensating IdentityUnlinked events for auditability.
+ */
+@Serializable
+data class UserDeleted(
+    val subjectId: SubjectId,
+    val requestedAtEpochMs: Long,
+    override val tags: Set<String> = setOf("subject:${subjectId.value}"),
+) : DomainEvent
