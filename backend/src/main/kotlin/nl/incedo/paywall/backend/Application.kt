@@ -1321,6 +1321,23 @@ fun Application.module(
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "cidr is required"))
                 return@post
             }
+            // IPW-03: validate CIDR format before storing.
+            CidrValidator.validate(req.cidr)?.let { err ->
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid CIDR: $err"))
+                return@post
+            }
+            // IPW-03: reject overlapping CIDRs with existing active ranges for this partner.
+            if (req.active) {
+                val existingEvents = eventStore.query(EventQuery(setOf("partner:ip-ranges"))).events
+                val activeCidrs = mutableListOf<String>()
+                existingEvents.filterIsInstance<PartnerIpRangeConfigured>()
+                    .filter { it.partnerId.value == partnerId }
+                    .forEach { ev -> if (ev.active) activeCidrs.add(ev.cidr) else activeCidrs.remove(ev.cidr) }
+                CidrValidator.overlaps(req.cidr, activeCidrs)?.let { err ->
+                    call.respond(HttpStatusCode.Conflict, mapOf("error" to "IPW-03: $err"))
+                    return@post
+                }
+            }
             val event = PartnerIpRangeConfigured(
                 partnerId = PartnerId(partnerId),
                 cidr = req.cidr,
