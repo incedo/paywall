@@ -47,7 +47,7 @@ class AccessService(
         val meterLimit: Int? = null,
     )
 
-    suspend fun decide(subject: Subject, article: Article, channel: String = "web"): Outcome {
+    suspend fun decide(subject: Subject, article: Article, channel: String = "web", isBot: Boolean = false): Outcome {
         val variant = VariantAssigner.assign(subject.visitorId, experiment)
         val period = currentPeriod()
         val now = clock()
@@ -112,7 +112,7 @@ class AccessService(
             usedAfter += 1
         }
 
-        logWallEvent(subject, article, variant, channel, decision, now)
+        logWallEvent(subject, article, variant, channel, decision, now, isBot)
 
         val meterLimit = (variant.strategy as? StrategyConfig.Metered)?.let { strategy ->
             if (subject.registered) strategy.registeredLimit ?: strategy.limit else strategy.limit
@@ -132,6 +132,7 @@ class AccessService(
         channel: String,
         decision: AccessDecision,
         now: Long,
+        isBot: Boolean,
     ) {
         val event = when (decision) {
             is AccessDecision.Gated -> WallEventRecorded(
@@ -145,6 +146,7 @@ class AccessService(
                     put("wallType", variant.name)
                     decision.meterUsed?.let { put("meterUsed", it.toString()) }
                     decision.meterLimit?.let { put("meterLimit", it.toString()) }
+                    if (isBot) put("bot", "true")
                 },
             )
             is AccessDecision.Full ->
@@ -156,7 +158,10 @@ class AccessService(
                         channel = channel,
                         occurredAtEpochMs = now,
                         articleId = article.id,
-                        context = mapOf("reason" to decision.reason.name.lowercase()),
+                        context = buildMap {
+                            put("reason", decision.reason.name.lowercase())
+                            if (isBot) put("bot", "true")
+                        },
                     )
                 } else {
                     null // entitled/grant/free full reads are page views, not funnel reads
