@@ -18,7 +18,9 @@ import kotlin.test.assertNull
 import nl.incedo.paywall.cep.MockCepClient
 import nl.incedo.paywall.cep.Offer
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
+import nl.incedo.paywall.core.port.EventQuery
 import nl.incedo.paywall.metering.MeterPeriod
+import nl.incedo.paywall.offers.OfferSuppressed
 
 /** NFR-03: webhook signature verification, and API-07: CEP client interface. */
 class WebhookCepTest {
@@ -160,6 +162,34 @@ class WebhookCepTest {
         }
         val body = resp.body<OfferResponse>()
         assertNull(body.offerId)
+    }
+
+    @Test
+    fun cepReturningNullLogsNoneMatchedReason() = run {
+        // UP-04: "none_matched" when CEP returns null (no offer applicable).
+        // Must be distinct from "cep_timeout" so ops can tell failures from silence.
+        testApplication {
+            val store = InMemoryEventStore()
+            val service = AccessService(
+                eventStore = store, experiment = defaultExperiment,
+                clock = { now }, currentPeriod = { MeterPeriod("2026-06") },
+            )
+            val offerService = OfferService(
+                eventStore = store,
+                cepClient = MockCepClient(fixedOffer = null),
+                clock = { now },
+            )
+            application { module(service, store, offerService = offerService) }
+            val client = createClient { install(ContentNegotiation) { json() } }
+            client.post("/api/v1/offers/request") {
+                contentType(ContentType.Application.Json)
+                setBody(DecideRequest(visitorId = "visitor-nm", articleId = "a", tier = "premium"))
+            }
+            val suppressed = store.query(EventQuery(setOf("subject:visitor:visitor-nm")))
+                .events.filterIsInstance<OfferSuppressed>()
+            assertEquals(1, suppressed.size)
+            assertEquals("none_matched", suppressed.single().reason, "UP-04: CEP null must log none_matched")
+        }
     }
 
     @Test

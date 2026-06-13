@@ -58,21 +58,41 @@ class OfferService(
         val subjectId = subject.userId?.let { SubjectId.of(it) } ?: SubjectId.of(subject.visitorId)
         val now = clock()
 
-        // UP-07: call CEP with timeout; fall back to static offer per trigger if configured (UP-03).
+        // UP-04/UP-07: resolve the offer from CEP, distinguishing timeout/error from
+        // deliberate null ("no offer applicable") so the suppression reason is correct.
         // UP-06: pass the variant so the CEP can tailor offer strategies per A/B arm.
+        // Wrap the CEP response in Result so withTimeoutOrNull=null → timeout (not null-offer).
         val rawOffer: Offer?
         val suppressionReason: String?
         if (cepClient == null) {
             rawOffer = fallbackOffers[context.trigger]
             suppressionReason = if (rawOffer == null) "cep_error" else null
         } else {
-            val fromCep = try {
+            val cepResult: Result<Offer?>? = try {
                 withTimeoutOrNull(cepTimeoutMs) {
-                    cepClient.requestOffer(subject, context.trigger, context.currentPlanId, context.variant)
+                    Result.success(cepClient.requestOffer(subject, context.trigger, context.currentPlanId, context.variant))
                 }
-            } catch (_: Exception) { null }
-            rawOffer = fromCep ?: fallbackOffers[context.trigger]
-            suppressionReason = if (rawOffer == null) "cep_timeout" else null
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+            when {
+                cepResult == null -> {
+                    // Timed out — UP-07: use fallback if configured, else suppress.
+                    rawOffer = fallbackOffers[context.trigger]
+                    suppressionReason = if (rawOffer == null) "cep_timeout" else null
+                }
+                cepResult.isFailure -> {
+                    // CEP threw an exception — UP-07: use fallback if configured, else suppress.
+                    rawOffer = fallbackOffers[context.trigger]
+                    suppressionReason = if (rawOffer == null) "cep_error" else null
+                }
+                else -> {
+                    val offer = cepResult.getOrNull()
+                    // UP-04: "none_matched" when CEP returned null (no applicable offer).
+                    rawOffer = offer
+                    suppressionReason = if (offer == null) "none_matched" else null
+                }
+            }
         }
 
         if (rawOffer == null) {
