@@ -520,13 +520,29 @@ fun Application.module(
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "grantId, subjectId and articleId are required"))
                 return@post
             }
+            // FGA-02: every grant is time-bound (expires_at required, max 90 days).
+            // If not supplied, default to 30 days from now.
+            val now = System.currentTimeMillis()
+            val maxGrantTtlMs = 90L * 24 * 3600 * 1000
+            val defaultGrantTtlMs = 30L * 24 * 3600 * 1000
+            val expiresAt = if (change.active) {
+                val requested = change.expiresAtEpochMs ?: (now + defaultGrantTtlMs)
+                if (requested > now + maxGrantTtlMs) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to "grant TTL exceeds maximum of 90 days (FGA-02)"),
+                    )
+                    return@post
+                }
+                requested
+            } else null
             val event = if (change.active) {
                 GrantIssued(
                     grantId = GrantId(change.grantId),
                     subjectId = SubjectId(change.subjectId),
                     articleId = ArticleId(change.articleId),
                     grantedBy = change.grantedBy,
-                    expiresAtEpochMs = change.expiresAtEpochMs,
+                    expiresAtEpochMs = expiresAt,
                 )
             } else {
                 GrantRevoked(
