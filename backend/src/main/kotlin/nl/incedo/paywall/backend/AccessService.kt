@@ -36,6 +36,10 @@ private const val ENTITLEMENT_CACHE_TTL_MS = 5 * 60 * 1000L
 
 private data class CachedEntitlement(val valid: Boolean, val expiresAtMs: Long)
 
+// AC-06: flag when the same authenticated identity is seen from more than
+// this many distinct IPs — a signal for account-sharing analysis.
+private const val SUSPICIOUS_IP_THRESHOLD = 5
+
 /**
  * Application service behind `POST /api/v1/decide` (API-05): assigns the
  * variant (PW-05/EX-01), builds the decision models from one tagged event
@@ -51,11 +55,29 @@ class AccessService(
 
     private val entitlementCache = ConcurrentHashMap<String, CachedEntitlement>()
 
+    /** AC-06: per-user set of distinct IPs seen in this process's lifetime. */
+    private val ipsByUser = ConcurrentHashMap<String, MutableSet<String>>()
+
     /** AC-03: force a cache miss for the given subject on the next decide call.
      *  Called by the integration endpoint whenever an entitlement changes. */
     fun invalidateEntitlementCache(subjectId: String) {
         val userId = subjectId.removePrefix("user:")
         if (userId != subjectId) entitlementCache.remove(userId)
+    }
+
+    /**
+     * AC-06: record the client IP for an authenticated user and return true
+     * when the number of distinct IPs exceeds the suspicious threshold.
+     * Anonymous (no userId) requests are not tracked — no stable identity.
+     */
+    fun recordIpAndCheckSuspicious(subject: Subject, clientIp: String?): Boolean {
+        val userId = subject.userId?.value ?: return false
+        if (clientIp.isNullOrBlank()) return false
+        val ips = ipsByUser.getOrPut(userId) {
+            java.util.Collections.newSetFromMap(ConcurrentHashMap())
+        }
+        ips.add(clientIp)
+        return ips.size > SUSPICIOUS_IP_THRESHOLD
     }
 
     data class Outcome(
@@ -66,7 +88,13 @@ class AccessService(
         val meterLimit: Int? = null,
     )
 
-    suspend fun decide(subject: Subject, article: Article, channel: String = "web", isBot: Boolean = false): Outcome {
+    suspend fun decide(
+        subject: Subject,
+        article: Article,
+        channel: String = "web",
+        isBot: Boolean = false,
+        isSuspicious: Boolean = false,
+    ): Outcome {
         val variant = VariantAssigner.assign(subject.visitorId, experiment)
         val period = currentPeriod()
         val now = clock()
@@ -131,7 +159,7 @@ class AccessService(
             usedAfter += 1
         }
 
-        logWallEvent(subject, article, variant, channel, decision, now, isBot)
+        logWallEvent(subject, article, variant, channel, decision, now, isBot, isSuspicious)
 
         val meterLimit = (variant.strategy as? StrategyConfig.Metered)?.let { strategy ->
             if (subject.registered) strategy.registeredLimit ?: strategy.limit else strategy.limit
@@ -192,6 +220,7 @@ class AccessService(
         decision: AccessDecision,
         now: Long,
         isBot: Boolean,
+        isSuspicious: Boolean,
     ) {
         val event = when (decision) {
             is AccessDecision.Gated -> WallEventRecorded(
@@ -206,6 +235,7 @@ class AccessService(
                     decision.meterUsed?.let { put("meterUsed", it.toString()) }
                     decision.meterLimit?.let { put("meterLimit", it.toString()) }
                     if (isBot) put("bot", "true")
+                    if (isSuspicious) put("suspicious_ip", "true")
                 },
             )
             is AccessDecision.Full ->
@@ -220,6 +250,7 @@ class AccessService(
                         context = buildMap {
                             put("reason", decision.reason.name.lowercase())
                             if (isBot) put("bot", "true")
+                            if (isSuspicious) put("suspicious_ip", "true")
                         },
                     )
                 } else {

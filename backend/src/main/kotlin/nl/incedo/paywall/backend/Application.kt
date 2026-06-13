@@ -201,11 +201,15 @@ fun Application.module(
             // AC-07: identity exclusively from the validated CIAM JWT;
             // anything not provably authentic degrades to anonymous
             val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
+            val subject = Subject(VisitorId(request.visitorId), userId)
+            val clientIp = call.request.headers["X-Forwarded-For"]?.substringBefore(",")?.trim()
+                ?: call.request.local.remoteAddress
             val outcome = service.decide(
-                subject = Subject(VisitorId(request.visitorId), userId),
+                subject = subject,
                 article = Article(ArticleId(request.articleId), tier),
                 channel = request.channel,
                 isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]),
+                isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
             )
             call.respond(DecideResponse.from(outcome))
         }
@@ -225,10 +229,14 @@ fun Application.module(
                 return@get
             }
             val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
+            val subject = Subject(VisitorId(visitorId), userId)
+            val clientIp = call.request.headers["X-Forwarded-For"]?.substringBefore(",")?.trim()
+                ?: call.request.local.remoteAddress
             val outcome = service.decide(
-                subject = Subject(VisitorId(visitorId), userId),
+                subject = subject,
                 article = Article(stored.id, stored.tier),
                 isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]),
+                isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
             )
             // BP-03: premium pages carry noarchive so archive crawlers only
             // snapshot the teaser and not the full body.
@@ -457,6 +465,7 @@ fun Application.module(
                 VariantStatsResponse(
                     variant = variant,
                     visitors = s.visitors,
+                    pageViews = s.pageViews,
                     articleReads = s.articleReads,
                     wallsShown = s.wallsShown,
                     gateCtaClicks = s.gateCtaClicks,
@@ -465,6 +474,9 @@ fun Application.module(
                     checkoutStarts = s.checkoutStarts,
                     conversions = s.conversions,
                     conversionRate = s.conversionRate,
+                    conversionRateLow = s.conversionRateLow,
+                    conversionRateHigh = s.conversionRateHigh,
+                    sampleSizeTooSmall = s.sampleSizeTooSmall,
                 )
             }.sortedBy { it.variant }
             call.respond(response)
