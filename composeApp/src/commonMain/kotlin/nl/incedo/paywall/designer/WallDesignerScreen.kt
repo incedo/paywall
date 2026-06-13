@@ -23,8 +23,11 @@ import androidx.compose.ui.unit.dp
 import nl.incedo.paywall.model.Channel
 import nl.incedo.paywall.model.WallDefinition
 import nl.incedo.paywall.model.WallType
+import nl.incedo.paywall.screens.ConsentStepScreen
 import nl.incedo.paywall.screens.ContentGateWall
+import nl.incedo.paywall.screens.MeterNudgeBanner
 import nl.incedo.paywall.screens.PricingWall
+import nl.incedo.paywall.screens.RegistrationWallScreen
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
 import nl.incedo.paywall.ui.CrmDivider
@@ -53,6 +56,8 @@ fun WallDesignerScreen(
     onPublish: () -> Unit,
 ) {
     var mobilePreview by remember { mutableStateOf(false) }
+    var visitorContext by remember { mutableStateOf(0) } // 0=anonymous 1=registered 2=subscriber
+    var gateContext by remember { mutableStateOf(0) }    // 0=paywall 1=registration 2=consent 3=nudge
 
     Column(modifier = Modifier.fillMaxWidth()) {
         DesignerToolbar(wallName, wallStatus, onBack, onSaveDraft, onPublish)
@@ -70,6 +75,10 @@ fun WallDesignerScreen(
                 definition = definition,
                 mobilePreview = mobilePreview,
                 onPreviewDeviceChange = { mobilePreview = it },
+                visitorContext = visitorContext,
+                onVisitorContextChange = { visitorContext = it },
+                gateContext = gateContext,
+                onGateContextChange = { gateContext = it },
                 modifier = Modifier
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
@@ -142,21 +151,46 @@ private fun ConfigPanel(
             selectedIndex = if (definition.darkPreview) 1 else 0,
             onSelect = { onDefinitionChange(definition.copy(darkPreview = it == 1)) },
         )
+
+        CrmText("Gate options", style = CrmTheme.typography.label, color = CrmTheme.colors.onSurfaceVariant)
+        CrmSegmentedToggle(
+            options = listOf("Registration off", "Registration on"),
+            selectedIndex = if (definition.registrationWall) 1 else 0,
+            onSelect = { onDefinitionChange(definition.copy(registrationWall = it == 1)) },
+        )
+        CrmSegmentedToggle(
+            options = listOf("Consent off", "Consent on"),
+            selectedIndex = if (definition.requireConsentStep) 1 else 0,
+            onSelect = { onDefinitionChange(definition.copy(requireConsentStep = it == 1)) },
+        )
     }
 }
 
+/**
+ * ADM-12: live preview in all gate contexts × visitor states × breakpoints.
+ * gateContext: 0=paywall 1=registration-wall 2=consent-step 3=meter-nudge
+ * visitorContext: 0=anonymous 1=registered 2=subscriber
+ */
 @Composable
 private fun PreviewPanel(
     definition: WallDefinition,
     mobilePreview: Boolean,
     onPreviewDeviceChange: (Boolean) -> Unit,
+    visitorContext: Int,
+    onVisitorContextChange: (Int) -> Unit,
+    gateContext: Int,
+    onGateContextChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val visitorLabels = listOf("Anonymous", "Registered", "Subscriber")
+    val gateContextLabels = listOf("Paywall", "Registration wall", "Consent step", "Meter nudge")
+
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // ── top bar: device + visitor state ──────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -168,12 +202,28 @@ private fun PreviewPanel(
                 style = CrmTheme.typography.label,
                 color = CrmTheme.colors.onSurfaceVariant,
             )
-            CrmSegmentedToggle(
-                options = listOf("Web", "Mobile"),
-                selectedIndex = if (mobilePreview) 1 else 0,
-                onSelect = { onPreviewDeviceChange(it == 1) },
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm)) {
+                CrmSegmentedToggle(
+                    options = listOf("Web", "Mobile"),
+                    selectedIndex = if (mobilePreview) 1 else 0,
+                    onSelect = { onPreviewDeviceChange(it == 1) },
+                )
+                CrmSegmentedToggle(
+                    options = visitorLabels,
+                    selectedIndex = visitorContext,
+                    onSelect = onVisitorContextChange,
+                )
+            }
         }
+
+        // ── gate context selector ─────────────────────────────────────────────
+        CrmSegmentedToggle(
+            options = gateContextLabels,
+            selectedIndex = gateContext,
+            onSelect = onGateContextChange,
+        )
+
+        // ── preview frame ─────────────────────────────────────────────────────
         Box(modifier = Modifier.widthIn(max = if (mobilePreview) 400.dp else 880.dp)) {
             CrmTheme(darkTheme = definition.darkPreview) {
                 CrmCard {
@@ -183,8 +233,41 @@ private fun PreviewPanel(
                             .clip(CrmTheme.shapes.lg)
                             .background(CrmTheme.colors.background),
                     ) {
-                        when (definition.type) {
-                            WallType.Hard -> PricingWall(definition)
+                        when {
+                            // Subscriber always sees full content — gate is not shown
+                            visitorContext == 2 -> {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.xxl),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    CrmText(
+                                        "✓ Full content — subscriber",
+                                        style = CrmTheme.typography.h3,
+                                        color = CrmTheme.colors.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            // Consent step (AC-14) — shown before gate when enabled
+                            gateContext == 2 -> ConsentStepScreen()
+                            // Registration wall (PW-50) — anonymous visitors only
+                            gateContext == 1 && visitorContext == 0 -> RegistrationWallScreen()
+                            gateContext == 1 -> {
+                                // Registered visitor: registration wall is skipped; show paywall
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.xxl),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    CrmText(
+                                        "Registration wall skipped (logged-in visitor)",
+                                        style = CrmTheme.typography.bodySmall,
+                                        color = CrmTheme.colors.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            // Meter-warning nudge (PW-23) — 1 article remaining
+                            gateContext == 3 -> MeterNudgeBanner(definition)
+                            // Normal paywall
+                            definition.type == WallType.Hard -> PricingWall(definition)
                             else -> ContentGateWall(definition)
                         }
                     }

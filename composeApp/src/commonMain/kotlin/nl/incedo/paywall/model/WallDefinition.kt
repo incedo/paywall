@@ -29,6 +29,10 @@ data class WallDefinition(
     val secondaryCta: String = "Compare plans",
     val channels: Set<Channel> = setOf(Channel.Web, Channel.MobileApp, Channel.Email),
     val darkPreview: Boolean = false,
+    /** PW-50: show a registration wall for anonymous visitors before the paywall strategy runs. */
+    val registrationWall: Boolean = false,
+    /** AC-14: show a GDPR consent step before the subscription gate where legally required. */
+    val requireConsentStep: Boolean = false,
 )
 
 enum class WallStatus(val label: String) {
