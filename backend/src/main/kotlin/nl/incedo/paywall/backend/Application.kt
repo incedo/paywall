@@ -30,6 +30,7 @@ import nl.incedo.paywall.api.AddPartnerMemberRequest
 import nl.incedo.paywall.api.BrandResponse
 import nl.incedo.paywall.api.BypassRateResponse
 import nl.incedo.paywall.api.CiamSession
+import nl.incedo.paywall.api.CohortStatsResponse
 import nl.incedo.paywall.api.OfferChannelStatsResponse
 import nl.incedo.paywall.api.OfferStatsResponse
 import nl.incedo.paywall.api.PartnerUsageResponse

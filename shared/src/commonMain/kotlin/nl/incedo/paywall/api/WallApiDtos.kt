@@ -197,3 +197,14 @@ data class BypassRateResponse(
     val storePosition: Long,
     val note: String = "DL-03: reported only — not auto-blocked in experiment phase",
 )
+
+/** AN-13: one row in the cohort report — conversion and 30-day retention by ISO week of first visit. */
+@Serializable
+data class CohortStatsResponse(
+    val cohortWeek: String,
+    val visitors: Int,
+    val conversions: Int,
+    val conversionRate: Double,
+    val retainedAt30Days: Int,
+    val retentionRate: Double,
+)
