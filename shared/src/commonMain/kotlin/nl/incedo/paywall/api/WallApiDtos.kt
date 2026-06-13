@@ -1,6 +1,7 @@
 package nl.incedo.paywall.api
 
 import kotlinx.serialization.Serializable
+import nl.incedo.paywall.walls.WallCopy
 
 /**
  * Wall designer API contract (ADM-01: everything the console does is also
@@ -27,6 +28,11 @@ data class SaveWallRequest(
      * PAY-* (payment consent). Configured in the wall editor (ADM-11).
      */
     val requireConsentStep: Boolean = false,
+    /**
+     * ADM-15: per-locale copy overrides. Keys are BCP-47 locale tags (e.g. "nl-NL").
+     * Only the fields that differ from the default copy need to be provided.
+     */
+    val translations: Map<String, WallCopy> = emptyMap(),
 )
 
 @Serializable
@@ -46,6 +52,8 @@ data class WallResponse(
     val brandId: String? = null,
     /** AC-14: whether this wall design requires a consent step before the gate. */
     val requireConsentStep: Boolean = false,
+    /** ADM-15: per-locale copy overrides stored with this wall design. */
+    val translations: Map<String, WallCopy> = emptyMap(),
 )
 
 /** AN-10/AN-11/AN-12 dashboard numbers per variant. */

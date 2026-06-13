@@ -5,6 +5,20 @@ import nl.incedo.paywall.core.DomainEvent
 import nl.incedo.paywall.core.WallId
 
 /**
+ * ADM-15: per-locale copy override for a wall design.
+ * All fields are optional — only the fields that differ from the
+ * wall's default copy need to be specified. Missing fields fall back
+ * to the defaults in [WallConfig].
+ */
+@Serializable
+data class WallCopy(
+    val title: String? = null,
+    val body: String? = null,
+    val primaryCta: String? = null,
+    val secondaryCta: String? = null,
+)
+
+/**
  * Wall definitions (ADM-11): the visual editor's output is structured
  * content, never code (GAP-10). Events carry the wall tag for per-wall
  * queries plus the catalog tag for the overview projection (admin-rate
@@ -28,7 +42,30 @@ data class WallConfig(
      * Never bundled with payment consent (PAY-*) or data-exchange consent (DG-03).
      */
     val requireConsentStep: Boolean = false,
-)
+    /**
+     * ADM-15: per-locale copy overrides keyed by BCP-47 locale tag (e.g. "nl-NL").
+     * The default [title]/[body]/[primaryCta]/[secondaryCta] serve as the
+     * nl-NL fallback; experiment starts with one locale, structure is ready for more.
+     * Use [resolveForLocale] to obtain the effective copy for a given locale.
+     */
+    val translations: Map<String, WallCopy> = emptyMap(),
+) {
+    /**
+     * ADM-15: returns the effective copy for [locale], falling back to the
+     * language-only tag (e.g. "nl" from "nl-NL"), then to the defaults.
+     */
+    fun resolveForLocale(locale: String): WallCopy {
+        val override = translations[locale]
+            ?: translations[locale.substringBefore("-")]
+            ?: return WallCopy(title, body, primaryCta, secondaryCta)
+        return WallCopy(
+            title = override.title ?: title,
+            body = override.body ?: body,
+            primaryCta = override.primaryCta ?: primaryCta,
+            secondaryCta = override.secondaryCta ?: secondaryCta,
+        )
+    }
+}
 
 @Serializable
 data class WallCreated(

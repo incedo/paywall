@@ -142,6 +142,7 @@ private fun WallView.toResponse() = WallResponse(
     lastEditedBy = lastEditedBy,
     brandId = config.brandId,
     requireConsentStep = config.requireConsentStep,
+    translations = config.translations, // ADM-15
 )
 
 private suspend fun io.ktor.server.application.ApplicationCall.respondSaveResult(result: WallService.SaveResult) {
@@ -563,6 +564,7 @@ fun Application.module(
                 secondaryCta = request.secondaryCta, channels = request.channels,
                 brandId = request.brandId, // ADM-10: optional brand association
                 requireConsentStep = request.requireConsentStep, // AC-14: GDPR consent step
+                translations = request.translations, // ADM-15: per-locale copy overrides
             )
             val wallId = WallId(id)
             // The actor is the authenticated staff subject, not client-supplied (ADM-03 audit).
