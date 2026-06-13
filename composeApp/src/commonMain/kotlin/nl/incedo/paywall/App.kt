@@ -237,6 +237,8 @@ fun App() {
                 is ConsoleScreen.Config -> ConfigScreen(
                     onLoadConfig = { api.getConfig() },
                     onPublishConfig = { exp -> api.publishConfig(exp) },
+                    onLoadHistory = { api.configHistory() },
+                    onRollback = { version -> api.rollbackConfig(version) },
                     onLoadKilledVariants = { api.killedVariants() },
                     onKillVariant = { name -> api.killVariant(name) },
                     onRestoreVariant = { name -> api.restoreVariant(name) },

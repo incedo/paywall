@@ -31,6 +31,7 @@ import nl.incedo.paywall.api.BrandResponse
 import nl.incedo.paywall.api.BypassRateResponse
 import nl.incedo.paywall.api.CiamSession
 import nl.incedo.paywall.api.CohortStatsResponse
+import nl.incedo.paywall.api.ExperimentConfigVersionSummary
 import nl.incedo.paywall.api.OfferChannelStatsResponse
 import nl.incedo.paywall.api.OfferStatsResponse
 import nl.incedo.paywall.api.PartnerUsageResponse
@@ -703,6 +704,45 @@ fun Application.module(
             )
             eventStore.append(listOf(event), condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ExperimentConfigPublished", "actor" to staff.userId.value))
+        }
+        // ADM-06: config version history — each ExperimentConfigPublished event is one entry.
+        // Returned newest-first; version numbers are 1-indexed from oldest (same semantics
+        // as wall history so the console rollback picker works identically).
+        get("/api/v1/admin/config/history") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            val events = eventStore.query(EventQuery(setOf("config:experiment"))).events
+                .filterIsInstance<ExperimentConfigPublished>()
+            val history = events.mapIndexed { index, ev ->
+                ExperimentConfigVersionSummary(
+                    version = index + 1,
+                    actor = ev.actor,
+                    publishedAtEpochMs = ev.publishedAtEpochMs,
+                    variantCount = ev.experiment.variants.size,
+                    variantNames = ev.experiment.variants.joinToString(", ") { it.name },
+                )
+            }
+            call.respond(history.asReversed())
+        }
+        // ADM-06: rollback to a previous config version — re-publishes the config at
+        // position `version` as a new event (history is never mutated, event-sourcing style).
+        post("/api/v1/admin/config/rollback") {
+            val staff = call.requireStaff(jwtValidator, StaffRole.ADMIN) ?: return@post
+            val targetVersion = call.request.queryParameters["version"]?.toIntOrNull()
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "version query param required"))
+            val events = eventStore.query(EventQuery(setOf("config:experiment"))).events
+                .filterIsInstance<ExperimentConfigPublished>()
+            val target = events.getOrNull(targetVersion - 1)
+                ?: return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "version $targetVersion not found in config history (ADM-06)"))
+            val now = System.currentTimeMillis()
+            eventStore.append(
+                listOf(ExperimentConfigPublished(
+                    experiment = target.experiment,
+                    actor = staff.userId.value,
+                    publishedAtEpochMs = now,
+                )),
+                condition = null,
+            )
+            call.respond(HttpStatusCode.Accepted, mapOf("rolledBackTo" to targetVersion.toString(), "actor" to staff.userId.value))
         }
         post("/api/v1/walls/{id}/publish") {
             val staff = call.requireStaff(jwtValidator, StaffRole.ADMIN) ?: return@post
