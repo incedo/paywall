@@ -3,13 +3,16 @@ package nl.incedo.paywall.backend
 import kotlinx.serialization.Serializable
 import nl.incedo.paywall.access.AccessDecision
 import nl.incedo.paywall.access.StrategyConfig
+import nl.incedo.paywall.api.BrandResponse
 import nl.incedo.paywall.api.CiamSession
+import nl.incedo.paywall.api.CreateBrandRequest
 import nl.incedo.paywall.api.ExperimentConfigResponse
 import nl.incedo.paywall.api.GrantAuditEntry
 import nl.incedo.paywall.api.InspectorWallEvent
 import nl.incedo.paywall.api.MeterResetRequest
 import nl.incedo.paywall.api.PublishExperimentConfigRequest
 import nl.incedo.paywall.api.SubjectInspectorResponse
+import nl.incedo.paywall.api.UpdateBrandThemeRequest
 import nl.incedo.paywall.cep.Offer
 
 /**
@@ -239,34 +242,6 @@ data class OfferResponse(
     val trigger: String? = null,
     /** UP-02a: channels on which this offer may be presented; empty = all channels. */
     val channels: Set<String> = emptySet(),
-)
-
-/**
- * ADM-10: brand creation/update request.
- * Theme tokens are an opaque JSON object interpreted by the wall renderer.
- */
-@Serializable
-data class CreateBrandRequest(
-    val brandId: String,
-    val name: String,
-    val domain: String,
-    val locale: String = "nl-NL",
-    val themeJson: String = "{}",
-)
-
-@Serializable
-data class UpdateBrandThemeRequest(
-    val themeJson: String,
-    val actor: String = "admin",
-)
-
-@Serializable
-data class BrandResponse(
-    val brandId: String,
-    val name: String,
-    val domain: String,
-    val locale: String,
-    val themeJson: String,
 )
 
 /** PA-01: partner creation request. */

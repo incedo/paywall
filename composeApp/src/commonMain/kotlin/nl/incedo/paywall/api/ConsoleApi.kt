@@ -99,4 +99,28 @@ class ConsoleApi(private val baseUrl: String = "http://localhost:8080") {
         return if (response.status.isSuccess()) SaveOutcome.Saved(response.body())
         else SaveOutcome.Failed("Rollback failed (${response.status.value})")
     }
+
+    // ── ADM-10: brand management ──────────────────────────────────────────────
+
+    suspend fun brands(): List<BrandResponse> =
+        client.get("$baseUrl/api/v1/admin/brands").body()
+
+    suspend fun getBrand(brandId: String): BrandResponse =
+        client.get("$baseUrl/api/v1/admin/brands/$brandId").body()
+
+    suspend fun createBrand(request: CreateBrandRequest): Boolean {
+        val response = client.post("$baseUrl/api/v1/admin/brands") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        return response.status.isSuccess()
+    }
+
+    suspend fun updateBrandTheme(brandId: String, themeJson: String): Boolean {
+        val response = client.post("$baseUrl/api/v1/admin/brands/$brandId/theme") {
+            contentType(ContentType.Application.Json)
+            setBody(UpdateBrandThemeRequest(themeJson = themeJson))
+        }
+        return response.status.isSuccess()
+    }
 }

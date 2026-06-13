@@ -24,6 +24,7 @@ import nl.incedo.paywall.api.ConsoleApi
 import nl.incedo.paywall.api.SaveWallRequest
 import nl.incedo.paywall.api.VariantStatsResponse
 import nl.incedo.paywall.api.WallResponse
+import nl.incedo.paywall.designer.BrandsScreen
 import nl.incedo.paywall.designer.ConfigScreen
 import nl.incedo.paywall.designer.DashboardScreen
 import nl.incedo.paywall.designer.SubjectInspectorScreen
@@ -47,6 +48,7 @@ private sealed interface ConsoleScreen {
     data object Dashboard : ConsoleScreen
     data object Inspector : ConsoleScreen
     data object Config : ConsoleScreen
+    data object Brands : ConsoleScreen
     data class Designer(val wallId: String) : ConsoleScreen
 }
 
@@ -160,6 +162,7 @@ fun App() {
                     is ConsoleScreen.Dashboard -> "Dashboard"
                     is ConsoleScreen.Inspector -> "Support"
                     is ConsoleScreen.Config -> "Config"
+                    is ConsoleScreen.Brands -> "Brands"
                     else -> "Walls"
                 },
                 onNavigate = { item ->
@@ -167,6 +170,7 @@ fun App() {
                         "Dashboard" -> ConsoleScreen.Dashboard
                         "Support" -> ConsoleScreen.Inspector
                         "Config" -> ConsoleScreen.Config
+                        "Brands" -> ConsoleScreen.Brands
                         else -> ConsoleScreen.Overview
                     }
                 },
@@ -192,6 +196,12 @@ fun App() {
                 )
                 is ConsoleScreen.Config -> ConfigScreen(
                     onLoadConfig = { api.getConfig() },
+                    statusMessage = statusMessage,
+                )
+                is ConsoleScreen.Brands -> BrandsScreen(
+                    onLoadBrands = { api.brands() },
+                    onCreateBrand = { req -> api.createBrand(req) },
+                    onUpdateTheme = { id, theme -> api.updateBrandTheme(id, theme) },
                     statusMessage = statusMessage,
                 )
                 is ConsoleScreen.Designer -> WallDesignerScreen(
@@ -277,7 +287,7 @@ private fun AdminTopBar(activeItem: String, onNavigate: (String) -> Unit) {
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg),
         ) {
-            listOf("Dashboard", "Walls", "Support", "Config").forEach { item ->
+            listOf("Dashboard", "Walls", "Brands", "Support", "Config").forEach { item ->
                 CrmTextButton(item, onClick = { onNavigate(item) })
             }
             listOf("Contacts", "Deals", "Invoices", "Subscriptions", "Tickets").forEach { item ->

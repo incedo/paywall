@@ -79,3 +79,34 @@ data class ExperimentConfigResponse(
 data class PublishExperimentConfigRequest(
     val experiment: ExperimentDefinition,
 )
+
+/**
+ * ADM-10: brand entity — theme tokens, domain, and locale.
+ * Returned by GET /api/v1/admin/brands and GET /api/v1/admin/brands/{brandId}.
+ */
+@Serializable
+data class BrandResponse(
+    val brandId: String,
+    val name: String,
+    val domain: String,
+    val locale: String,
+    /** Opaque JSON object — color/font/logo tokens interpreted by the wall renderer. */
+    val themeJson: String,
+)
+
+/** ADM-10: create a new brand. */
+@Serializable
+data class CreateBrandRequest(
+    val brandId: String,
+    val name: String,
+    val domain: String,
+    val locale: String = "nl-NL",
+    val themeJson: String = "{}",
+)
+
+/** ADM-10: update theme tokens for an existing brand. */
+@Serializable
+data class UpdateBrandThemeRequest(
+    val themeJson: String,
+    val actor: String = "admin",
+)
