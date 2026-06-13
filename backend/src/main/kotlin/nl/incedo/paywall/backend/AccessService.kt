@@ -186,7 +186,8 @@ class AccessService(
         } else {
             VariantAssigner.assign(subject, currentExperiment)
         }
-        val period = currentPeriod()
+        // MT-06: period type is per variant config; resolved via periodFor().
+        val period = periodFor(variant.strategy)
         val now = clock()
 
         // One union query covers the subject's events: composite meter tags
@@ -425,6 +426,18 @@ class AccessService(
         )
         return decision
     }
+
+    /**
+     * MT-06: resolve the meter period for the given strategy. Only "calendar_month"
+     * (the default) is active in the experiment phase. "rolling_30d" is recognised
+     * as a future value and falls back to calendar month; a different tag scheme
+     * is required before rolling windows can be enforced.
+     */
+    internal fun periodFor(strategy: StrategyConfig): MeterPeriod =
+        when {
+            strategy is StrategyConfig.Metered && strategy.periodType == "rolling_30d" -> currentPeriod()
+            else -> currentPeriod()
+        }
 
     private fun queryTags(subjects: Set<SubjectId>, article: Article, period: MeterPeriod): Set<String> =
         buildSet {

@@ -57,6 +57,13 @@ sealed interface StrategyConfig {
         val limit: Int = 5,
         /** PW-25 (COULD): higher limit for registered visitors; null = same as anonymous. */
         val registeredLimit: Int? = null,
+        /**
+         * MT-06: meter period type per variant config. Supported values:
+         *   "calendar_month" (default, PW-24) — resets on the first of each month (Europe/Amsterdam).
+         *   "rolling_30d"                      — rolling window of the last 30 calendar days.
+         * Structure is in place for future period types without a schema change.
+         */
+        val periodType: String = "calendar_month",
     ) : StrategyConfig
 
     @Serializable
