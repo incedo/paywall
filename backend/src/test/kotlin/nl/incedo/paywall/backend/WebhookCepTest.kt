@@ -162,6 +162,36 @@ class WebhookCepTest {
         assertNull(body.offerId)
     }
 
+    @Test
+    fun staticFallbackOfferReturnedWhenCepUnavailable() = run {
+        // UP-07: when CEP is absent, decide_offer must return the static fallback
+        // offer configured for the trigger, rather than suppressing silently.
+        val fallback = Offer(offerId = "fallback-1", kind = "upsell", toPlanId = "complete-monthly", source = "static")
+        testApplication {
+            val store = nl.incedo.paywall.core.adapter.InMemoryEventStore()
+            val service = AccessService(
+                eventStore = store, experiment = defaultExperiment,
+                clock = { now }, currentPeriod = { nl.incedo.paywall.metering.MeterPeriod("2026-06") },
+            )
+            val offerService = OfferService(
+                eventStore = store,
+                cepClient = null,
+                clock = { now },
+                fallbackOffers = mapOf("gate_shown" to fallback),
+            )
+            application { module(service, store, offerService = offerService) }
+            val client = createClient { install(ContentNegotiation) { json() } }
+            val resp = client.post("/api/v1/offers/request?trigger=gate_shown") {
+                contentType(ContentType.Application.Json)
+                setBody(DecideRequest(visitorId = "visitor-1", articleId = "a", tier = "premium"))
+            }
+            assertEquals(HttpStatusCode.OK, resp.status)
+            val body = resp.body<OfferResponse>()
+            assertEquals("fallback-1", body.offerId, "UP-07: static fallback offer must be returned when CEP is absent")
+            assertEquals("upsell", body.kind)
+        }
+    }
+
     // ── API-08: CEP advice endpoint authentication ────────────────────────────
 
     @Test

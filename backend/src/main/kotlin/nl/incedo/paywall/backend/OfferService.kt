@@ -39,6 +39,8 @@ class OfferService(
     private val frequencyCooldownMs: Long = 30L * 24 * 60 * 60 * 1000,
     /** DN-05: retention offer cap window in milliseconds (default 12 months). */
     private val retentionCapWindowMs: Long = 365L * 24 * 60 * 60 * 1000,
+    /** UP-03/UP-07: static fallback offer per trigger, returned when CEP is unavailable. */
+    private val fallbackOffers: Map<String, Offer> = emptyMap(),
 ) {
     data class TriggerContext(
         val trigger: String,
@@ -56,27 +58,26 @@ class OfferService(
         val subjectId = subject.userId?.let { SubjectId.of(it) } ?: SubjectId.of(subject.visitorId)
         val now = clock()
 
-        if (cepClient == null) {
-            val suppressed = OfferSuppressed(subjectId, context.trigger, context.channel, "cep_error", now)
-            eventStore.append(listOf(suppressed), condition = null)
-            return OfferDecision.Suppressed("cep_error")
-        }
-
-        // UP-07: call CEP with timeout; treat timeout/error as suppression.
+        // UP-07: call CEP with timeout; fall back to static offer per trigger if configured (UP-03).
         // UP-06: pass the variant so the CEP can tailor offer strategies per A/B arm.
-        val rawOffer = try {
-            withTimeoutOrNull(cepTimeoutMs) {
-                cepClient.requestOffer(subject, context.trigger, context.currentPlanId, context.variant)
-            }
-        } catch (_: Exception) {
-            null
+        val rawOffer: Offer?
+        val suppressionReason: String?
+        if (cepClient == null) {
+            rawOffer = fallbackOffers[context.trigger]
+            suppressionReason = if (rawOffer == null) "cep_error" else null
+        } else {
+            val fromCep = try {
+                withTimeoutOrNull(cepTimeoutMs) {
+                    cepClient.requestOffer(subject, context.trigger, context.currentPlanId, context.variant)
+                }
+            } catch (_: Exception) { null }
+            rawOffer = fromCep ?: fallbackOffers[context.trigger]
+            suppressionReason = if (rawOffer == null) "cep_timeout" else null
         }
 
         if (rawOffer == null) {
-            val reason = "cep_timeout"
-            val suppressed = OfferSuppressed(subjectId, context.trigger, context.channel, reason, now)
-            eventStore.append(listOf(suppressed), condition = null)
-            return OfferDecision.Suppressed(reason)
+            eventStore.append(listOf(OfferSuppressed(subjectId, context.trigger, context.channel, suppressionReason!!, now)), condition = null)
+            return OfferDecision.Suppressed(suppressionReason)
         }
 
         // Load frequency history for this subject (UP-05)
