@@ -457,6 +457,7 @@ fun Application.module(
                 VariantStatsResponse(
                     variant = variant,
                     visitors = s.visitors,
+                    pageViews = s.pageViews,
                     articleReads = s.articleReads,
                     wallsShown = s.wallsShown,
                     gateCtaClicks = s.gateCtaClicks,
@@ -465,6 +466,9 @@ fun Application.module(
                     checkoutStarts = s.checkoutStarts,
                     conversions = s.conversions,
                     conversionRate = s.conversionRate,
+                    conversionRateLow = s.conversionRateLow,
+                    conversionRateHigh = s.conversionRateHigh,
+                    sampleSizeTooSmall = s.sampleSizeTooSmall,
                 )
             }.sortedBy { it.variant }
             call.respond(response)

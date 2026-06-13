@@ -36,11 +36,13 @@ data class WallResponse(
     val lastEditedBy: String,
 )
 
-/** AN-10 dashboard numbers per variant. */
+/** AN-10/AN-11/AN-12 dashboard numbers per variant. */
 @Serializable
 data class VariantStatsResponse(
     val variant: String,
     val visitors: Int,
+    /** AN-11: client-reported page views for reach-cost comparison vs control. */
+    val pageViews: Int,
     val articleReads: Int,
     val wallsShown: Int,
     val gateCtaClicks: Int,
@@ -49,4 +51,10 @@ data class VariantStatsResponse(
     val checkoutStarts: Int,
     val conversions: Int,
     val conversionRate: Double,
+    /** AN-12: Wilson 95% confidence interval lower bound. */
+    val conversionRateLow: Double,
+    /** AN-12: Wilson 95% confidence interval upper bound. */
+    val conversionRateHigh: Double,
+    /** AN-12: true when n < 100 — CI too wide to draw reliable conclusions. */
+    val sampleSizeTooSmall: Boolean,
 )
