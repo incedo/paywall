@@ -14,6 +14,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import nl.incedo.paywall.api.WallResponse
+import nl.incedo.paywall.api.WallTemplateRequest
+import nl.incedo.paywall.api.WallTemplateResponse
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
 import nl.incedo.paywall.metering.MeterPeriod
 import nl.incedo.paywall.walls.WallCopy

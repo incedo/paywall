@@ -137,6 +137,19 @@ class ConsoleApi(private val baseUrl: String = "http://localhost:8080") {
         return response.status.isSuccess()
     }
 
+    // ── ADM-16: wall design templates ────────────────────────────────────────
+
+    suspend fun wallTemplates(): List<WallTemplateResponse> =
+        client.get("$baseUrl/api/v1/admin/wall-templates").body()
+
+    suspend fun wallFromTemplate(wallId: String, templateId: String, brandId: String): SaveOutcome {
+        val response = client.post("$baseUrl/api/v1/walls/$wallId/from-template/$templateId?brandId=$brandId") {
+            contentType(ContentType.Application.Json)
+        }
+        return if (response.status.isSuccess()) SaveOutcome.Saved(response.body())
+        else SaveOutcome.Failed("Instantiate failed (${response.status.value})")
+    }
+
     // ── ADM-10: brand management ──────────────────────────────────────────────
 
     suspend fun brands(): List<BrandResponse> =

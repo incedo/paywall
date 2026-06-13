@@ -69,6 +69,37 @@ data class WallVersionSummary(
     val actor: String,
 )
 
+/**
+ * ADM-16: create or update a wall design template.
+ * Templates are brand-neutral; theme tokens come from the target brand at render time.
+ */
+@Serializable
+data class WallTemplateRequest(
+    val name: String,
+    val wallType: String,
+    val title: String,
+    val body: String,
+    val primaryCta: String,
+    val secondaryCta: String,
+    val channels: Set<String> = setOf("web"),
+    val translations: Map<String, nl.incedo.paywall.walls.WallCopy> = emptyMap(),
+)
+
+/** ADM-16: response shape for a saved wall template. */
+@Serializable
+data class WallTemplateResponse(
+    val id: String,
+    val name: String,
+    val wallType: String,
+    val title: String,
+    val body: String,
+    val primaryCta: String,
+    val secondaryCta: String,
+    val channels: Set<String>,
+    val translations: Map<String, nl.incedo.paywall.walls.WallCopy>,
+    val createdBy: String,
+)
+
 /** AN-10/AN-11/AN-12 dashboard numbers per variant. */
 @Serializable
 data class VariantStatsResponse(

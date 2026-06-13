@@ -28,6 +28,7 @@ import nl.incedo.paywall.designer.BrandsScreen
 import nl.incedo.paywall.designer.ConfigScreen
 import nl.incedo.paywall.designer.DashboardScreen
 import nl.incedo.paywall.designer.SubjectInspectorScreen
+import nl.incedo.paywall.designer.TemplatesScreen
 import nl.incedo.paywall.designer.WallDesignerScreen
 import nl.incedo.paywall.designer.WallsOverviewScreen
 import nl.incedo.paywall.model.WallDefinition
@@ -49,6 +50,7 @@ private sealed interface ConsoleScreen {
     data object Inspector : ConsoleScreen
     data object Config : ConsoleScreen
     data object Brands : ConsoleScreen
+    data object Templates : ConsoleScreen
     data class Designer(val wallId: String) : ConsoleScreen
 }
 
@@ -163,6 +165,7 @@ fun App() {
                     is ConsoleScreen.Inspector -> "Support"
                     is ConsoleScreen.Config -> "Config"
                     is ConsoleScreen.Brands -> "Brands"
+                    is ConsoleScreen.Templates -> "Templates"
                     else -> "Walls"
                 },
                 onNavigate = { item ->
@@ -171,6 +174,7 @@ fun App() {
                         "Support" -> ConsoleScreen.Inspector
                         "Config" -> ConsoleScreen.Config
                         "Brands" -> ConsoleScreen.Brands
+                        "Templates" -> ConsoleScreen.Templates
                         else -> ConsoleScreen.Overview
                     }
                 },
@@ -209,6 +213,25 @@ fun App() {
                     onCreateBrand = { req -> api.createBrand(req) },
                     onUpdateTheme = { id, theme -> api.updateBrandTheme(id, theme) },
                     statusMessage = statusMessage,
+                )
+                is ConsoleScreen.Templates -> TemplatesScreen(
+                    onLoadTemplates = { api.wallTemplates() },
+                    onUseTemplate = { templateId, wallId, brandId ->
+                        api.wallFromTemplate(wallId, templateId, brandId) is ConsoleApi.SaveOutcome.Saved
+                    },
+                    onOpenWall = { wallId ->
+                        scope.launch {
+                            refreshWalls()
+                            // Open the newly created wall in the designer
+                            wallsById[wallId]?.let { wall ->
+                                definition = wall.toDefinition()
+                                editingName = wall.name
+                                editingStatus = wall.status
+                                editingVersion = wall.version
+                            }
+                            screen = ConsoleScreen.Designer(wallId)
+                        }
+                    },
                 )
                 is ConsoleScreen.Designer -> WallDesignerScreen(
                     wallName = editingName,
@@ -293,7 +316,7 @@ private fun AdminTopBar(activeItem: String, onNavigate: (String) -> Unit) {
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg),
         ) {
-            listOf("Dashboard", "Walls", "Brands", "Support", "Config").forEach { item ->
+            listOf("Dashboard", "Walls", "Brands", "Templates", "Support", "Config").forEach { item ->
                 CrmTextButton(item, onClick = { onNavigate(item) })
             }
             listOf("Contacts", "Deals", "Invoices", "Subscriptions", "Tickets").forEach { item ->
