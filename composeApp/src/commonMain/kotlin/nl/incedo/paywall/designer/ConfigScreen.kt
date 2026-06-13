@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 import nl.incedo.paywall.api.ExperimentConfigResponse
 import nl.incedo.paywall.experiments.ExperimentDefinition
 import nl.incedo.paywall.experiments.Variant
+import nl.incedo.paywall.access.StrategyConfig
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
 import nl.incedo.paywall.ui.CrmDivider
@@ -30,13 +31,10 @@ import nl.incedo.paywall.ui.CrmText
 import nl.incedo.paywall.ui.CrmTextField
 
 /**
- * ADM-02: experiment configuration view — shows the current published experiment
- * definition (meter limits, variant weights, strategy parameters, EX-02) and
- * allows an admin to publish a new config. All writes go through the API
- * (ADM-01: console owns no logic).
- *
- * In the experiment phase the config is read-only in the UI; the publish action
- * is wired for admin-level operations.
+ * ADM-02 MUST: full access-control configuration management — meter limits and periods
+ * (MT-10), paywall-type parameters per variant (PW-06), dynamic thresholds (DY-02),
+ * experiment definitions and weights (EX-02) — with diff preview and audited publish.
+ * All writes go through the API (ADM-01: console owns no logic).
  */
 @Composable
 fun ConfigScreen(
@@ -47,18 +45,96 @@ fun ConfigScreen(
     val scope = rememberCoroutineScope()
     var config by remember { mutableStateOf<ExperimentConfigResponse?>(null) }
     var status by remember { mutableStateOf(statusMessage ?: "Loading config…") }
-    // Editable weight fields: variantName → weight string
+
+    // ── editable state (all as strings for text-field binding) ────────────────
+    var editMaxGrantTtlDays by remember { mutableStateOf("") }
+    // Per-variant maps keyed by variant name
     var editWeights by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    // MT-10: meter limits + period type (Metered strategy)
+    var editLimits by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var editRegisteredLimits by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var editPeriodTypes by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    // DY-02: dynamic thresholds (Dynamic strategy)
+    var editTSoft by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var editTHard by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+
+    fun initEdits(cfg: ExperimentConfigResponse) {
+        val exp = cfg.experiment
+        editMaxGrantTtlDays = exp.maxGrantTtlDays.toString()
+        editWeights = exp.variants.associate { it.name to it.weight.toString() }
+        editLimits = exp.variants.associate { v ->
+            v.name to ((v.strategy as? StrategyConfig.Metered)?.limit?.toString() ?: "")
+        }
+        editRegisteredLimits = exp.variants.associate { v ->
+            v.name to ((v.strategy as? StrategyConfig.Metered)?.registeredLimit?.toString() ?: "")
+        }
+        editPeriodTypes = exp.variants.associate { v ->
+            v.name to ((v.strategy as? StrategyConfig.Metered)?.periodType ?: "")
+        }
+        editTSoft = exp.variants.associate { v ->
+            v.name to ((v.strategy as? StrategyConfig.Dynamic)?.tSoft?.toString() ?: "")
+        }
+        editTHard = exp.variants.associate { v ->
+            v.name to ((v.strategy as? StrategyConfig.Dynamic)?.tHard?.toString() ?: "")
+        }
+    }
 
     LaunchedEffect(Unit) {
         config = runCatching { onLoadConfig() }.getOrElse {
             status = "Backend unreachable — cannot load config"
             null
         }
+        config?.let { initEdits(it) }
         if (config != null) {
             status = if (config!!.isDefault) "Showing default config (no override published)" else "Config loaded"
-            editWeights = config!!.experiment.variants.associate { it.name to it.weight.toString() }
         }
+    }
+
+    /** Build the updated ExperimentDefinition from all edit state. */
+    fun buildUpdated(exp: ExperimentDefinition): ExperimentDefinition {
+        val ttl = editMaxGrantTtlDays.toIntOrNull()?.coerceAtLeast(1) ?: exp.maxGrantTtlDays
+        val newVariants: List<Variant> = exp.variants.map { v ->
+            val newWeight = editWeights[v.name]?.toIntOrNull()?.coerceAtLeast(1) ?: v.weight
+            val newStrategy = when (val s = v.strategy) {
+                is StrategyConfig.Metered -> s.copy(
+                    limit = editLimits[v.name]?.toIntOrNull()?.coerceAtLeast(1) ?: s.limit,
+                    registeredLimit = editRegisteredLimits[v.name]?.toIntOrNull()?.coerceAtLeast(1)
+                        ?: s.registeredLimit,
+                    periodType = editPeriodTypes[v.name]?.takeIf { it.isNotBlank() } ?: s.periodType,
+                )
+                is StrategyConfig.Dynamic -> s.copy(
+                    tSoft = editTSoft[v.name]?.toIntOrNull()?.coerceIn(0, 100) ?: s.tSoft,
+                    tHard = editTHard[v.name]?.toIntOrNull()?.coerceIn(0, 100) ?: s.tHard,
+                )
+                else -> s
+            }
+            v.copy(weight = newWeight, strategy = newStrategy)
+        }
+        return exp.copy(maxGrantTtlDays = ttl, variants = newVariants)
+    }
+
+    /** Diff summary: list of "field: old → new" for changed fields. */
+    fun diffLines(exp: ExperimentDefinition): List<String> {
+        val lines = mutableListOf<String>()
+        val newExp = buildUpdated(exp)
+        if (newExp.maxGrantTtlDays != exp.maxGrantTtlDays)
+            lines += "maxGrantTtlDays: ${exp.maxGrantTtlDays} → ${newExp.maxGrantTtlDays}"
+        exp.variants.zip(newExp.variants).forEach { (old, new) ->
+            if (old.weight != new.weight) lines += "${old.name} weight: ${old.weight} → ${new.weight}"
+            val os = old.strategy; val ns = new.strategy
+            if (os is StrategyConfig.Metered && ns is StrategyConfig.Metered) {
+                if (os.limit != ns.limit) lines += "${old.name} limit: ${os.limit} → ${ns.limit}"
+                if (os.registeredLimit != ns.registeredLimit)
+                    lines += "${old.name} registeredLimit: ${os.registeredLimit} → ${ns.registeredLimit}"
+                if (os.periodType != ns.periodType)
+                    lines += "${old.name} periodType: ${os.periodType} → ${ns.periodType}"
+            }
+            if (os is StrategyConfig.Dynamic && ns is StrategyConfig.Dynamic) {
+                if (os.tSoft != ns.tSoft) lines += "${old.name} tSoft: ${os.tSoft} → ${ns.tSoft}"
+                if (os.tHard != ns.tHard) lines += "${old.name} tHard: ${os.tHard} → ${ns.tHard}"
+            }
+        }
+        return lines
     }
 
     Column(
@@ -70,17 +146,13 @@ fun ConfigScreen(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xxs)) {
             CrmText("Experiment config", style = CrmTheme.typography.h1, color = CrmTheme.colors.onBackground)
-            CrmText(
-                status,
-                style = CrmTheme.typography.bodySmall,
-                color = CrmTheme.colors.onSurfaceVariant,
-            )
+            CrmText(status, style = CrmTheme.typography.bodySmall, color = CrmTheme.colors.onSurfaceVariant)
         }
 
         config?.let { cfg ->
             val exp = cfg.experiment
 
-            // ── experiment metadata ───────────────────────────────────────────
+            // ── experiment metadata ─────────────────────────────────────────────
             CrmCard {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.lg),
@@ -90,7 +162,6 @@ fun ConfigScreen(
                     CrmDivider()
                     ConfigRow("ID", exp.id.value)
                     ConfigRow("Name", exp.name)
-                    ConfigRow("Max grant TTL", "${exp.maxGrantTtlDays} days (FGA-02)")
                     cfg.publishedBy?.let { ConfigRow("Published by", it) }
                     if (cfg.isDefault) {
                         CrmText(
@@ -102,87 +173,160 @@ fun ConfigScreen(
                 }
             }
 
-            // ── variants + traffic-weight editor (ADM-02: audited publish) ──────
+            // ── FGA-02 / ADM-02: max grant TTL ─────────────────────────────────
             CrmCard {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.lg),
-                    verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm),
                 ) {
-                    CrmText("Variants (EX-02)", style = CrmTheme.typography.h3)
+                    CrmText("Grant TTL ceiling (FGA-02)", style = CrmTheme.typography.h3)
                     CrmDivider()
-                    val totalWeight = exp.variants.sumOf { it.weight }
-                    exp.variants.forEach { v ->
-                        val pct = if (totalWeight > 0) (v.weight * 100 / totalWeight) else 0
-                        Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xxs)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                CrmText(
-                                    "${v.name}${if (v.isControl) " (control)" else ""}",
-                                    style = CrmTheme.typography.bodySmall,
-                                )
-                                CrmText("$pct%", style = CrmTheme.typography.bodySmall)
-                            }
-                            CrmText(
-                                strategyLabel(v.strategy),
-                                style = CrmTheme.typography.caption,
-                                color = CrmTheme.colors.onSurfaceVariant,
-                            )
-                            if (v.registrationWall) {
-                                CrmText(
-                                    "Registration wall active (PW-50)",
-                                    style = CrmTheme.typography.caption,
-                                    color = CrmTheme.colors.onSurfaceVariant,
-                                )
-                            }
-                        }
-                        CrmDivider()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CrmText(
+                            "maxGrantTtlDays",
+                            style = CrmTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                        )
+                        CrmTextField(
+                            "days",
+                            editMaxGrantTtlDays,
+                            { editMaxGrantTtlDays = it },
+                            modifier = Modifier.width(80.dp),
+                        )
                     }
                 }
             }
 
-            // ── publish: edit traffic weights + audited publish (ADM-02) ─────────
+            // ── EX-02 / MT-10 / PW-06 / DY-02: per-variant parameters ─────────
+            exp.variants.forEach { v ->
+                CrmCard {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.lg),
+                        verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm),
+                    ) {
+                        CrmText(
+                            "${v.name}${if (v.isControl) " (control)" else ""} — ${strategyLabel(v.strategy)}",
+                            style = CrmTheme.typography.h3,
+                        )
+                        CrmDivider()
+
+                        // EX-02: traffic weight
+                        EditRow(
+                            "Traffic weight (EX-02)",
+                            editWeights[v.name] ?: v.weight.toString(),
+                        ) { editWeights = editWeights + (v.name to it) }
+
+                        // MT-10: metered strategy parameters
+                        if (v.strategy is StrategyConfig.Metered) {
+                            EditRow(
+                                "Meter limit (MT-10)",
+                                editLimits[v.name] ?: "",
+                            ) { editLimits = editLimits + (v.name to it) }
+                            EditRow(
+                                "Registered limit (PW-25, blank = same)",
+                                editRegisteredLimits[v.name] ?: "",
+                            ) { editRegisteredLimits = editRegisteredLimits + (v.name to it) }
+                            EditRow(
+                                "Period type (MT-10)",
+                                editPeriodTypes[v.name] ?: "",
+                            ) { editPeriodTypes = editPeriodTypes + (v.name to it) }
+                        }
+
+                        // DY-02: dynamic threshold parameters
+                        if (v.strategy is StrategyConfig.Dynamic) {
+                            EditRow(
+                                "tSoft — score threshold for soft gate (DY-02)",
+                                editTSoft[v.name] ?: "",
+                            ) { editTSoft = editTSoft + (v.name to it) }
+                            EditRow(
+                                "tHard — score threshold for hard gate (DY-02)",
+                                editTHard[v.name] ?: "",
+                            ) { editTHard = editTHard + (v.name to it) }
+                        }
+
+                        if (v.registrationWall) {
+                            CrmText(
+                                "Registration wall active (PW-50)",
+                                style = CrmTheme.typography.caption,
+                                color = CrmTheme.colors.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ── diff preview + audited publish (ADM-02) ────────────────────────
             CrmCard {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.lg),
-                    verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm),
                 ) {
-                    CrmText("Publish variant weights (ADM-02)", style = CrmTheme.typography.h3)
+                    CrmText("Publish (ADM-02)", style = CrmTheme.typography.h3)
                     CrmText(
-                        "Adjust traffic splits and publish. All other variant parameters are preserved. Writes are versioned and audited.",
+                        "Changes are versioned and audited. Publishing replaces the active config.",
                         style = CrmTheme.typography.caption,
                         color = CrmTheme.colors.onSurfaceVariant,
                     )
                     CrmDivider()
-                    exp.variants.forEach { v ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            CrmText(v.name, style = CrmTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                            CrmTextField(
-                                "weight",
-                                editWeights[v.name] ?: v.weight.toString(),
-                                { editWeights = editWeights + (v.name to it) },
-                                modifier = Modifier.width(80.dp),
+
+                    // Diff preview (ADM-02: diff preview before publish)
+                    val diff = diffLines(exp)
+                    if (diff.isEmpty()) {
+                        CrmText(
+                            "No changes from current config.",
+                            style = CrmTheme.typography.caption,
+                            color = CrmTheme.colors.onSurfaceVariant,
+                        )
+                    } else {
+                        CrmText("Changes:", style = CrmTheme.typography.bodySmall)
+                        diff.forEach { line ->
+                            CrmText(
+                                "  · $line",
+                                style = CrmTheme.typography.caption,
+                                color = CrmTheme.colors.onSurfaceVariant,
                             )
                         }
                     }
+
                     CrmPrimaryButton("Publish config") {
-                        val newVariants: List<Variant> = exp.variants.map { v ->
-                            v.copy(weight = editWeights[v.name]?.toIntOrNull()?.coerceAtLeast(1) ?: v.weight)
-                        }
-                        val newExperiment = exp.copy(variants = newVariants)
                         scope.launch {
-                            val ok = onPublishConfig(newExperiment)
-                            status = if (ok) "Config published (ADM-02)" else "Publish failed"
+                            val ok = onPublishConfig(buildUpdated(exp))
+                            if (ok) {
+                                // Reload so diff resets to zero and status reflects new baseline
+                                runCatching { onLoadConfig() }.getOrNull()?.let { fresh ->
+                                    config = fresh
+                                    initEdits(fresh)
+                                    status = "Config published (ADM-02)"
+                                }
+                            } else {
+                                status = "Publish failed"
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun EditRow(label: String, value: String, onValueChange: (String) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CrmText(label, style = CrmTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        CrmTextField(
+            "",
+            value,
+            onValueChange,
+            modifier = Modifier.width(120.dp),
+        )
     }
 }
 
@@ -197,11 +341,11 @@ private fun ConfigRow(label: String, value: String) {
     }
 }
 
-private fun strategyLabel(strategy: nl.incedo.paywall.access.StrategyConfig): String = when (strategy) {
-    is nl.incedo.paywall.access.StrategyConfig.Hard -> "Hard paywall"
-    is nl.incedo.paywall.access.StrategyConfig.Freemium -> "Freemium"
-    is nl.incedo.paywall.access.StrategyConfig.Metered ->
+private fun strategyLabel(strategy: StrategyConfig): String = when (strategy) {
+    is StrategyConfig.Hard -> "Hard paywall"
+    is StrategyConfig.Freemium -> "Freemium"
+    is StrategyConfig.Metered ->
         "Metered — ${strategy.limit} articles/${strategy.periodType}"
-    is nl.incedo.paywall.access.StrategyConfig.Dynamic ->
+    is StrategyConfig.Dynamic ->
         "Dynamic — soft ≥ ${strategy.tSoft}, hard ≥ ${strategy.tHard}"
 }
