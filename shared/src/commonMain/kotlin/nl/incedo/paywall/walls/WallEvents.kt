@@ -23,10 +23,11 @@ data class WallCopy(
 )
 
 /**
- * Wall definitions (ADM-11): the visual editor's output is structured
- * content, never code (GAP-10). Events carry the wall tag for per-wall
- * queries plus the catalog tag for the overview projection (admin-rate
- * writes — no contention concern).
+ * PW-03/ADM-11: gate composition — value proposition (title/body), offer price
+ * (supplied by CEP at render time), primary CTA (default "Subscribe") and secondary
+ * CTA (default "Log in" for existing subscribers). The visual editor's output is
+ * structured content, never code (GAP-10). Events carry the wall tag for per-wall
+ * queries plus the catalog tag for the overview projection.
  */
 @Serializable
 data class WallConfig(

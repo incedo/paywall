@@ -7,9 +7,11 @@ import nl.incedo.paywall.core.SubjectId
 import nl.incedo.paywall.core.SubscriptionId
 
 /**
- * Integration events ingested from the external subscription administration
- * (AC-02/AC-08, EA-*). The paywall does not manage subscriptions; it records
- * entitlement changes and enforces them.
+ * DM-02/AC-02/AC-08: entitlements are derived exclusively from subscription
+ * integration events — the paywall never sets them directly. [EntitlementGranted]
+ * arrives via the entitlement webhook (or checkout completion); [EntitlementRevoked]
+ * cancels access. The paywall records and enforces; the subscription administration
+ * system is the authority (EA-* concern, external).
  */
 @Serializable
 data class EntitlementGranted(
