@@ -36,6 +36,7 @@ import nl.incedo.paywall.metering.MeterReset
 import nl.incedo.paywall.walls.WallConfigChanged
 import nl.incedo.paywall.walls.WallCreated
 import nl.incedo.paywall.walls.WallPublished
+import nl.incedo.paywall.walls.WallTemplateCreated
 
 /**
  * Polymorphic registration of every domain event, shared by all event-store
@@ -77,6 +78,7 @@ val paywallSerializersModule = SerializersModule {
         subclass(WallCreated::class)
         subclass(WallConfigChanged::class)
         subclass(WallPublished::class)
+        subclass(WallTemplateCreated::class)
     }
 }
 

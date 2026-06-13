@@ -84,6 +84,7 @@ import nl.incedo.paywall.partners.PartnerMemberRemoved
 import nl.incedo.paywall.partners.PartnerOffboarded
 import nl.incedo.paywall.partners.partnerTag
 import nl.incedo.paywall.walls.WallConfig
+import nl.incedo.paywall.walls.WallTemplateCreated
 import nl.incedo.paywall.walls.WallView
 import nl.incedo.paywall.core.SubjectId
 import nl.incedo.paywall.core.UserId
@@ -632,6 +633,94 @@ fun Application.module(
             } else {
                 call.respondSaveResult(result)
             }
+        }
+        // ADM-16: wall design templates — brand-neutral layout/copy that can be
+        // instantiated for any brand. Theme tokens come from the target brand at
+        // render time; they are NOT stored in the template.
+        get("/api/v1/admin/wall-templates") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            val events = eventStore.query(EventQuery(setOf("wall-templates"))).events
+            val templates = events
+                .filterIsInstance<WallTemplateCreated>()
+                .groupBy { it.templateId }
+                .mapValues { (_, evts) -> evts.last() }
+                .values
+                .sortedBy { it.templateId }
+            call.respond(templates.map { e ->
+                WallTemplateResponse(
+                    id = e.templateId, name = e.name,
+                    wallType = e.config.wallType, title = e.config.title,
+                    body = e.config.body, primaryCta = e.config.primaryCta,
+                    secondaryCta = e.config.secondaryCta, channels = e.config.channels,
+                    translations = e.config.translations, createdBy = e.actor,
+                )
+            })
+        }
+        get("/api/v1/admin/wall-templates/{id}") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "template id required"))
+            val events = eventStore.query(EventQuery(setOf("wall-template:$id"))).events
+            val event = events.filterIsInstance<WallTemplateCreated>().lastOrNull()
+                ?: return@get call.respond(HttpStatusCode.NotFound, mapOf("error" to "unknown template"))
+            call.respond(
+                WallTemplateResponse(
+                    id = event.templateId, name = event.name,
+                    wallType = event.config.wallType, title = event.config.title,
+                    body = event.config.body, primaryCta = event.config.primaryCta,
+                    secondaryCta = event.config.secondaryCta, channels = event.config.channels,
+                    translations = event.config.translations, createdBy = event.actor,
+                ),
+            )
+        }
+        post("/api/v1/admin/wall-templates/{id}") {
+            val staff = call.requireStaff(jwtValidator, StaffRole.OPERATOR) ?: return@post
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "template id required"))
+            val request = call.receive<WallTemplateRequest>()
+            if (request.name.isBlank() || request.title.isBlank()) {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "name and title are required"))
+            }
+            if (request.wallType !in setOf("hard", "metered", "freemium", "dynamic")) {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wallType must be hard|metered|freemium|dynamic"))
+            }
+            val config = WallConfig(
+                name = request.name, wallType = request.wallType, title = request.title,
+                body = request.body, primaryCta = request.primaryCta,
+                secondaryCta = request.secondaryCta, channels = request.channels,
+                brandId = null, // templates are always brand-neutral (ADM-16)
+                translations = request.translations,
+            )
+            val event = WallTemplateCreated(
+                templateId = id, name = request.name, config = config, actor = staff.userId.value,
+            )
+            eventStore.append(listOf(event), condition = null)
+            call.respond(
+                WallTemplateResponse(
+                    id = id, name = request.name,
+                    wallType = config.wallType, title = config.title,
+                    body = config.body, primaryCta = config.primaryCta,
+                    secondaryCta = config.secondaryCta, channels = config.channels,
+                    translations = config.translations, createdBy = staff.userId.value,
+                ),
+            )
+        }
+        // ADM-16: instantiate a template for a brand — copies template config,
+        // sets brandId to the target brand, creates a new wall via WallService.
+        post("/api/v1/walls/{wallId}/from-template/{templateId}") {
+            val staff = call.requireStaff(jwtValidator, StaffRole.OPERATOR) ?: return@post
+            val wallId = call.parameters["wallId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wall id required"))
+            val templateId = call.parameters["templateId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "template id required"))
+            val brandId = call.request.queryParameters["brandId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "brandId query parameter required"))
+            val templateEvents = eventStore.query(EventQuery(setOf("wall-template:$templateId"))).events
+            val templateEvent = templateEvents.filterIsInstance<WallTemplateCreated>().lastOrNull()
+                ?: return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "unknown template"))
+            val config = templateEvent.config.copy(brandId = brandId)
+            val result = wallService.create(WallId(wallId), config, actor = staff.userId.value)
+            call.respondSaveResult(result)
         }
         // ADM-04: subject inspector — meter state, entitlements, identity
         // links and recent wall events for one person, plus the audited
