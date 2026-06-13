@@ -100,6 +100,9 @@ class AccessService(
         return VariantAssigner.assign(subject, exp).name
     }
 
+    /** AN-11/EX-04: return the active experiment definition (hot-reloadable). */
+    suspend fun currentExperiment(): ExperimentDefinition = experimentLoader?.invoke() ?: experiment
+
     /**
      * AC-06: record the client IP for an authenticated user and return true
      * when the number of distinct IPs exceeds the suspicious threshold.

@@ -49,6 +49,12 @@ data class Variant(
      * registration step and proceed to the normal access decision.
      */
     val registrationWall: Boolean = false,
+    /**
+     * EX-04: when true, this is the holdout/control variant (no paywall changes).
+     * Used by the AN-11 stats endpoint to compute per-variant reach cost
+     * (delta in page views and article reads vs. this baseline).
+     */
+    val isControl: Boolean = false,
 )
 
 /**

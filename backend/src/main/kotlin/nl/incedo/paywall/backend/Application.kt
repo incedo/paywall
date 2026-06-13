@@ -545,7 +545,7 @@ fun Application.module(
             }
             val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
             val subject = Subject(VisitorId(request.visitorId), userId)
-            val variant = VariantAssigner.assign(subject, configStore?.experiment() ?: defaultExperiment) // EX-03
+            val variant = VariantAssigner.assign(subject, service.currentExperiment()) // EX-03
             val nowMs = System.currentTimeMillis()
             val eventsToAppend = mutableListOf<DomainEvent>(
                 WallEventRecorded(
@@ -929,13 +929,19 @@ fun Application.module(
             )
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "CancellationSurveySubmitted"))
         }
-        // Experiment dashboard numbers (AN-10): per-variant funnel stats,
+        // Experiment dashboard numbers (AN-10/AN-11/AN-12): per-variant funnel stats,
         // rebuilt from the wall-event stream (projection — DM-04/DM-08).
+        // AN-11: reach cost = delta in page views and article reads vs. the EX-04
+        // control variant; null when no control variant is configured.
         get("/api/v1/stats") {
             call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
             val events = eventStore.query(EventQuery(wallEventShardTags())).events
             val projection = VariantStatsProjection().also { it.applyAll(events) }
-            val response = projection.stats().map { (variant, s) ->
+            val allStats = projection.stats()
+            // AN-11: find the control variant name from the active experiment (EX-04).
+            val controlName = service.currentExperiment().variants.firstOrNull { it.isControl }?.name
+            val controlStats = controlName?.let { allStats[it] }
+            val response = allStats.map { (variant, s) ->
                 VariantStatsResponse(
                     variant = variant,
                     visitors = s.visitors,
@@ -951,6 +957,8 @@ fun Application.module(
                     conversionRateLow = s.conversionRateLow,
                     conversionRateHigh = s.conversionRateHigh,
                     sampleSizeTooSmall = s.sampleSizeTooSmall,
+                    pageViewsDeltaVsControl = controlStats?.let { s.pageViews - it.pageViews },
+                    articleReadsDeltaVsControl = controlStats?.let { s.articleReads - it.articleReads },
                 )
             }.sortedBy { it.variant }
             call.respond(response)
