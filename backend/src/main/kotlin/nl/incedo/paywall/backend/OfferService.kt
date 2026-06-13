@@ -131,6 +131,65 @@ class OfferService(
         return OfferDecision.Triggered(rawOffer)
     }
 
+    /**
+     * UP-08: receive a CEP-initiated offer for an async channel (email, chat).
+     * Runs through the same guardrail (UP-09), frequency-cap (UP-05), and
+     * retention-cap (DN-05) checks, then logs [OfferTriggered] with trigger
+     * "cep_push" so the async delivery system can fetch it as a pending offer.
+     */
+    suspend fun receiveAsyncOffer(subjectId: SubjectId, offer: Offer, channel: String): OfferDecision {
+        val now = clock()
+        val context = TriggerContext("cep_push", channel)
+
+        if (offer.channels.isNotEmpty() && channel !in offer.channels) {
+            log(subjectId, context, offer.offerId, "channel_mismatch", now)
+            return OfferDecision.Suppressed("channel_mismatch")
+        }
+
+        val offerTags = setOf("subject:${subjectId.value}", offerTag(subjectId, offer.offerId))
+        val offerEvents = eventStore.query(EventQuery(offerTags)).events
+        val frequency = OfferFrequencyDecision(frequencyCooldownMs).also { it.applyAll(offerEvents) }
+
+        if (frequency.isCapped(offer.offerId, now)) {
+            log(subjectId, context, offer.offerId, "capped", now)
+            return OfferDecision.Suppressed("capped")
+        }
+
+        if (isRetentionKind(offer.kind)) {
+            val subjectEvents = eventStore.query(EventQuery(setOf("subject:${subjectId.value}"))).events
+            val retentionAcceptedAt = subjectEvents
+                .filterIsInstance<OfferAccepted>()
+                .filter { isRetentionKind(it.kind) }
+                .maxOfOrNull { it.acceptedAtEpochMs }
+            if (retentionAcceptedAt != null && now - retentionAcceptedAt < retentionCapWindowMs) {
+                log(subjectId, context, offer.offerId, "retention_cap", now)
+                return OfferDecision.Suppressed("retention_cap")
+            }
+        }
+
+        val guardReason = checkGuardrails(offer, "cep_push")
+        if (guardReason != null) {
+            log(subjectId, context, offer.offerId, "guardrail_rejected", now)
+            return OfferDecision.Suppressed("guardrail_rejected")
+        }
+
+        eventStore.append(
+            listOf(
+                OfferTriggered(
+                    subjectId = subjectId,
+                    offerId = offer.offerId,
+                    trigger = "cep_push",
+                    channel = channel,
+                    kind = offer.kind,
+                    source = offer.source,
+                    triggeredAtEpochMs = now,
+                ),
+            ),
+            condition = null,
+        )
+        return OfferDecision.Triggered(offer)
+    }
+
     /** DN-05: offer kinds that count as retention offers for the 12-month cap. */
     private fun isRetentionKind(kind: String): Boolean =
         kind in setOf("downsell", "discount", "pause")
