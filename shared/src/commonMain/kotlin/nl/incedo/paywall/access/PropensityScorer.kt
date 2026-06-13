@@ -19,7 +19,7 @@ fun interface PropensityScorer {
 }
 
 /**
- * DY-01: phase-1 heuristic score from observable event signals:
+ * PW-41/DY-01: phase-1 heuristic score from observable event signals:
  *   - premium reads this month (from meter) — strongest conversion predictor
  *   - wall events (page views + wall shown) in the last 30 days — engagement signal
  *   - days since first observed event, capped at [ScorerWeights.tenureCap] — tenure signal

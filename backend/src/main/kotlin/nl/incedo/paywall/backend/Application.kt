@@ -1120,7 +1120,7 @@ fun Application.module(
             call.respond(HttpStatusCode.Created, buildJsonObject {
                 put("sessionId", session.sessionId)
                 put("checkoutUrl", session.checkoutUrl)
-                if (req.returnUrl != null) put("returnUrl", req.returnUrl) // AC-12
+                if (req.returnUrl != null) put("returnUrl", req.returnUrl) // PAY-04/AC-12
                 if (req.paymentMethod != null) put("paymentMethod", req.paymentMethod) // PAY-06
                 // PAY-06: advertise available methods so the checkout page can render the picker.
                 put("availablePaymentMethods", kotlinx.serialization.json.buildJsonArray {
@@ -1600,8 +1600,9 @@ fun Application.module(
             eventStore.append(deletionEvents, condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to deletionEvents.size, "linksRevoked" to linked.size))
         }
-        // AG-02: verified ad-completion webhook from the third-party ad player.
-        // Issues a 24-hour grant for the triggering article, daily cap = 2 per subject.
+        // AG-01/AG-02: ad-gated grant endpoint. AG-01: completion verified server-side via
+        // signed callback (webhookVerifier) before any grant is issued. AG-02: 24 h grant
+        // for the triggering article, daily cap = 2 per subject.
         post("/api/v1/integration/ad-completion") {
             val rawBody = call.receive<ByteArray>()
             if (!webhookVerifier.verify(rawBody, call.request.headers[WebhookVerifier.SIGNATURE_HEADER])) {
