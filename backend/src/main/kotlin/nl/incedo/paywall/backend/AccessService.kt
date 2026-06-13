@@ -9,6 +9,7 @@ import nl.incedo.paywall.access.StrategyConfig
 import nl.incedo.paywall.access.Subject
 import nl.incedo.paywall.accounts.IdentityLinkDecision
 import nl.incedo.paywall.accounts.IdentityLinked
+import nl.incedo.paywall.analytics.SoftGateDismissed
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.cep.CepAdviceDecision
@@ -239,6 +240,11 @@ class AccessService(
                 scorer.score(events, meter.used, now, subject.registered)
             }
 
+        // AC-13: check for a recent soft-gate dismissal in the subject's event stream.
+        // Dismissals are subject-tagged, so they appear in the same event set loaded above.
+        val softGateDismissed = events.filterIsInstance<SoftGateDismissed>()
+            .any { it.isWithinSession(now) }
+
         val decision = AccessDecisionEngine.decide(
             AccessRequest(
                 article = article,
@@ -249,6 +255,7 @@ class AccessService(
                 meter = meter,
                 cepAdvice = cepAdvice,
                 propensityScore = propensityScore,
+                softGateDismissed = softGateDismissed,
                 nowEpochMs = now,
             ),
         )

@@ -31,6 +31,7 @@ import nl.incedo.paywall.access.Subject
 import nl.incedo.paywall.accounts.IdentityLinked
 import nl.incedo.paywall.accounts.IdentityUnlinked
 import nl.incedo.paywall.accounts.UserDeleted
+import nl.incedo.paywall.analytics.SoftGateDismissed
 import nl.incedo.paywall.analytics.VariantStatsProjection
 import nl.incedo.paywall.analytics.wallEventShardTags
 import nl.incedo.paywall.analytics.WallEventRecorded
@@ -345,6 +346,27 @@ fun Application.module(
                 externalScore = request.externalScore, // DY-06
             )
             call.respond(DecideResponse.from(outcome))
+        }
+        // AC-13: soft-gate dismissal — visitor dismisses the soft overlay in the Dynamic
+        // variant. Logged as a SoftGateDismissed event (subject-tagged) so the next
+        // decide() call within the 30-minute session window bypasses the soft gate.
+        // Hard gates (score ≥ T_hard or floor reached) are not dismissible.
+        post("/api/v1/decide/dismiss-soft-gate") {
+            val visitorId = call.request.queryParameters["visitorId"]
+                ?: call.request.headers["X-Visitor-Id"]
+            if (visitorId.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "visitorId is required"))
+                return@post
+            }
+            val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
+            val subjectId = userId?.let { nl.incedo.paywall.core.SubjectId.of(it) }
+                ?: nl.incedo.paywall.core.SubjectId.of(VisitorId(visitorId))
+            val event = SoftGateDismissed(
+                subjectId = subjectId,
+                dismissedAtEpochMs = System.currentTimeMillis(),
+            )
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "SoftGateDismissed"))
         }
         // The consumer endpoint (AC-04: same rules as any page). The premium
         // body is never present in a gated response (AC-01/BP-01); the teaser
