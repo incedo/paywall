@@ -18,6 +18,8 @@ data class WallCopy(
     val secondaryCta: String? = null,
     /** ADM-11: optional legal/disclaimer text rendered below CTAs; null = use wall default. */
     val legalText: String? = null,
+    /** ADM-17: alt text for the image block; null = use wall default. Empty string = decorative. */
+    val imageAlt: String? = null,
 )
 
 /**
@@ -50,6 +52,12 @@ data class WallConfig(
      */
     val imageUrl: String = "",
     /**
+     * ADM-17 / WCAG 2.1 AA: alt text for the image block. Empty string = decorative
+     * (aria-hidden); non-empty = descriptive label for screen readers.
+     * The accessibility linter flags a non-empty imageUrl with an empty imageAlt.
+     */
+    val imageAlt: String = "",
+    /**
      * ADM-11: optional legal/disclaimer text rendered below CTAs (e.g. "Cancel anytime.
      * Prices include VAT."). Empty string = no legal text block rendered.
      */
@@ -69,13 +77,14 @@ data class WallConfig(
     fun resolveForLocale(locale: String): WallCopy {
         val override = translations[locale]
             ?: translations[locale.substringBefore("-")]
-            ?: return WallCopy(title, body, primaryCta, secondaryCta, legalText)
+            ?: return WallCopy(title, body, primaryCta, secondaryCta, legalText, imageAlt)
         return WallCopy(
             title = override.title ?: title,
             body = override.body ?: body,
             primaryCta = override.primaryCta ?: primaryCta,
             secondaryCta = override.secondaryCta ?: secondaryCta,
             legalText = override.legalText ?: legalText,
+            imageAlt = override.imageAlt ?: imageAlt,
         )
     }
 }

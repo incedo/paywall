@@ -171,11 +171,16 @@ private fun ConfigPanel(
         CrmTextField("Body", definition.body, { onDefinitionChange(definition.copy(body = it)) }, singleLine = false)
         CrmTextField("Primary CTA", definition.primaryCta, { onDefinitionChange(definition.copy(primaryCta = it)) })
         CrmTextField("Secondary CTA", definition.secondaryCta, { onDefinitionChange(definition.copy(secondaryCta = it)) })
-        // ADM-11: optional image and legal-text blocks
+        // ADM-11: optional image and legal-text blocks; ADM-17: imageAlt for WCAG 2.1 AA
         CrmTextField(
             "Image URL (ADM-11, leave blank for no image block)",
             definition.imageUrl,
             { onDefinitionChange(definition.copy(imageUrl = it)) },
+        )
+        CrmTextField(
+            "Image alt text (ADM-17, screen-reader label; leave blank if decorative)",
+            definition.imageAlt,
+            { onDefinitionChange(definition.copy(imageAlt = it)) },
         )
         CrmTextField(
             "Legal text (ADM-11, leave blank for no legal text block)",
@@ -446,6 +451,26 @@ private fun PublishPanel(
         }
         CrmDivider()
 
+        // ADM-17: accessibility lint — WCAG 2.1 AA checks before publish.
+        val lintWarnings = wallAccessibilityLint(definition)
+        CrmText("Accessibility (ADM-17)", style = CrmTheme.typography.h3)
+        if (lintWarnings.isEmpty()) {
+            CrmText("No issues found", style = CrmTheme.typography.caption, color = CrmTheme.colors.success)
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
+                lintWarnings.forEach { warning ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        CrmText("⚠", style = CrmTheme.typography.caption, color = CrmTheme.colors.warning)
+                        CrmText(warning, style = CrmTheme.typography.caption, color = CrmTheme.colors.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        CrmDivider()
+
         CrmText("Version history", style = CrmTheme.typography.h3)
         if (history.isEmpty()) {
             CrmText("No history yet", style = CrmTheme.typography.caption, color = CrmTheme.colors.onSurfaceVariant)
@@ -479,5 +504,28 @@ private fun PublishPanel(
                 }
             }
         }
+    }
+}
+
+/**
+ * ADM-17: returns a list of WCAG 2.1 AA lint warnings for the given wall definition.
+ * Checks: missing alt text on images, overly long CTA labels, consent step missing
+ * when legal text implies cookie consent.
+ * An empty list means the design passes all checks.
+ */
+internal fun wallAccessibilityLint(definition: WallDefinition): List<String> = buildList {
+    if (definition.imageUrl.isNotBlank() && definition.imageAlt.isBlank()) {
+        add("Image block has no alt text — add a description or mark as decorative (WCAG 1.1.1 Non-text Content).")
+    }
+    if (definition.primaryCta.length > 40) {
+        add("Primary CTA is very long (${definition.primaryCta.length} chars) — truncation on small viewports may affect tap-target clarity (WCAG 2.5.3).")
+    }
+    if (definition.secondaryCta.length > 40) {
+        add("Secondary CTA is very long (${definition.secondaryCta.length} chars) — consider shortening for mobile readability (WCAG 2.5.3).")
+    }
+    val cookieKeywords = listOf("cookie", "consent", "gdpr")
+    val legalImpliesCookies = cookieKeywords.any { definition.legalText.contains(it, ignoreCase = true) }
+    if (legalImpliesCookies && !definition.requireConsentStep) {
+        add("Legal text mentions consent/cookies but the consent step is not enabled — enable 'Consent step' to satisfy AC-14/GDPR (WCAG 1.3.5).")
     }
 }

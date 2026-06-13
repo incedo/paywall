@@ -35,6 +35,8 @@ data class WallDefinition(
     val requireConsentStep: Boolean = false,
     /** ADM-11: optional image URL shown in the gate (empty = no image block). */
     val imageUrl: String = "",
+    /** ADM-17: alt text for the image block (empty = decorative / aria-hidden). */
+    val imageAlt: String = "",
     /** ADM-11: optional legal/disclaimer text rendered below CTAs (empty = no block). */
     val legalText: String = "",
     /**

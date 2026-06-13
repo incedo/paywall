@@ -30,6 +30,8 @@ data class SaveWallRequest(
     val requireConsentStep: Boolean = false,
     /** ADM-11: optional image URL shown in the gate (empty = no image block). */
     val imageUrl: String = "",
+    /** ADM-17: alt text for the image (empty = decorative / aria-hidden). */
+    val imageAlt: String = "",
     /** ADM-11: optional legal/disclaimer text rendered below CTAs (empty = no block). */
     val legalText: String = "",
     /**
@@ -58,6 +60,8 @@ data class WallResponse(
     val requireConsentStep: Boolean = false,
     /** ADM-11: optional image URL shown in the gate (empty = no image block). */
     val imageUrl: String = "",
+    /** ADM-17: alt text for the image (empty = decorative / aria-hidden). */
+    val imageAlt: String = "",
     /** ADM-11: optional legal/disclaimer text rendered below CTAs (empty = no block). */
     val legalText: String = "",
     /** ADM-15: per-locale copy overrides stored with this wall design. */
@@ -91,6 +95,7 @@ data class WallTemplateRequest(
     val secondaryCta: String,
     val channels: Set<String> = setOf("web"),
     val imageUrl: String = "",
+    val imageAlt: String = "",
     val legalText: String = "",
     val translations: Map<String, nl.incedo.paywall.walls.WallCopy> = emptyMap(),
 )
@@ -107,6 +112,7 @@ data class WallTemplateResponse(
     val secondaryCta: String,
     val channels: Set<String>,
     val imageUrl: String = "",
+    val imageAlt: String = "",
     val legalText: String = "",
     val translations: Map<String, nl.incedo.paywall.walls.WallCopy>,
     val createdBy: String,
