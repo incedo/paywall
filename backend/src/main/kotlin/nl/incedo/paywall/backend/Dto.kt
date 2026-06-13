@@ -7,6 +7,8 @@ import nl.incedo.paywall.api.BrandResponse
 import nl.incedo.paywall.api.CiamSession
 import nl.incedo.paywall.api.CreateBrandRequest
 import nl.incedo.paywall.api.GrantChangeRequest
+import nl.incedo.paywall.api.WallTemplateRequest
+import nl.incedo.paywall.api.WallTemplateResponse
 import nl.incedo.paywall.api.ExperimentConfigResponse
 import nl.incedo.paywall.api.GrantAuditEntry
 import nl.incedo.paywall.api.InspectorWallEvent
@@ -375,37 +377,7 @@ data class PendingOfferResponse(
     val triggeredAtEpochMs: Long,
 )
 
-/**
- * ADM-16: wall design template — brand-neutral layout/copy that can be
- * instantiated for any brand. Theme tokens come from the target brand at
- * render time; they are NOT stored in the template.
- */
-@Serializable
-data class WallTemplateRequest(
-    val name: String,
-    val wallType: String,
-    val title: String,
-    val body: String,
-    val primaryCta: String,
-    val secondaryCta: String,
-    val channels: Set<String> = setOf("web"),
-    val translations: Map<String, nl.incedo.paywall.walls.WallCopy> = emptyMap(),
-)
-
-/** ADM-16: response shape for a saved wall template. */
-@Serializable
-data class WallTemplateResponse(
-    val id: String,
-    val name: String,
-    val wallType: String,
-    val title: String,
-    val body: String,
-    val primaryCta: String,
-    val secondaryCta: String,
-    val channels: Set<String>,
-    val translations: Map<String, nl.incedo.paywall.walls.WallCopy>,
-    val createdBy: String,
-)
+// WallTemplateRequest and WallTemplateResponse are defined in shared (WallApiDtos.kt) and imported above.
 
 /**
  * BP-06: bypass-rate estimation response.

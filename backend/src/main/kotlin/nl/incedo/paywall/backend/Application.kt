@@ -40,6 +40,8 @@ import nl.incedo.paywall.api.SubjectInspectorResponse
 import nl.incedo.paywall.api.UpdateBrandThemeRequest
 import nl.incedo.paywall.api.VariantStatsResponse
 import nl.incedo.paywall.api.WallResponse
+import nl.incedo.paywall.api.WallTemplateRequest
+import nl.incedo.paywall.api.WallTemplateResponse
 import nl.incedo.paywall.api.WallVersionSummary
 import nl.incedo.paywall.access.Article
 import nl.incedo.paywall.access.ContentTier
