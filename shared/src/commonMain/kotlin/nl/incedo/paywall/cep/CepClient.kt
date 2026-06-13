@@ -1,0 +1,50 @@
+package nl.incedo.paywall.cep
+
+import nl.incedo.paywall.access.Subject
+
+/**
+ * API-07: outbound CEP integration interface.
+ *
+ * The paywall calls [requestOffer] when a trigger event fires (e.g. gate shown,
+ * cancel intent, payment failure). The CEP engine applies its rules and returns
+ * an [Offer] when one is available, or null when the subject is ineligible.
+ *
+ * In the experiment the mock implementation returns configurable fixed offers.
+ * The real CEP replaces the mock without touching callers (cf. PAY-05).
+ */
+interface CepClient {
+    /**
+     * Request an offer from the CEP engine for the given subject and trigger.
+     *
+     * @param subject  The subject (visitor or logged-in user) requesting the offer.
+     * @param trigger  The trigger context that caused the offer request (e.g.
+     *                 "gate_shown", "cancel_intent", "payment_failure").
+     * @return an [Offer] when the CEP decides to present one, null when none applies.
+     */
+    suspend fun requestOffer(subject: Subject, trigger: String): Offer?
+}
+
+/**
+ * An offer returned by the CEP engine (UP-02).
+ *
+ * Only the fields relevant to the paywall experiment are included; the full
+ * offer schema lives in the offer engine bounded context.
+ */
+data class Offer(
+    val offerId: String,
+    /** Type of offer: "discount", "trial", "pause", "upgrade", "none". */
+    val kind: String,
+    val discountPercent: Int? = null,
+    /** How long the offer is valid (seconds from now). */
+    val validForSeconds: Long? = null,
+    /** Human-readable label for the gate CTA button. */
+    val cta: String? = null,
+)
+
+/**
+ * API-07 mock: returns a configurable fixed offer for all requests.
+ * Replace with the real CEP HTTP client in production.
+ */
+class MockCepClient(private val fixedOffer: Offer? = null) : CepClient {
+    override suspend fun requestOffer(subject: Subject, trigger: String): Offer? = fixedOffer
+}
