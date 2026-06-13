@@ -42,6 +42,7 @@ fun DashboardScreen(stats: List<VariantStatsResponse>, statusMessage: String?) {
                 HeaderCell("Reads", 1f)
                 HeaderCell("Walls shown", 1f)
                 HeaderCell("Gate CTR", 1f)
+                HeaderCell("Registrations", 1f)
                 HeaderCell("Checkouts", 1f)
                 HeaderCell("Conversions", 1f)
                 HeaderCell("Conv. rate", 1f)
@@ -67,6 +68,7 @@ fun DashboardScreen(stats: List<VariantStatsResponse>, statusMessage: String?) {
                     Cell(row.articleReads.toString())
                     Cell(row.wallsShown.toString())
                     Cell(row.gateCtr.asPercent())
+                    Cell(row.registrations.toString()) // AN-10
                     Cell(row.checkoutStarts.toString())
                     Cell(row.conversions.toString())
                     Cell(row.conversionRate.asPercent())
