@@ -16,6 +16,10 @@ import nl.incedo.paywall.entitlements.EntitlementRevoked
 import nl.incedo.paywall.grants.GrantIssued
 import nl.incedo.paywall.grants.GrantRevoked
 import nl.incedo.paywall.grants.ShareTokenIssued
+import nl.incedo.paywall.partners.PartnerCreated
+import nl.incedo.paywall.partners.PartnerIpRangeConfigured
+import nl.incedo.paywall.partners.PartnerMemberAdded
+import nl.incedo.paywall.partners.PartnerMemberRemoved
 import nl.incedo.paywall.metering.MeterIncremented
 import nl.incedo.paywall.metering.MeterReset
 import nl.incedo.paywall.walls.WallConfigChanged
@@ -37,6 +41,10 @@ val paywallSerializersModule = SerializersModule {
         subclass(GrantIssued::class)
         subclass(GrantRevoked::class)
         subclass(ShareTokenIssued::class)
+        subclass(PartnerCreated::class)
+        subclass(PartnerMemberAdded::class)
+        subclass(PartnerMemberRemoved::class)
+        subclass(PartnerIpRangeConfigured::class)
         subclass(IdentityLinked::class)
         subclass(IdentityUnlinked::class)
         subclass(UserDeleted::class)

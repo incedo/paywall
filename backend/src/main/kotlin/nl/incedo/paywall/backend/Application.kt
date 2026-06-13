@@ -44,6 +44,7 @@ import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.ExperimentId
+import nl.incedo.paywall.core.PartnerId
 import nl.incedo.paywall.core.PlanId
 import nl.incedo.paywall.core.SubscriptionId
 import nl.incedo.paywall.core.GrantId
@@ -52,6 +53,12 @@ import nl.incedo.paywall.entitlements.EntitlementRevoked
 import nl.incedo.paywall.grants.GrantIssued
 import nl.incedo.paywall.grants.GrantRevoked
 import nl.incedo.paywall.grants.ShareTokenIssued
+import nl.incedo.paywall.partners.PartnerCreated
+import nl.incedo.paywall.partners.PartnerDecision
+import nl.incedo.paywall.partners.PartnerIpRangeConfigured
+import nl.incedo.paywall.partners.PartnerMemberAdded
+import nl.incedo.paywall.partners.PartnerMemberRemoved
+import nl.incedo.paywall.partners.partnerTag
 import nl.incedo.paywall.walls.WallConfig
 import nl.incedo.paywall.walls.WallView
 import nl.incedo.paywall.core.SubjectId
@@ -239,6 +246,17 @@ fun Application.module(
             // configured — proves the request came through the edge (INF-02/BP-02).
             val isVerifiedCrawler = originSecret != null &&
                 call.request.headers["X-Verified-Bot"] == "true"
+            // IPW-02: partner_id is edge-injected after CIDR match (INF-01/02).
+            // Only trust it when origin secret is configured.
+            val partnerIdHeader = if (originSecret != null) call.request.headers["X-Partner-Id"] else null
+            if (partnerIdHeader != null) {
+                val pEvents = eventStore.query(EventQuery(setOf(partnerTag(PartnerId(partnerIdHeader))))).events
+                val partner = PartnerDecision().also { it.applyAll(pEvents) }
+                if (partner.name.isNotEmpty()) {
+                    call.respond(DecideResponse(access = "full", reason = "partner_entitled", variant = "partner", meterUsed = null))
+                    return@post
+                }
+            }
             val outcome = service.decide(
                 subject = subject,
                 article = Article(ArticleId(request.articleId), tier),
@@ -799,6 +817,130 @@ fun Application.module(
                 ShareTokenService.RedeemResult.Expired ->
                     call.respond(HttpStatusCode.Gone, mapOf("error" to "share token has expired"))
             }
+        }
+        // ── Partner management (PA-01/02/03/05 / IPW-01) ─────────────────────
+        // PA-01: create partner with optional seat cap and plan tier.
+        post("/api/v1/admin/partners") {
+            call.requireStaff(jwtValidator, StaffRole.ADMIN) ?: return@post
+            val req = call.receive<CreatePartnerRequest>()
+            if (req.partnerId.isBlank() || req.name.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "partnerId and name are required"))
+                return@post
+            }
+            val event = PartnerCreated(
+                partnerId = PartnerId(req.partnerId),
+                name = req.name,
+                maxSeats = req.maxSeats,
+                planId = req.planId,
+                createdAtEpochMs = System.currentTimeMillis(),
+            )
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Created, mapOf("partnerId" to req.partnerId))
+        }
+        // PA-05: add a member to a partner; enforces seat limit.
+        post("/api/v1/admin/partners/{partnerId}/members") {
+            call.requireStaff(jwtValidator, StaffRole.OPERATOR) ?: return@post
+            val partnerId = call.parameters["partnerId"]?.takeIf { it.isNotBlank() } ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "partnerId required"))
+                return@post
+            }
+            val req = call.receive<AddPartnerMemberRequest>()
+            if (req.subjectId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId is required"))
+                return@post
+            }
+            val pId = PartnerId(partnerId)
+            val pEvents = eventStore.query(EventQuery(setOf(partnerTag(pId)))).events
+            val partner = PartnerDecision().also { it.applyAll(pEvents) }
+            if (partner.name.isEmpty()) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "partner not found"))
+                return@post
+            }
+            if (!partner.hasSeatAvailable()) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "partner seat limit reached (PA-05)"))
+                return@post
+            }
+            val event = PartnerMemberAdded(
+                partnerId = pId,
+                subjectId = SubjectId(req.subjectId),
+                addedBy = req.addedBy,
+                addedAtEpochMs = System.currentTimeMillis(),
+            )
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Created, mapOf("recorded" to "PartnerMemberAdded"))
+        }
+        // PA-03: remove a member from a partner (freeing the seat).
+        post("/api/v1/admin/partners/{partnerId}/members/remove") {
+            call.requireStaff(jwtValidator, StaffRole.OPERATOR) ?: return@post
+            val partnerId = call.parameters["partnerId"]?.takeIf { it.isNotBlank() } ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "partnerId required"))
+                return@post
+            }
+            val req = call.receive<AddPartnerMemberRequest>()
+            val event = PartnerMemberRemoved(
+                partnerId = PartnerId(partnerId),
+                subjectId = SubjectId(req.subjectId),
+                removedBy = req.addedBy,
+                removedAtEpochMs = System.currentTimeMillis(),
+            )
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "PartnerMemberRemoved"))
+        }
+        // IPW-01: configure an IP CIDR range for a partner.
+        post("/api/v1/admin/partners/{partnerId}/ip-ranges") {
+            call.requireStaff(jwtValidator, StaffRole.ADMIN) ?: return@post
+            val partnerId = call.parameters["partnerId"]?.takeIf { it.isNotBlank() } ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "partnerId required"))
+                return@post
+            }
+            val req = call.receive<PartnerIpRangeRequest>()
+            if (req.cidr.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "cidr is required"))
+                return@post
+            }
+            val event = PartnerIpRangeConfigured(
+                partnerId = PartnerId(partnerId),
+                cidr = req.cidr,
+                active = req.active,
+                configuredAtEpochMs = System.currentTimeMillis(),
+            )
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "PartnerIpRangeConfigured"))
+        }
+        // IPW-01: the edge polls this endpoint to build its CIDR → partner_id map.
+        // No auth required from the edge (protected by origin secret at the intercept level).
+        get("/api/v1/admin/ip-allowlist") {
+            val events = eventStore.query(EventQuery(setOf("partner:ip-ranges"))).events
+            val byPartner = mutableMapOf<String, MutableList<String>>()
+            events.filterIsInstance<PartnerIpRangeConfigured>().forEach { ev ->
+                val list = byPartner.getOrPut(ev.partnerId.value) { mutableListOf() }
+                if (ev.active) list.add(ev.cidr) else list.remove(ev.cidr)
+            }
+            val response = byPartner.map { (partnerId, cidrs) -> IpAllowlistEntry(partnerId, cidrs.sorted()) }
+            call.respond(response)
+        }
+        // PA-01: get partner summary (for admin console).
+        get("/api/v1/admin/partners/{partnerId}") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            val partnerId = call.parameters["partnerId"]?.takeIf { it.isNotBlank() } ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "partnerId required"))
+                return@get
+            }
+            val pId = PartnerId(partnerId)
+            val pEvents = eventStore.query(EventQuery(setOf(partnerTag(pId)))).events
+            val partner = PartnerDecision().also { it.applyAll(pEvents) }
+            if (partner.name.isEmpty()) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "partner not found"))
+                return@get
+            }
+            call.respond(PartnerResponse(
+                partnerId = partnerId,
+                name = partner.name,
+                maxSeats = partner.maxSeats,
+                activeSeats = partner.activeSeatCount(),
+                planId = partner.planId,
+                activeCidrs = partner.activeCidrs(),
+            ))
         }
     }
 }
