@@ -28,15 +28,18 @@ import nl.incedo.paywall.ui.CrmText
 import nl.incedo.paywall.ui.CrmTextField
 
 /**
- * ADM-04: support/QA view — look up any subject by ID and inspect their
- * meter state, entitlements, active grants, CIAM sessions, variant assignment,
- * and recent wall events. Meter reset and grant revoke are available here (ADM-03).
+ * ADM-04/ADM-03: support/QA view — look up any subject by ID and inspect their
+ * meter state, entitlements, active grants (FGA-08), CIAM sessions, variant
+ * assignment, and recent wall events. Meter reset (ADM-04), grant revoke,
+ * and grant issue (FGA-03/ADM-03) are available here.
  */
 @Composable
 fun SubjectInspectorScreen(
     onInspect: suspend (String) -> SubjectInspectorResponse?,
     onGrants: suspend (String) -> List<GrantAuditEntry>,
     onMeterReset: suspend (String) -> Boolean,
+    onIssueGrant: suspend (subjectId: String, articleId: String, grantId: String, reason: String) -> Boolean,
+    onRevokeGrant: suspend (subjectId: String, grantId: String, articleId: String) -> Boolean,
     statusMessage: String?,
 ) {
     val scope = rememberCoroutineScope()
@@ -44,6 +47,14 @@ fun SubjectInspectorScreen(
     var inspector by remember { mutableStateOf<SubjectInspectorResponse?>(null) }
     var grants by remember { mutableStateOf<List<GrantAuditEntry>>(emptyList()) }
     var status by remember { mutableStateOf(statusMessage) }
+    var showIssueGrant by remember { mutableStateOf(false) }
+
+    fun reload() = scope.launch {
+        val id = query.trim()
+        if (id.isBlank()) return@launch
+        inspector = runCatching { onInspect(id) }.getOrNull()
+        grants = if (inspector != null) runCatching { onGrants(id) }.getOrDefault(emptyList()) else emptyList()
+    }
 
     fun lookup() = scope.launch {
         val id = query.trim()
@@ -114,43 +125,77 @@ fun SubjectInspectorScreen(
                 }
             }
 
-            // ── active grants ─────────────────────────────────────────────────
-            if (grants.isNotEmpty()) {
-                CrmCard {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.lg),
-                        verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm),
+            // ── grants (FGA-08/ADM-03) ───────────────────────────────────────
+            CrmCard {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         CrmText("Grants (FGA-08)", style = CrmTheme.typography.h3)
+                        CrmSecondaryButton("+ Issue grant") { showIssueGrant = !showIssueGrant }
+                    }
+                    if (showIssueGrant) {
+                        IssueGrantForm(
+                            subjectId = sub.subjectId,
+                            onIssue = { articleId, grantId, reason ->
+                                scope.launch {
+                                    val ok = onIssueGrant(sub.subjectId, articleId, grantId, reason)
+                                    status = if (ok) "Grant issued" else "Issue failed"
+                                    if (ok) { showIssueGrant = false; reload() }
+                                }
+                            },
+                            onCancel = { showIssueGrant = false },
+                        )
+                    }
+                    if (grants.isEmpty() && !showIssueGrant) {
+                        CrmText("No grants", style = CrmTheme.typography.caption, color = CrmTheme.colors.onSurfaceVariant)
+                    }
+                    grants.forEach { g ->
                         CrmDivider()
-                        grants.forEach { g ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    CrmText(g.grantId, style = CrmTheme.typography.bodySmall)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                CrmText(g.grantId, style = CrmTheme.typography.bodySmall)
+                                CrmText(
+                                    "Article: ${g.articleId} · by: ${g.grantedBy}",
+                                    style = CrmTheme.typography.caption,
+                                    color = CrmTheme.colors.onSurfaceVariant,
+                                )
+                                if (g.reason.isNotBlank()) {
                                     CrmText(
-                                        "Article: ${g.articleId} · by: ${g.grantedBy}",
+                                        g.reason,
                                         style = CrmTheme.typography.caption,
                                         color = CrmTheme.colors.onSurfaceVariant,
                                     )
-                                    if (g.reason.isNotBlank()) {
-                                        CrmText(
-                                            g.reason,
-                                            style = CrmTheme.typography.caption,
-                                            color = CrmTheme.colors.onSurfaceVariant,
-                                        )
-                                    }
                                 }
+                            }
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
                                 CrmTag(
                                     if (g.isLive) "live" else "expired/revoked",
                                     if (g.isLive) CrmTheme.colors.primary else CrmTheme.colors.surfaceVariant,
                                     if (g.isLive) CrmTheme.colors.onPrimary else CrmTheme.colors.onSurfaceVariant,
                                 )
+                                if (g.isLive) {
+                                    CrmSecondaryButton("Revoke") {
+                                        scope.launch {
+                                            val ok = onRevokeGrant(sub.subjectId, g.grantId, g.articleId)
+                                            status = if (ok) "Grant revoked" else "Revoke failed"
+                                            if (ok) reload()
+                                        }
+                                    }
+                                }
                             }
-                            CrmDivider()
                         }
                     }
                 }
@@ -209,5 +254,32 @@ private fun LabelValue(label: String, value: String) {
     ) {
         CrmText(label, style = CrmTheme.typography.bodySmall, color = CrmTheme.colors.onSurfaceVariant)
         CrmText(value, style = CrmTheme.typography.bodySmall)
+    }
+}
+
+/** FGA-03/ADM-03: inline form to issue an article-scoped grant for a subject. */
+@Composable
+private fun IssueGrantForm(
+    subjectId: String,
+    onIssue: (articleId: String, grantId: String, reason: String) -> Unit,
+    onCancel: () -> Unit,
+) {
+    var articleId by remember { mutableStateOf("") }
+    var grantId by remember { mutableStateOf("grant-${subjectId.takeLast(6)}-${(100..999).random()}") }
+    var reason by remember { mutableStateOf("") }
+
+    Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm)) {
+        CrmDivider()
+        CrmText("Issue grant", style = CrmTheme.typography.h3)
+        CrmTextField("Article ID", articleId, { articleId = it })
+        CrmTextField("Grant ID", grantId, { grantId = it })
+        CrmTextField("Reason (audit)", reason, { reason = it })
+        Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm)) {
+            CrmPrimaryButton(
+                "Issue",
+                onClick = { if (articleId.isNotBlank() && grantId.isNotBlank()) onIssue(articleId, grantId, reason) },
+            )
+            CrmSecondaryButton("Cancel", onClick = onCancel)
+        }
     }
 }

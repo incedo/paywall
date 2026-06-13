@@ -192,6 +192,12 @@ fun App() {
                     onInspect = { id -> api.inspectSubject(id) },
                     onGrants = { id -> api.subjectGrants(id) },
                     onMeterReset = { id -> api.resetMeter(id, "console", "manual reset via admin console") },
+                    onIssueGrant = { subjectId, articleId, grantId, reason ->
+                        api.issueGrant(subjectId, articleId, grantId, reason)
+                    },
+                    onRevokeGrant = { subjectId, grantId, articleId ->
+                        api.revokeGrant(subjectId, grantId, articleId)
+                    },
                     statusMessage = statusMessage,
                 )
                 is ConsoleScreen.Config -> ConfigScreen(

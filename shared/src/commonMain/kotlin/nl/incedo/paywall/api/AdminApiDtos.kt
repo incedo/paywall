@@ -110,3 +110,21 @@ data class UpdateBrandThemeRequest(
     val themeJson: String,
     val actor: String = "admin",
 )
+
+/**
+ * FGA-03/ADM-03: issue or revoke an article-scoped grant.
+ * active=true → issue; active=false → revoke.
+ * All writes audited by the backend with actor, timestamp, and reason (ADM-03).
+ */
+@Serializable
+data class GrantChangeRequest(
+    val grantId: String,
+    val subjectId: String,
+    val articleId: String,
+    /** FGA-01: source system (e.g. "day_pass", "ad_gated", "support"). */
+    val grantedBy: String = "support",
+    /** FGA-01: human-readable audit reason (e.g. "support ticket 4711"). */
+    val reason: String = "",
+    val expiresAtEpochMs: Long? = null,
+    val active: Boolean = true,
+)
