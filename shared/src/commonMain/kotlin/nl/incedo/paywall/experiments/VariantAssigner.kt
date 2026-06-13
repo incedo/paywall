@@ -9,12 +9,22 @@ import nl.incedo.paywall.access.StrategyConfig
 /**
  * Experiment definition (EX-02): variants with paywall strategy + traffic
  * weights. Stored as configuration, editable without deploy.
+ *
+ * [startDate]/[endDate] are epoch-ms bounds for the experiment window.
+ * Null means "no constraint" (starts immediately / no planned end).
+ * The config store or admin console is responsible for activating and
+ * expiring experiments; the access layer acts on whatever definition
+ * it receives.
  */
 @Serializable
 data class ExperimentDefinition(
     val id: ExperimentId,
     val name: String,
     val variants: List<Variant>,
+    /** EX-02: experiment start (epoch ms); null = starts immediately. */
+    val startDate: Long? = null,
+    /** EX-02: experiment end (epoch ms); null = no planned end. */
+    val endDate: Long? = null,
 ) {
     init {
         require(variants.isNotEmpty()) { "An experiment needs at least one variant" }
