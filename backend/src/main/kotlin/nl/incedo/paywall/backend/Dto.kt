@@ -150,6 +150,19 @@ data class EntitlementChangeRequest(
 )
 
 /**
+ * PAY-03/PAY-05: checkout initiation request. The backend creates a payment session
+ * via the [PaymentProvider] interface and returns the session ID + redirect URL.
+ * [offerId] is the upsell offer accepted at checkout (UP-10/UP-11, optional).
+ */
+@kotlinx.serialization.Serializable
+data class CheckoutRequest(
+    val subjectId: String,
+    val planId: String,
+    val channel: String = "web",
+    val offerId: String? = null,
+)
+
+/**
  * SUB-04: subscriber-initiated cancellation request. Access is retained until
  * [validUntilEpochMs] (the current billing period end, supplied by the provider;
  * null = revoke immediately). [channel] is forwarded to OfferService for DN-01.

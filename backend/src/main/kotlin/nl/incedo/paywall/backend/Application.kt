@@ -270,6 +270,8 @@ fun Application.module(
     offerService: OfferService? = null,
     /** NFR-04: request rate limiter; injectable for tests. */
     rateLimiter: RequestRateLimiter? = null,
+    /** PAY-05: payment provider for checkout; null = mock (tests/dev). */
+    paymentProvider: PaymentProvider = MockPaymentProvider(),
 ) {
     // UP-01: auto-construct the offer service from cepClient if not provided explicitly.
     // This keeps all test helpers that pass cepClient working without change.
@@ -981,6 +983,95 @@ fun Application.module(
                 if (retentionOfferId != null) put("retentionOfferId", retentionOfferId) // DN-01: informational
             }
             call.respond(HttpStatusCode.Accepted, responseBody)
+        }
+        // PAY-03/PAY-05: checkout initiation — creates a payment session via the
+        // PaymentProvider interface (MockPaymentProvider in experiment; swap for
+        // Stripe/Mollie/Adyen in production without touching this handler).
+        // UP-10/11: checkout trigger is forwarded to the CEP so it can return an
+        // upsell offer (annual / tier upgrade) if the offerId wasn't already chosen.
+        post("/api/v1/checkout") {
+            val req = call.receive<CheckoutRequest>()
+            if (req.subjectId.isBlank() || req.planId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId and planId are required"))
+                return@post
+            }
+            val subjectId = SubjectId(req.subjectId)
+            val checkoutSubject = if (req.subjectId.startsWith("user:")) {
+                Subject(VisitorId("_"), UserId(req.subjectId.removePrefix("user:")))
+            } else {
+                Subject(VisitorId(req.subjectId.removePrefix("visitor:")), null)
+            }
+            val nowMs = System.currentTimeMillis()
+            // UP-10/11: call decide_offer("checkout") so CEP can upsell at checkout.
+            if (offerService != null && req.offerId == null) {
+                val ctx = OfferService.TriggerContext(
+                    trigger = "checkout",
+                    channel = req.channel,
+                    currentPlanId = req.planId,
+                    variant = service.variantFor(checkoutSubject),
+                )
+                offerService.decideOffer(checkoutSubject, ctx) // result ignored; logged via OfferTriggered
+            }
+            // AN-02: log CHECKOUT_START for funnel analytics.
+            eventStore.append(
+                listOf(WallEventRecorded(
+                    eventType = WallEventType.CHECKOUT_START,
+                    subjectId = subjectId,
+                    variant = VariantAssigner.assign(checkoutSubject, service.currentExperiment()).name,
+                    channel = req.channel,
+                    occurredAtEpochMs = nowMs,
+                    context = buildMap {
+                        put("planId", req.planId)
+                        if (req.offerId != null) put("offerId", req.offerId)
+                    },
+                )),
+                condition = null,
+            )
+            val session = paymentProvider.createCheckoutSession(req.planId, req.subjectId)
+            call.respond(HttpStatusCode.Created, mapOf(
+                "sessionId" to session.sessionId,
+                "checkoutUrl" to session.checkoutUrl,
+            ))
+        }
+        // PAY-05 (mock): confirm a mock checkout session — used in the experiment to
+        // complete checkout without a real payment provider. A real provider would
+        // instead fire the entitlement webhook (POST /api/v1/integration/entitlements).
+        post("/api/v1/checkout/{sessionId}/confirm") {
+            val sessionId = call.parameters["sessionId"]?.takeIf { it.isNotBlank() } ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "sessionId is required"))
+                return@post
+            }
+            val mock = paymentProvider as? MockPaymentProvider ?: run {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "confirm endpoint only available with mock provider"))
+                return@post
+            }
+            val session = mock.consumeSession(sessionId) ?: run {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "session not found or already confirmed"))
+                return@post
+            }
+            val subjectId = SubjectId(session.subjectId)
+            val planId = PlanId(session.planId)
+            val nowMs = System.currentTimeMillis()
+            val defaultPeriodMs = 30L * 24 * 60 * 60 * 1000L
+            // Record the successful purchase: grant entitlement + log mail + checkout_complete event.
+            eventStore.append(
+                listOf(
+                    EntitlementGranted(subjectId, planId, SubscriptionId("checkout-$sessionId"),
+                        nowMs + defaultPeriodMs),
+                    MailSent(subjectId, "purchase_confirmation", nowMs, planId.value, null), // US-10
+                    WallEventRecorded(
+                        eventType = WallEventType.CHECKOUT_COMPLETE,
+                        subjectId = subjectId,
+                        variant = "unknown",
+                        channel = "web",
+                        occurredAtEpochMs = nowMs,
+                        context = mapOf("planId" to session.planId, "sessionId" to sessionId),
+                    ),
+                ),
+                condition = null,
+            )
+            service.invalidateEntitlementCache(session.subjectId)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "purchase_confirmed", "sessionId" to sessionId))
         }
         // Experiment dashboard numbers (AN-10/AN-11/AN-12): per-variant funnel stats,
         // rebuilt from the wall-event stream (projection — DM-04/DM-08).
