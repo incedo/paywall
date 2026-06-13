@@ -430,6 +430,25 @@ data class WallTemplateResponse(
     val createdBy: String,
 )
 
+/**
+ * BP-06: bypass-rate estimation response.
+ * DL-03: suspicious traffic is reported, not auto-blocked, in the experiment phase.
+ */
+@Serializable
+data class BypassRateResponse(
+    /** Total wall-shown events (gated render count) in the queried window. */
+    val gatedRenders: Int,
+    /** Gated renders that arrived with a bot or suspicious-IP marker. */
+    val markedGatedRenders: Int,
+    /** Flagged ARTICLE_READ events — possible successful bypasses. */
+    val flaggedReads: Int,
+    /** markedGatedRenders / gatedRenders; 0.0 when no gated renders observed. */
+    val bypassRate: Double,
+    /** Event store position at the time of the query — use as `since` for incremental polling. */
+    val storePosition: Long,
+    val note: String = "DL-03: reported only — not auto-blocked in experiment phase",
+)
+
 /** AN-21/US-07: GDPR account deletion request from the CIAM webhook. */
 @Serializable
 data class AccountDeletionRequest(
