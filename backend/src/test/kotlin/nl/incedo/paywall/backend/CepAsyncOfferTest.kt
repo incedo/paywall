@@ -130,4 +130,24 @@ class CepAsyncOfferTest {
             "UP-08: guardrail-rejected offer must return 422",
         )
     }
+
+    @Test
+    fun duplicatePushIsIdempotent() = apiTest { client ->
+        // Push the same offer twice — must store exactly one OfferTriggered.
+        repeat(2) {
+            val resp = client.post("/api/v1/integration/cep-offers") {
+                contentType(ContentType.Application.Json)
+                setBody(emailOffer.copy(offerId = "offer-api08-idem"))
+            }
+            assertEquals(HttpStatusCode.Accepted, resp.status, "API-08: idempotent push must return 202")
+        }
+        // Only one entry in pending — not two.
+        val pending = client.get("/api/v1/subjects/${emailOffer.subjectId}/offers/pending")
+            .body<List<PendingOfferResponse>>()
+        assertEquals(
+            1,
+            pending.count { it.offerId == "offer-api08-idem" },
+            "API-08: duplicate push must not store a second OfferTriggered",
+        )
+    }
 }
