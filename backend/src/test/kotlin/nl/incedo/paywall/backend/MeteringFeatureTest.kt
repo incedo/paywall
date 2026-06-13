@@ -15,6 +15,7 @@ import kotlin.test.assertTrue
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.analytics.wallEventShardTags
+import nl.incedo.paywall.api.MeterResetRequest
 import nl.incedo.paywall.core.VisitorId
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
 import nl.incedo.paywall.core.port.EventQuery

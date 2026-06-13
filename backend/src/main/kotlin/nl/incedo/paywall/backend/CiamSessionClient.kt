@@ -1,11 +1,11 @@
 package nl.incedo.paywall.backend
 
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
+import nl.incedo.paywall.api.CiamSession
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -21,14 +21,6 @@ import java.time.Instant
 interface CiamSessionClient {
     suspend fun activeSessions(userId: String): List<CiamSession>
 }
-
-@Serializable
-data class CiamSession(
-    val id: String,
-    val device: String? = null,
-    val ipAddress: String? = null,
-    val lastActiveAtEpochMs: Long? = null,
-)
 
 /** ADM-04: no CIAM configured — always returns empty session list. */
 class MockCiamSessionClient : CiamSessionClient {

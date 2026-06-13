@@ -22,6 +22,7 @@ import java.util.Base64
 import java.util.Date
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import nl.incedo.paywall.api.MeterResetRequest
 import nl.incedo.paywall.backend.auth.CiamJwtValidator
 import nl.incedo.paywall.backend.auth.OriginTrust
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
