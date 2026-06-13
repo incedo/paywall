@@ -25,6 +25,7 @@ import nl.incedo.paywall.api.SaveWallRequest
 import nl.incedo.paywall.api.VariantStatsResponse
 import nl.incedo.paywall.api.WallResponse
 import nl.incedo.paywall.designer.BrandsScreen
+import nl.incedo.paywall.designer.PartnersScreen
 import nl.incedo.paywall.designer.ConfigScreen
 import nl.incedo.paywall.designer.DashboardScreen
 import nl.incedo.paywall.designer.SubjectInspectorScreen
@@ -50,6 +51,7 @@ private sealed interface ConsoleScreen {
     data object Inspector : ConsoleScreen
     data object Config : ConsoleScreen
     data object Brands : ConsoleScreen
+    data object Partners : ConsoleScreen
     data object Templates : ConsoleScreen
     data class Designer(val wallId: String) : ConsoleScreen
 }
@@ -165,6 +167,7 @@ fun App() {
                     is ConsoleScreen.Inspector -> "Support"
                     is ConsoleScreen.Config -> "Config"
                     is ConsoleScreen.Brands -> "Brands"
+                    is ConsoleScreen.Partners -> "Partners"
                     is ConsoleScreen.Templates -> "Templates"
                     else -> "Walls"
                 },
@@ -174,6 +177,7 @@ fun App() {
                         "Support" -> ConsoleScreen.Inspector
                         "Config" -> ConsoleScreen.Config
                         "Brands" -> ConsoleScreen.Brands
+                        "Partners" -> ConsoleScreen.Partners
                         "Templates" -> ConsoleScreen.Templates
                         else -> ConsoleScreen.Overview
                     }
@@ -206,12 +210,22 @@ fun App() {
                 )
                 is ConsoleScreen.Config -> ConfigScreen(
                     onLoadConfig = { api.getConfig() },
+                    onPublishConfig = { exp -> api.publishConfig(exp) },
                     statusMessage = statusMessage,
                 )
                 is ConsoleScreen.Brands -> BrandsScreen(
                     onLoadBrands = { api.brands() },
                     onCreateBrand = { req -> api.createBrand(req) },
                     onUpdateTheme = { id, theme -> api.updateBrandTheme(id, theme) },
+                    statusMessage = statusMessage,
+                )
+                is ConsoleScreen.Partners -> PartnersScreen(
+                    onLoadPartners = { api.partners() },
+                    onCreatePartner = { req -> api.createPartner(req) },
+                    onAddMember = { partnerId, subjectId -> api.addPartnerMember(partnerId, subjectId) },
+                    onRemoveMember = { partnerId, subjectId -> api.removePartnerMember(partnerId, subjectId) },
+                    onAddIpRange = { partnerId, cidr -> api.addPartnerIpRange(partnerId, cidr) },
+                    onOffboard = { partnerId -> api.offboardPartner(partnerId) },
                     statusMessage = statusMessage,
                 )
                 is ConsoleScreen.Templates -> TemplatesScreen(
@@ -318,7 +332,7 @@ private fun AdminTopBar(activeItem: String, onNavigate: (String) -> Unit) {
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg),
         ) {
-            listOf("Dashboard", "Walls", "Brands", "Templates", "Support", "Config").forEach { item ->
+            listOf("Dashboard", "Walls", "Brands", "Partners", "Templates", "Support", "Config").forEach { item ->
                 CrmTextButton(item, onClick = { onNavigate(item) })
             }
             listOf("Contacts", "Deals", "Invoices", "Subscriptions", "Tickets").forEach { item ->

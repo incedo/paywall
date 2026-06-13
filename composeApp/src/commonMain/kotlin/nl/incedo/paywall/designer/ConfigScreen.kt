@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -14,14 +15,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import nl.incedo.paywall.api.ExperimentConfigResponse
 import nl.incedo.paywall.experiments.ExperimentDefinition
+import nl.incedo.paywall.experiments.Variant
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
 import nl.incedo.paywall.ui.CrmDivider
+import nl.incedo.paywall.ui.CrmPrimaryButton
 import nl.incedo.paywall.ui.CrmText
+import nl.incedo.paywall.ui.CrmTextField
 
 /**
  * ADM-02: experiment configuration view — shows the current published experiment
@@ -35,18 +41,24 @@ import nl.incedo.paywall.ui.CrmText
 @Composable
 fun ConfigScreen(
     onLoadConfig: suspend () -> ExperimentConfigResponse?,
+    onPublishConfig: suspend (ExperimentDefinition) -> Boolean,
     statusMessage: String?,
 ) {
     val scope = rememberCoroutineScope()
     var config by remember { mutableStateOf<ExperimentConfigResponse?>(null) }
     var status by remember { mutableStateOf(statusMessage ?: "Loading config…") }
+    // Editable weight fields: variantName → weight string
+    var editWeights by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
     LaunchedEffect(Unit) {
         config = runCatching { onLoadConfig() }.getOrElse {
             status = "Backend unreachable — cannot load config"
             null
         }
-        if (config != null) status = if (config!!.isDefault) "Showing default config (no override published)" else "Config loaded"
+        if (config != null) {
+            status = if (config!!.isDefault) "Showing default config (no override published)" else "Config loaded"
+            editWeights = config!!.experiment.variants.associate { it.name to it.weight.toString() }
+        }
     }
 
     Column(
@@ -90,7 +102,7 @@ fun ConfigScreen(
                 }
             }
 
-            // ── variants ──────────────────────────────────────────────────────
+            // ── variants + traffic-weight editor (ADM-02: audited publish) ──────
             CrmCard {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.lg),
@@ -126,6 +138,47 @@ fun ConfigScreen(
                             }
                         }
                         CrmDivider()
+                    }
+                }
+            }
+
+            // ── publish: edit traffic weights + audited publish (ADM-02) ─────────
+            CrmCard {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
+                ) {
+                    CrmText("Publish variant weights (ADM-02)", style = CrmTheme.typography.h3)
+                    CrmText(
+                        "Adjust traffic splits and publish. All other variant parameters are preserved. Writes are versioned and audited.",
+                        style = CrmTheme.typography.caption,
+                        color = CrmTheme.colors.onSurfaceVariant,
+                    )
+                    CrmDivider()
+                    exp.variants.forEach { v ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CrmText(v.name, style = CrmTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            CrmTextField(
+                                "weight",
+                                editWeights[v.name] ?: v.weight.toString(),
+                                { editWeights = editWeights + (v.name to it) },
+                                modifier = Modifier.width(80.dp),
+                            )
+                        }
+                    }
+                    CrmPrimaryButton("Publish config") {
+                        val newVariants: List<Variant> = exp.variants.map { v ->
+                            v.copy(weight = editWeights[v.name]?.toIntOrNull()?.coerceAtLeast(1) ?: v.weight)
+                        }
+                        val newExperiment = exp.copy(variants = newVariants)
+                        scope.launch {
+                            val ok = onPublishConfig(newExperiment)
+                            status = if (ok) "Config published (ADM-02)" else "Publish failed"
+                        }
                     }
                 }
             }
