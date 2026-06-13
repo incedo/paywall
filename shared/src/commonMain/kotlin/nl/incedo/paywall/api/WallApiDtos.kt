@@ -28,6 +28,10 @@ data class SaveWallRequest(
      * PAY-* (payment consent). Configured in the wall editor (ADM-11).
      */
     val requireConsentStep: Boolean = false,
+    /** ADM-11: optional image URL shown in the gate (empty = no image block). */
+    val imageUrl: String = "",
+    /** ADM-11: optional legal/disclaimer text rendered below CTAs (empty = no block). */
+    val legalText: String = "",
     /**
      * ADM-15: per-locale copy overrides. Keys are BCP-47 locale tags (e.g. "nl-NL").
      * Only the fields that differ from the default copy need to be provided.
@@ -52,6 +56,10 @@ data class WallResponse(
     val brandId: String? = null,
     /** AC-14: whether this wall design requires a consent step before the gate. */
     val requireConsentStep: Boolean = false,
+    /** ADM-11: optional image URL shown in the gate (empty = no image block). */
+    val imageUrl: String = "",
+    /** ADM-11: optional legal/disclaimer text rendered below CTAs (empty = no block). */
+    val legalText: String = "",
     /** ADM-15: per-locale copy overrides stored with this wall design. */
     val translations: Map<String, WallCopy> = emptyMap(),
 )
@@ -82,6 +90,8 @@ data class WallTemplateRequest(
     val primaryCta: String,
     val secondaryCta: String,
     val channels: Set<String> = setOf("web"),
+    val imageUrl: String = "",
+    val legalText: String = "",
     val translations: Map<String, nl.incedo.paywall.walls.WallCopy> = emptyMap(),
 )
 
@@ -96,6 +106,8 @@ data class WallTemplateResponse(
     val primaryCta: String,
     val secondaryCta: String,
     val channels: Set<String>,
+    val imageUrl: String = "",
+    val legalText: String = "",
     val translations: Map<String, nl.incedo.paywall.walls.WallCopy>,
     val createdBy: String,
 )
