@@ -16,6 +16,8 @@ import nl.incedo.paywall.core.UserId
 /**
  * Validates CIAM-issued JWTs against Hydra's JWKS endpoint (TS-04, NFR-20..24).
  *
+ * - NFR-20: checks signature (RSA256), iss, aud (when configured), exp/nbf with
+ *   60 s clock-skew leeway, and rejects none/HS* algorithms implicitly by requiring RSA.
  * - AC-07: logged-in identity is established exclusively from a valid token;
  *   a missing, malformed, expired or unverifiable token yields `null` —
  *   the request degrades to anonymous, never to an error.
@@ -27,15 +29,18 @@ import nl.incedo.paywall.core.UserId
 class CiamJwtValidator(
     private val jwkProvider: JwkProvider,
     private val issuer: String,
+    /** NFR-20: expected audience value; null = audience check skipped (dev/test mode). */
+    private val audience: String? = null,
 ) {
     companion object {
         /** Production wiring: JWKS via Hydra's public endpoint, keys cached (NFR-23). */
-        fun fromJwksUrl(jwksUrl: String, issuer: String) = CiamJwtValidator(
+        fun fromJwksUrl(jwksUrl: String, issuer: String, audience: String? = null) = CiamJwtValidator(
             jwkProvider = JwkProviderBuilder(URL(jwksUrl))
                 .cached(10, 24, TimeUnit.HOURS)
                 .rateLimited(10, 1, TimeUnit.MINUTES)
                 .build(),
             issuer = issuer,
+            audience = audience,
         )
     }
 
@@ -81,10 +86,13 @@ class CiamJwtValidator(
         return try {
             val keyId = JWT.decode(token).keyId ?: return null to "missing_kid"
             val publicKey = jwkProvider.get(keyId).publicKey as? RSAPublicKey ?: return null to "unknown_key"
-            JWT.require(Algorithm.RSA256(publicKey, null))
+            // NFR-20: validate signature, iss, aud (when configured), exp/nbf with 60 s clock-skew leeway.
+            val verifier = JWT.require(Algorithm.RSA256(publicKey, null))
                 .withIssuer(issuer)
+                .acceptLeeway(60) // NFR-20: ≤ 60 s clock skew tolerated
+                .let { if (audience != null) it.withAudience(audience) else it }
                 .build()
-                .verify(token) to null
+            verifier.verify(token) to null
         } catch (_: TokenExpiredException) {
             null to "expired"
         } catch (_: SignatureVerificationException) {

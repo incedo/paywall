@@ -190,7 +190,8 @@ class CiamAuthTest {
 
     @Test
     fun expiredTokenDegradesToAnonymous() = apiTest { client, _ ->
-        val expired = token(expiresAt = Date(System.currentTimeMillis() - 1_000))
+        // NFR-20: 60 s leeway tolerated, so expire by > 60 s to guarantee rejection.
+        val expired = token(expiresAt = Date(System.currentTimeMillis() - 65_000))
         val body = decide(client, visitorIn("hard"), bearer = expired)
         assertEquals("gate", body.access)
     }
@@ -206,6 +207,78 @@ class CiamAuthTest {
     fun garbageTokenDegradesToAnonymous() = apiTest { client, _ ->
         val body = decide(client, visitorIn("hard"), bearer = "not-a-jwt-at-all")
         assertEquals("gate", body.access)
+    }
+
+    // ── NFR-20: audience claim validation ────────────────────────────────────
+
+    @Test
+    fun tokenWithCorrectAudienceAccepted() {
+        // NFR-20: when a CIAM_AUDIENCE is configured, tokens with that audience are valid.
+        val pub = keyPair.public as RSAPublicKey
+        val b64 = Base64.getUrlEncoder().withoutPadding()
+        val jwkValues = mapOf(
+            "kty" to "RSA", "kid" to kid, "use" to "sig", "alg" to "RS256",
+            "n" to b64.encodeToString(pub.modulus.toByteArray().let { if (it[0] == 0.toByte()) it.copyOfRange(1, it.size) else it }),
+            "e" to b64.encodeToString(pub.publicExponent.toByteArray()),
+        )
+        val provider = com.auth0.jwk.JwkProvider { keyId ->
+            if (keyId == kid) com.auth0.jwk.Jwk.fromValues(jwkValues) else throw com.auth0.jwk.SigningKeyNotFoundException(keyId, null)
+        }
+        val audValidator = nl.incedo.paywall.backend.auth.CiamJwtValidator(provider, issuer, audience = "paywall")
+        val tokenWithAud = JWT.create()
+            .withKeyId(kid).withIssuer(issuer).withSubject("u1")
+            .withAudience("paywall")
+            .withExpiresAt(java.util.Date(System.currentTimeMillis() + 60_000))
+            .sign(Algorithm.RSA256(null, keyPair.private as java.security.interfaces.RSAPrivateKey))
+        val userId = audValidator.userIdFrom("Bearer $tokenWithAud")
+        assertEquals(nl.incedo.paywall.core.UserId("u1"), userId,
+            "NFR-20: token with matching audience must be accepted")
+    }
+
+    @Test
+    fun tokenWithWrongAudienceRejected() {
+        // NFR-20: token claiming wrong audience must be rejected even if signature is valid.
+        val pub = keyPair.public as RSAPublicKey
+        val b64 = Base64.getUrlEncoder().withoutPadding()
+        val jwkValues = mapOf(
+            "kty" to "RSA", "kid" to kid, "use" to "sig", "alg" to "RS256",
+            "n" to b64.encodeToString(pub.modulus.toByteArray().let { if (it[0] == 0.toByte()) it.copyOfRange(1, it.size) else it }),
+            "e" to b64.encodeToString(pub.publicExponent.toByteArray()),
+        )
+        val provider = com.auth0.jwk.JwkProvider { keyId ->
+            if (keyId == kid) com.auth0.jwk.Jwk.fromValues(jwkValues) else throw com.auth0.jwk.SigningKeyNotFoundException(keyId, null)
+        }
+        val audValidator = nl.incedo.paywall.backend.auth.CiamJwtValidator(provider, issuer, audience = "paywall")
+        val tokenWrongAud = JWT.create()
+            .withKeyId(kid).withIssuer(issuer).withSubject("u1")
+            .withAudience("other-app") // wrong audience
+            .withExpiresAt(java.util.Date(System.currentTimeMillis() + 60_000))
+            .sign(Algorithm.RSA256(null, keyPair.private as java.security.interfaces.RSAPrivateKey))
+        val userId = audValidator.userIdFrom("Bearer $tokenWrongAud")
+        assertEquals(null, userId, "NFR-20: token with wrong audience must be rejected")
+    }
+
+    @Test
+    fun tokenWithNoAudienceRejectedWhenAudienceConfigured() {
+        // NFR-20: when CIAM_AUDIENCE is set, tokens without aud claim are rejected.
+        val pub = keyPair.public as RSAPublicKey
+        val b64 = Base64.getUrlEncoder().withoutPadding()
+        val jwkValues = mapOf(
+            "kty" to "RSA", "kid" to kid, "use" to "sig", "alg" to "RS256",
+            "n" to b64.encodeToString(pub.modulus.toByteArray().let { if (it[0] == 0.toByte()) it.copyOfRange(1, it.size) else it }),
+            "e" to b64.encodeToString(pub.publicExponent.toByteArray()),
+        )
+        val provider = com.auth0.jwk.JwkProvider { keyId ->
+            if (keyId == kid) com.auth0.jwk.Jwk.fromValues(jwkValues) else throw com.auth0.jwk.SigningKeyNotFoundException(keyId, null)
+        }
+        val audValidator = nl.incedo.paywall.backend.auth.CiamJwtValidator(provider, issuer, audience = "paywall")
+        val tokenNoAud = JWT.create()
+            .withKeyId(kid).withIssuer(issuer).withSubject("u1")
+            // no withAudience() call
+            .withExpiresAt(java.util.Date(System.currentTimeMillis() + 60_000))
+            .sign(Algorithm.RSA256(null, keyPair.private as java.security.interfaces.RSAPrivateKey))
+        val userId = audValidator.userIdFrom("Bearer $tokenNoAud")
+        assertEquals(null, userId, "NFR-20: token without aud must be rejected when audience is configured")
     }
 
     @Test

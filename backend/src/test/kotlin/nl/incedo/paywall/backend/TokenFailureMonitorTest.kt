@@ -80,7 +80,8 @@ class TokenFailureMonitorTest {
 
     @Test
     fun expiredTokenReturnsExpiredReason() {
-        val expired = token(expiresAt = Date(System.currentTimeMillis() - 1_000))
+        // NFR-20 allows ≤ 60 s clock-skew leeway, so the token must be expired by > 60 s.
+        val expired = token(expiresAt = Date(System.currentTimeMillis() - 65_000))
         val (_, reason) = validator.verifyWithReason("Bearer $expired")
         assertEquals("expired", reason, "NFR-24: expired token must yield reason=expired")
     }
