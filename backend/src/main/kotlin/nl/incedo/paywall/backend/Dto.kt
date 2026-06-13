@@ -150,6 +150,20 @@ data class EntitlementChangeRequest(
 )
 
 /**
+ * SUB-04: subscriber-initiated cancellation request. Access is retained until
+ * [validUntilEpochMs] (the current billing period end, supplied by the provider;
+ * null = revoke immediately). [channel] is forwarded to OfferService for DN-01.
+ */
+@kotlinx.serialization.Serializable
+data class CancelSubscriptionRequest(
+    val subjectId: String,
+    val planId: String? = null,
+    /** Current billing period end — access retained until this time (SUB-03). Null = immediate. */
+    val validUntilEpochMs: Long? = null,
+    val channel: String = "web",
+)
+
+/**
  * SUB-06: optional cancel-flow survey payload. Both fields may be null when
  * the subscriber skips the survey (still logs the skip for funnel completeness).
  * [reason] is one of: too_expensive, not_enough_content, technical_issues,

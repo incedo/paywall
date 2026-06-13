@@ -930,6 +930,58 @@ fun Application.module(
             )
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "CancellationSurveySubmitted"))
         }
+        // SUB-04: self-service cancellation — at most 2 clicks from account page (NL/EU legal requirement).
+        // DN-01: decide_offer(cancel_intent) is called first so the CEP can return a retention offer;
+        // the offer is included in the response but never blocks the cancellation (DN-02).
+        // Access is retained until current period end (SUB-03); validUntilEpochMs must be supplied
+        // by the client (obtained from the payment provider or the existing grant's validUntilEpochMs).
+        post("/api/v1/subscriptions/{ref}/cancel") {
+            val ref = call.parameters["ref"]?.takeIf { it.isNotBlank() } ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subscription ref is required"))
+                return@post
+            }
+            val req = call.receive<CancelSubscriptionRequest>()
+            if (req.subjectId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId is required"))
+                return@post
+            }
+            val subjectId = SubjectId(req.subjectId)
+            val subscriptionRef = SubscriptionId(ref)
+            val planId = PlanId(req.planId ?: "unknown")
+            val nowMs = System.currentTimeMillis()
+            // DN-01: call decide_offer(cancel_intent) — CEP may return a retention offer to present.
+            val retentionOfferId: String? = if (offerService != null) {
+                val cancelSubject = if (req.subjectId.startsWith("user:")) {
+                    Subject(VisitorId("_"), UserId(req.subjectId.removePrefix("user:")))
+                } else {
+                    Subject(VisitorId(req.subjectId.removePrefix("visitor:")), null)
+                }
+                val ctx = OfferService.TriggerContext(
+                    trigger = "cancel_intent",
+                    channel = req.channel,
+                    currentPlanId = req.planId,
+                    variant = service.variantFor(cancelSubject),
+                )
+                val decision = offerService.decideOffer(cancelSubject, ctx)
+                (decision as? OfferService.OfferDecision.Triggered)?.offer?.offerId
+            } else null
+            // SUB-04/SUB-03: record cancellation — access retained until current period end.
+            val canceledUntilMs = req.validUntilEpochMs ?: nowMs
+            eventStore.append(
+                listOf(
+                    EntitlementGranted(subjectId, planId, subscriptionRef, canceledUntilMs),
+                    MailSent(subjectId, "cancellation_confirmation", nowMs, planId.value, ref), // US-10
+                ),
+                condition = null,
+            )
+            service.invalidateEntitlementCache(req.subjectId)
+            val responseBody = buildMap<String, String> {
+                put("recorded", "canceled")
+                put("canceledUntilEpochMs", canceledUntilMs.toString())
+                if (retentionOfferId != null) put("retentionOfferId", retentionOfferId) // DN-01: informational
+            }
+            call.respond(HttpStatusCode.Accepted, responseBody)
+        }
         // Experiment dashboard numbers (AN-10/AN-11/AN-12): per-variant funnel stats,
         // rebuilt from the wall-event stream (projection — DM-04/DM-08).
         // AN-11: reach cost = delta in page views and article reads vs. the EX-04
