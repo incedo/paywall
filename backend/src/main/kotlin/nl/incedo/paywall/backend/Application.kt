@@ -40,6 +40,7 @@ import nl.incedo.paywall.backend.auth.OriginTrust
 import nl.incedo.paywall.backend.auth.StaffRole
 import nl.incedo.paywall.backend.auth.requireStaff
 import nl.incedo.paywall.backend.content.ArticleRepository
+import nl.incedo.paywall.cep.CepClient
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.core.ArticleId
@@ -186,8 +187,22 @@ fun main() {
         ?: java.util.UUID.randomUUID().toString()
     val shareTokenService = ShareTokenService(eventStore, shareSecret)
 
+    // NFR-03: webhook secret for provider signature verification; absent in dev.
+    val webhookSecret = System.getenv("WEBHOOK_SECRET")
+    val webhookVerifier = WebhookVerifier(webhookSecret)
+
+    // API-07: mock CEP client for the experiment; replace with real HTTP client in production.
+    val cepClient = nl.incedo.paywall.cep.MockCepClient()
+
     embeddedServer(CIO, port = 8080) {
-        module(service, eventStore, jwtValidator, originSecret = originSecret, configStore = configStore, shareTokenService = shareTokenService)
+        module(
+            service, eventStore, jwtValidator,
+            originSecret = originSecret,
+            configStore = configStore,
+            shareTokenService = shareTokenService,
+            webhookVerifier = webhookVerifier,
+            cepClient = cepClient,
+        )
     }.start(wait = true)
 }
 
@@ -203,6 +218,10 @@ fun Application.module(
     configStore: ConfigStore? = null,
     /** BP-05: subscriber-generated signed share tokens; null = feature disabled (tests). */
     shareTokenService: ShareTokenService? = null,
+    /** NFR-03: webhook signature verifier; null secret = accept all (dev). */
+    webhookVerifier: WebhookVerifier = WebhookVerifier(null),
+    /** API-07: CEP outbound client; null = no offer engine in tests. */
+    cepClient: nl.incedo.paywall.cep.CepClient? = null,
 ) {
     val originTrust = OriginTrust(originSecret)
     install(ContentNegotiation) {
@@ -589,7 +608,13 @@ fun Application.module(
         // external subscription administration. The paywall enforces; it
         // never manages subscriptions (scope boundary).
         post("/api/v1/integration/entitlements") {
-            val change = call.receive<EntitlementChangeRequest>()
+            // NFR-03: verify provider webhook signature before deserializing (prevents replay/forgery).
+            val rawBody = call.receive<ByteArray>()
+            if (!webhookVerifier.verify(rawBody, call.request.headers[WebhookVerifier.SIGNATURE_HEADER])) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "invalid webhook signature (NFR-03)"))
+                return@post
+            }
+            val change = kotlinx.serialization.json.Json.decodeFromString<EntitlementChangeRequest>(rawBody.decodeToString())
             if (change.subjectId.isBlank() || change.subscriptionRef.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId and subscriptionRef are required"))
                 return@post
@@ -740,7 +765,12 @@ fun Application.module(
         // The user's wall-event history remains but is no longer linkable to a real
         // identity. Caller is the CIAM webhook after account deletion in Kratos.
         post("/api/v1/integration/account-deletion") {
-            val request = call.receive<AccountDeletionRequest>()
+            val rawBody = call.receive<ByteArray>()
+            if (!webhookVerifier.verify(rawBody, call.request.headers[WebhookVerifier.SIGNATURE_HEADER])) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "invalid webhook signature (NFR-03)"))
+                return@post
+            }
+            val request = kotlinx.serialization.json.Json.decodeFromString<AccountDeletionRequest>(rawBody.decodeToString())
             if (request.userId.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "userId is required"))
                 return@post
@@ -762,6 +792,26 @@ fun Application.module(
             }
             eventStore.append(deletionEvents, condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to deletionEvents.size, "linksRevoked" to linked.size))
+        }
+        // API-07: outbound CEP offer request — resolves what offer (if any) to show a subject.
+        // The mock CEP returns a fixed configurable offer; replace with a real HTTP client in prod.
+        post("/api/v1/offers/request") {
+            if (cepClient == null) {
+                call.respond(OfferResponse(offerId = null, kind = null))
+                return@post
+            }
+            val request = call.receive<DecideRequest>()
+            val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
+            val subject = Subject(VisitorId(request.visitorId), userId)
+            val trigger = call.request.queryParameters["trigger"] ?: "gate_shown"
+            val offer = cepClient.requestOffer(subject, trigger)
+            call.respond(OfferResponse(
+                offerId = offer?.offerId,
+                kind = offer?.kind,
+                discountPercent = offer?.discountPercent,
+                validForSeconds = offer?.validForSeconds,
+                cta = offer?.cta,
+            ))
         }
         // BP-05: subscriber-generated signed share tokens that redeem into FGA grants.
         // POST /api/v1/articles/{id}/share — authenticated subscriber issues a token (≤5/month).

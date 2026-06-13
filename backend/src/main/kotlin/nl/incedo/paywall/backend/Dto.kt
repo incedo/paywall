@@ -184,6 +184,19 @@ data class RedeemShareTokenRequest(
     val token: String,
 )
 
+/**
+ * API-07: response from POST /api/v1/offers/request — the outbound CEP call result.
+ * Returns null offer when the CEP decides no offer applies.
+ */
+@Serializable
+data class OfferResponse(
+    val offerId: String?,
+    val kind: String?,
+    val discountPercent: Int? = null,
+    val validForSeconds: Long? = null,
+    val cta: String? = null,
+)
+
 /** PA-01: partner creation request. */
 @Serializable
 data class CreatePartnerRequest(
