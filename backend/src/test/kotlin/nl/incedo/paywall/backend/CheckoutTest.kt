@@ -13,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -150,6 +151,88 @@ class CheckoutTest {
         }.body<JsonObject>()
         assertEquals(null, checkoutBody["returnUrl"]?.jsonPrimitive?.contentOrNull,
             "AC-12: checkout response must omit returnUrl when none was supplied")
+    }
+
+    // ── PAY-06: iDEAL + credit card payment method selection ─────────────────────────
+
+    @Test
+    fun availablePaymentMethodsIncludedInCheckoutResponse() = apiTest { client, _ ->
+        val vis = hardVariantVisitor("methods")
+        val body = client.post("/api/v1/checkout") {
+            contentType(ContentType.Application.Json)
+            setBody(CheckoutRequest(subjectId = "visitor:$vis", planId = "pro"))
+        }.body<JsonObject>()
+        val methods = body["availablePaymentMethods"]
+        assertNotNull(methods, "PAY-06: checkout response must include availablePaymentMethods")
+        val methodList = (methods as JsonArray).map {
+            it.jsonPrimitive.content
+        }
+        assertTrue("ideal" in methodList, "PAY-06: iDEAL must be in available methods (Dutch market)")
+        assertTrue("credit_card" in methodList, "PAY-06: credit_card must be in available methods")
+    }
+
+    @Test
+    fun selectedPaymentMethodRoundTripsToConfirm() = apiTest { client, _ ->
+        val vis = hardVariantVisitor("ideal")
+        val checkoutBody = client.post("/api/v1/checkout") {
+            contentType(ContentType.Application.Json)
+            setBody(CheckoutRequest(subjectId = "visitor:$vis", planId = "basic", paymentMethod = "ideal"))
+        }.body<JsonObject>()
+        assertEquals("ideal", checkoutBody["paymentMethod"]?.jsonPrimitive?.contentOrNull,
+            "PAY-06: selected paymentMethod must be echoed in checkout response")
+        val sessionId = checkoutBody["sessionId"]!!.jsonPrimitive.content
+        val confirmBody = client.post("/api/v1/checkout/$sessionId/confirm") {
+            contentType(ContentType.Application.Json)
+        }.body<JsonObject>()
+        assertEquals("ideal", confirmBody["paymentMethod"]?.jsonPrimitive?.contentOrNull,
+            "PAY-06: paymentMethod must survive to confirm response")
+    }
+
+    // ── PAY-07: failed payment retry path ────────────────────────────────────────────
+
+    @Test
+    fun simulatedFailureReturns402WithRetryInfo() = apiTest { client, store ->
+        val vis = hardVariantVisitor("fail")
+        val sessionId = client.post("/api/v1/checkout") {
+            contentType(ContentType.Application.Json)
+            setBody(CheckoutRequest(subjectId = "visitor:$vis", planId = "pro"))
+        }.body<JsonObject>()["sessionId"]!!.jsonPrimitive.content
+
+        val failResp = client.post("/api/v1/checkout/$sessionId/confirm?simulate_failure=true") {
+            contentType(ContentType.Application.Json)
+        }
+        assertEquals(HttpStatusCode.PaymentRequired, failResp.status,
+            "PAY-07: simulated failure must return 402 Payment Required")
+        val body = failResp.body<JsonObject>()
+        assertEquals("payment_declined", body["error"]?.jsonPrimitive?.contentOrNull,
+            "PAY-07: error field must be payment_declined")
+        assertEquals(true, body["retryAllowed"]?.jsonPrimitive?.content?.toBoolean(),
+            "PAY-07: retryAllowed must be true so client knows it can retry")
+        assertNotNull(body["retryUrl"], "PAY-07: retryUrl must be present for the retry path")
+    }
+
+    @Test
+    fun sessionSurvivesFailureAndCanBeRetried() = apiTest { client, store ->
+        val vis = hardVariantVisitor("retry")
+        val sessionId = client.post("/api/v1/checkout") {
+            contentType(ContentType.Application.Json)
+            setBody(CheckoutRequest(subjectId = "visitor:$vis", planId = "basic"))
+        }.body<JsonObject>()["sessionId"]!!.jsonPrimitive.content
+
+        // Simulate failure — session must still be alive.
+        client.post("/api/v1/checkout/$sessionId/confirm?simulate_failure=true") {
+            contentType(ContentType.Application.Json)
+        }
+        // Retry with the same sessionId — must succeed (PAY-07: no data re-entry).
+        val retryResp = client.post("/api/v1/checkout/$sessionId/confirm") {
+            contentType(ContentType.Application.Json)
+        }
+        assertEquals(HttpStatusCode.Accepted, retryResp.status,
+            "PAY-07: retry after simulated failure must complete the purchase (same sessionId, no data loss)")
+        // Entitlement must be granted on the successful retry.
+        val grants = store.query(EventQuery(setOf("subject:visitor:$vis"))).events
+            .filterIsInstance<EntitlementGranted>()
+        assertEquals(1, grants.size, "PAY-07: exactly one EntitlementGranted after successful retry")
     }
 
     @Test
