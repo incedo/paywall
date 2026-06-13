@@ -8,7 +8,12 @@ import java.util.concurrent.ConcurrentHashMap
  */
 interface PaymentProvider {
     /** Initiates a checkout session and returns the session ID and redirect URL. */
-    suspend fun createCheckoutSession(planId: String, subjectId: String): PaymentSession
+    suspend fun createCheckoutSession(
+        planId: String,
+        subjectId: String,
+        /** AC-12: article URL to return to after payment completes. */
+        returnUrl: String? = null,
+    ): PaymentSession
 }
 
 data class PaymentSession(val sessionId: String, val checkoutUrl: String)
@@ -20,13 +25,13 @@ data class PaymentSession(val sessionId: String, val checkoutUrl: String)
  */
 class MockPaymentProvider : PaymentProvider {
 
-    data class PendingSession(val planId: String, val subjectId: String)
+    data class PendingSession(val planId: String, val subjectId: String, val returnUrl: String? = null)
 
     private val sessions = ConcurrentHashMap<String, PendingSession>()
 
-    override suspend fun createCheckoutSession(planId: String, subjectId: String): PaymentSession {
+    override suspend fun createCheckoutSession(planId: String, subjectId: String, returnUrl: String?): PaymentSession {
         val sessionId = "mock-${java.util.UUID.randomUUID()}"
-        sessions[sessionId] = PendingSession(planId, subjectId)
+        sessions[sessionId] = PendingSession(planId, subjectId, returnUrl)
         return PaymentSession(sessionId, "/checkout/mock/$sessionId")
     }
 

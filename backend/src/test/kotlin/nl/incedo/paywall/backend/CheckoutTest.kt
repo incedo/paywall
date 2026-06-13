@@ -120,6 +120,39 @@ class CheckoutTest {
     }
 
     @Test
+    fun returnUrlRoundTripsFromCheckoutToConfirm() = apiTest { client, _ ->
+        // AC-12: returnUrl supplied at checkout must survive through to the confirm response
+        // so the frontend can navigate the subscriber back to the gated article after payment.
+        val vis = hardVariantVisitor("returnurl")
+        val articleUrl = "https://example.com/articles/premium-story-42"
+        val checkoutBody = client.post("/api/v1/checkout") {
+            contentType(ContentType.Application.Json)
+            setBody(CheckoutRequest(subjectId = "visitor:$vis", planId = "basic-monthly", returnUrl = articleUrl))
+        }.body<JsonObject>()
+        assertEquals(articleUrl, checkoutBody["returnUrl"]?.jsonPrimitive?.contentOrNull,
+            "AC-12: checkout response must echo back returnUrl")
+
+        val sessionId = checkoutBody["sessionId"]!!.jsonPrimitive.content
+        val confirmBody = client.post("/api/v1/checkout/$sessionId/confirm") {
+            contentType(ContentType.Application.Json)
+        }.body<JsonObject>()
+        assertEquals(articleUrl, confirmBody["returnUrl"]?.jsonPrimitive?.contentOrNull,
+            "AC-12: confirm response must include returnUrl so frontend can redirect to gated article")
+    }
+
+    @Test
+    fun checkoutWithoutReturnUrlOmitsReturnUrlFromResponse() = apiTest { client, _ ->
+        // AC-12: when no returnUrl is provided, responses must not include the field at all.
+        val vis = hardVariantVisitor("noreturnurl")
+        val checkoutBody = client.post("/api/v1/checkout") {
+            contentType(ContentType.Application.Json)
+            setBody(CheckoutRequest(subjectId = "visitor:$vis", planId = "basic-monthly"))
+        }.body<JsonObject>()
+        assertEquals(null, checkoutBody["returnUrl"]?.jsonPrimitive?.contentOrNull,
+            "AC-12: checkout response must omit returnUrl when none was supplied")
+    }
+
+    @Test
     fun checkoutCompletedSubscriberGetsFullAccess() = apiTest { client, store ->
         val vis = hardVariantVisitor("access")
         val sessionId = client.post("/api/v1/checkout") {
