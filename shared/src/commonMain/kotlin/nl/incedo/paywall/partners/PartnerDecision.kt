@@ -16,6 +16,9 @@ class PartnerDecision {
         private set
     var planId: String = "complete"
         private set
+    /** PA-03: false after PartnerOffboarded — all member access is revoked. */
+    var isActive: Boolean = false
+        private set
 
     private val activeMembers = mutableSetOf<SubjectId>()
     private val ipRanges = mutableMapOf<String, Boolean>() // cidr → active
@@ -26,9 +29,11 @@ class PartnerDecision {
                 name = event.name
                 maxSeats = event.maxSeats
                 planId = event.planId
+                isActive = true
             }
             is PartnerMemberAdded -> activeMembers.add(event.subjectId)
             is PartnerMemberRemoved -> activeMembers.remove(event.subjectId)
+            is PartnerOffboarded -> isActive = false // PA-03: revoke all member access
             is PartnerIpRangeConfigured -> ipRanges[event.cidr] = event.active
             else -> Unit
         }

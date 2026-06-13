@@ -45,6 +45,19 @@ data class PartnerMemberRemoved(
 ) : DomainEvent
 
 /**
+ * PA-03: partner offboarded — transitively revokes all member access immediately.
+ * The partner's "subscription tuple" (active FGA relation) is invalidated; members
+ * no longer gain access via the partner identity (≤ AC-03 cache window).
+ */
+@Serializable
+data class PartnerOffboarded(
+    val partnerId: PartnerId,
+    val offboardedBy: String,
+    val offboardedAtEpochMs: Long,
+    override val tags: Set<String> = setOf(partnerTag(partnerId)),
+) : DomainEvent
+
+/**
  * IPW-01: partner IP CIDR range stored as config — the edge Worker polls
  * GET /api/v1/admin/ip-allowlist and matches the client IP before forwarding
  * partner_id in the trusted context (INF-01/02).

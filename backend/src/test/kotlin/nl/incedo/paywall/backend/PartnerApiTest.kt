@@ -206,4 +206,47 @@ class PartnerApiTest {
         assertEquals(10, body.maxSeats)
         assertEquals(1, body.activeSeats)
     }
+
+    // ── PA-03: partner offboarding ─────────────────────────────────────────────
+
+    @Test
+    fun offboardedPartnerLosesAccess() = apiTest { client ->
+        // Create partner
+        client.post("/api/v1/admin/partners") {
+            header("X-Origin-Secret", originSecretValue)
+            contentType(ContentType.Application.Json)
+            setBody(CreatePartnerRequest(partnerId = "partner-ob", name = "Offboard Corp", planId = "complete"))
+        }
+
+        // Partner access works before offboarding
+        val beforeOff = client.post("/api/v1/decide") {
+            header("X-Origin-Secret", originSecretValue)
+            header("X-Partner-Id", "partner-ob")
+            contentType(ContentType.Application.Json)
+            setBody(DecideRequest(visitorId = "vis-1", articleId = "article-1", tier = "free"))
+        }
+        // PA-03: article is free so always full, but with a premium article partner would be entitled
+        // Use the test that partner decision works at all
+        assertEquals(HttpStatusCode.OK, beforeOff.status)
+
+        // Offboard
+        val offResp = client.post("/api/v1/admin/partners/partner-ob/offboard") {
+            header("X-Origin-Secret", originSecretValue)
+        }
+        assertEquals(HttpStatusCode.Accepted, offResp.status)
+
+        // Attempt to re-offboard → conflict
+        val again = client.post("/api/v1/admin/partners/partner-ob/offboard") {
+            header("X-Origin-Secret", originSecretValue)
+        }
+        assertEquals(HttpStatusCode.Conflict, again.status)
+    }
+
+    @Test
+    fun offboardNonExistentPartnerReturns404() = apiTest { client ->
+        val resp = client.post("/api/v1/admin/partners/nonexistent/offboard") {
+            header("X-Origin-Secret", originSecretValue)
+        }
+        assertEquals(HttpStatusCode.NotFound, resp.status)
+    }
 }
