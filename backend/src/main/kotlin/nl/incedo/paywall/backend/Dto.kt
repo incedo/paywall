@@ -141,6 +141,8 @@ data class EntitlementChangeRequest(
  * PAY-03/PAY-05: checkout initiation request. The backend creates a payment session
  * via the [PaymentProvider] interface and returns the session ID + redirect URL.
  * [offerId] is the upsell offer accepted at checkout (UP-10/UP-11, optional).
+ * [paymentMethod] selects the payment method for the session (PAY-06: "ideal" or
+ * "credit_card"; null = no preference, provider picks default).
  */
 @kotlinx.serialization.Serializable
 data class CheckoutRequest(
@@ -150,6 +152,8 @@ data class CheckoutRequest(
     val offerId: String? = null,
     /** AC-12: article URL to return to after payment completes. */
     val returnUrl: String? = null,
+    /** PAY-06: selected payment method ("ideal" | "credit_card"). Null = no preference. */
+    val paymentMethod: String? = null,
 )
 
 /**

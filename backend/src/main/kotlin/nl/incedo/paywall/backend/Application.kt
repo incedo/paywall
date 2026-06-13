@@ -1102,16 +1102,25 @@ fun Application.module(
                 )),
                 condition = null,
             )
-            val session = paymentProvider.createCheckoutSession(req.planId, req.subjectId, req.returnUrl)
+            val session = paymentProvider.createCheckoutSession(
+                req.planId, req.subjectId, req.returnUrl, req.paymentMethod,
+            )
             call.respond(HttpStatusCode.Created, buildJsonObject {
                 put("sessionId", session.sessionId)
                 put("checkoutUrl", session.checkoutUrl)
                 if (req.returnUrl != null) put("returnUrl", req.returnUrl) // AC-12
+                if (req.paymentMethod != null) put("paymentMethod", req.paymentMethod) // PAY-06
+                // PAY-06: advertise available methods so the checkout page can render the picker.
+                put("availablePaymentMethods", kotlinx.serialization.json.buildJsonArray {
+                    paymentProvider.availablePaymentMethods.forEach { add(it) }
+                })
             })
         }
         // PAY-05 (mock): confirm a mock checkout session — used in the experiment to
         // complete checkout without a real payment provider. A real provider would
         // instead fire the entitlement webhook (POST /api/v1/integration/entitlements).
+        // PAY-07: pass ?simulate_failure=true to receive a 402 with retry information
+        // (the session stays alive so the same sessionId retries without data loss).
         post("/api/v1/checkout/{sessionId}/confirm") {
             val sessionId = call.parameters["sessionId"]?.takeIf { it.isNotBlank() } ?: run {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "sessionId is required"))
@@ -1119,6 +1128,23 @@ fun Application.module(
             }
             val mock = paymentProvider as? MockPaymentProvider ?: run {
                 call.respond(HttpStatusCode.NotFound, mapOf("error" to "confirm endpoint only available with mock provider"))
+                return@post
+            }
+            // PAY-07: simulate a declined payment; session is NOT consumed so the client can retry.
+            val simulateFailure = call.request.queryParameters["simulate_failure"] == "true"
+            if (simulateFailure) {
+                val peek = mock.consumeSession(sessionId, consume = false)
+                if (peek == null) {
+                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "session not found or already confirmed"))
+                    return@post
+                }
+                call.respond(HttpStatusCode.PaymentRequired, buildJsonObject {
+                    put("error", "payment_declined")
+                    put("retryAllowed", true)
+                    put("sessionId", sessionId)
+                    // PAY-07: client retries with the same sessionId; no data re-entry needed.
+                    put("retryUrl", "/api/v1/checkout/$sessionId/confirm")
+                })
                 return@post
             }
             val session = mock.consumeSession(sessionId) ?: run {
@@ -1151,6 +1177,7 @@ fun Application.module(
                 put("recorded", "purchase_confirmed")
                 put("sessionId", sessionId)
                 if (session.returnUrl != null) put("returnUrl", session.returnUrl) // AC-12
+                if (session.paymentMethod != null) put("paymentMethod", session.paymentMethod) // PAY-06
             })
         }
         // Experiment dashboard numbers (AN-10/AN-11/AN-12): per-variant funnel stats,
