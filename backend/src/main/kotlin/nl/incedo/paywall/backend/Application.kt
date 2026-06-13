@@ -49,6 +49,7 @@ import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.BrandId
+import nl.incedo.paywall.core.DomainEvent
 import nl.incedo.paywall.core.ExperimentId
 import nl.incedo.paywall.core.PartnerId
 import nl.incedo.paywall.core.PlanId
@@ -56,6 +57,8 @@ import nl.incedo.paywall.core.SubscriptionId
 import nl.incedo.paywall.core.GrantId
 import nl.incedo.paywall.entitlements.EntitlementGranted
 import nl.incedo.paywall.entitlements.EntitlementRevoked
+import nl.incedo.paywall.entitlements.SubscriptionPaused
+import nl.incedo.paywall.entitlements.SubscriptionResumed
 import nl.incedo.paywall.grants.GrantIssued
 import nl.incedo.paywall.grants.GrantRevoked
 import nl.incedo.paywall.grants.ShareTokenIssued
@@ -626,24 +629,40 @@ fun Application.module(
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId and subscriptionRef are required"))
                 return@post
             }
-            val event = if (change.active) {
-                EntitlementGranted(
-                    subjectId = SubjectId(change.subjectId),
-                    planId = PlanId(change.planId ?: "unknown"),
-                    subscriptionRef = SubscriptionId(change.subscriptionRef),
-                    validUntilEpochMs = change.validUntilEpochMs,
+            val subjectId = SubjectId(change.subjectId)
+            val subscriptionRef = SubscriptionId(change.subscriptionRef)
+            val planId = PlanId(change.planId ?: "unknown")
+            // SUB-07: status field takes precedence over legacy active boolean.
+            val gracePeriodMs = 7 * 24 * 60 * 60 * 1000L
+            val nowMs = System.currentTimeMillis()
+            val events: List<DomainEvent> = when (change.status) {
+                "active" -> listOf(
+                    EntitlementGranted(subjectId, planId, subscriptionRef, change.validUntilEpochMs),
+                    SubscriptionResumed(subjectId, subscriptionRef, nowMs), // clears paused state if any
                 )
-            } else {
-                EntitlementRevoked(
-                    subjectId = SubjectId(change.subjectId),
-                    subscriptionRef = SubscriptionId(change.subscriptionRef),
+                "canceled" -> listOf( // SUB-03: retain access until current_period_end
+                    EntitlementGranted(subjectId, planId, subscriptionRef, change.validUntilEpochMs),
                 )
+                "past_due" -> listOf( // SUB-05: 7-day grace period with access retained
+                    EntitlementGranted(subjectId, planId, subscriptionRef, nowMs + gracePeriodMs),
+                )
+                "paused" -> listOf( // SUB-07: billing suspended → access off
+                    SubscriptionPaused(subjectId, subscriptionRef, planId, nowMs),
+                )
+                "expired" -> listOf(
+                    EntitlementRevoked(subjectId, subscriptionRef),
+                )
+                else -> if (change.active) { // legacy boolean path
+                    listOf(EntitlementGranted(subjectId, planId, subscriptionRef, change.validUntilEpochMs))
+                } else {
+                    listOf(EntitlementRevoked(subjectId, subscriptionRef))
+                }
             }
-            eventStore.append(listOf(event), condition = null)
+            eventStore.append(events, condition = null)
             // AC-03: invalidate the per-session cache so the change takes effect
             // immediately rather than waiting for the 5-minute TTL to expire.
             service.invalidateEntitlementCache(change.subjectId)
-            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to event::class.simpleName))
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to events.map { it::class.simpleName }))
         }
         // FGA grant management (FGA-03): issue/revoke article-scoped grants —
         // day/week passes carry TTL = pass duration (PW-08). All writes are
