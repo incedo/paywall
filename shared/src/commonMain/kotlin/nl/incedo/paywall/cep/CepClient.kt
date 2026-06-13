@@ -16,12 +16,15 @@ interface CepClient {
     /**
      * Request an offer from the CEP engine for the given subject and trigger.
      *
-     * @param subject  The subject (visitor or logged-in user) requesting the offer.
-     * @param trigger  The trigger context that caused the offer request (e.g.
-     *                 "gate_shown", "cancel_intent", "payment_failure").
+     * @param subject        The subject (visitor or logged-in user) requesting the offer.
+     * @param trigger        The trigger context that caused the offer request (e.g.
+     *                       "gate_shown", "cancel_intent", "payment_failure").
+     * @param currentPlanId  The plan the subject is currently on or checking out;
+     *                       used by the CEP for UP-10 (billing-period upsell) and
+     *                       UP-11 (tier upsell at checkout). Null if not subscribed.
      * @return an [Offer] when the CEP decides to present one, null when none applies.
      */
-    suspend fun requestOffer(subject: Subject, trigger: String): Offer?
+    suspend fun requestOffer(subject: Subject, trigger: String, currentPlanId: String? = null): Offer?
 }
 
 /**
@@ -59,5 +62,5 @@ data class Offer(
  * Replace with the real CEP HTTP client in production.
  */
 class MockCepClient(private val fixedOffer: Offer? = null) : CepClient {
-    override suspend fun requestOffer(subject: Subject, trigger: String): Offer? = fixedOffer
+    override suspend fun requestOffer(subject: Subject, trigger: String, currentPlanId: String?): Offer? = fixedOffer
 }

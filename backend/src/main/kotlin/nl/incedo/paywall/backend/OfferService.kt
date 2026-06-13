@@ -65,7 +65,7 @@ class OfferService(
         // UP-07: call CEP with timeout; treat timeout/error as suppression
         val rawOffer = try {
             withTimeoutOrNull(cepTimeoutMs) {
-                cepClient.requestOffer(subject, context.trigger)
+                cepClient.requestOffer(subject, context.trigger, context.currentPlanId)
             }
         } catch (_: Exception) {
             null
@@ -110,7 +110,7 @@ class OfferService(
         }
 
         // UP-09: local guardrails
-        val guardReason = checkGuardrails(rawOffer, context.trigger)
+        val guardReason = checkGuardrails(rawOffer, context.trigger, context.currentPlanId)
         if (guardReason != null) {
             log(subjectId, context, rawOffer.offerId, "guardrail_rejected", now)
             return OfferDecision.Suppressed("guardrail_rejected")
@@ -142,8 +142,10 @@ class OfferService(
     /**
      * UP-09: validate the offer from the CEP against local guardrails.
      * Returns the rejection reason, or null when the offer passes.
+     *
+     * @param currentPlanId the plan the subject is currently on or checking out (UP-10/11).
      */
-    private fun checkGuardrails(offer: Offer, trigger: String): String? {
+    private fun checkGuardrails(offer: Offer, trigger: String, currentPlanId: String? = null): String? {
         val fromPlanId = offer.fromPlanId
         val toPlanId = offer.toPlanId
         // Plans in the offer must exist in the catalogue
@@ -153,11 +155,12 @@ class OfferService(
         if (toPlanId != null && DefaultPlans.findById(PlanId(toPlanId)) == null) {
             return "unknown_to_plan"
         }
-        // Tier transition must be coherent with rank (PAY-01a)
+        // Tier transition must be coherent with rank (PAY-01a).
+        // Same-rank upsells are valid for billing-period changes (UP-10: monthly → annual).
         val fromRank = DefaultPlans.rankOf(fromPlanId?.let { PlanId(it) })
         val toRank = DefaultPlans.rankOf(toPlanId?.let { PlanId(it) })
         when (offer.kind) {
-            "upsell" -> if (toRank <= fromRank) return "rank_incoherent_upsell"
+            "upsell" -> if (toRank < fromRank) return "rank_incoherent_upsell"
             "downsell" -> if (toRank >= fromRank && toPlanId != null) return "rank_incoherent_downsell"
         }
         // Discount within configured bounds

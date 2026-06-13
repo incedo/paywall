@@ -962,11 +962,18 @@ fun Application.module(
             val subject = Subject(VisitorId(request.visitorId), userId)
             val trigger = call.request.queryParameters["trigger"] ?: "gate_shown"
             val channel = request.channel
+            // UP-10/11: the checkout flow passes currentPlanId so the CEP can return
+            // an annual-upsell (UP-10) or tier-upsell (UP-11) offer at checkout.
+            val currentPlanId = call.request.queryParameters["currentPlanId"]
             if (offerService == null) {
                 call.respond(OfferResponse(offerId = null, kind = null))
                 return@post
             }
-            val ctx = OfferService.TriggerContext(trigger = trigger, channel = channel)
+            val ctx = OfferService.TriggerContext(
+                trigger = trigger,
+                channel = channel,
+                currentPlanId = currentPlanId,
+            )
             val decision = offerService.decideOffer(subject, ctx)
             val offer = (decision as? OfferService.OfferDecision.Triggered)?.offer
             call.respond(OfferResponse(

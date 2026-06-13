@@ -180,4 +180,73 @@ class OfferEngineTest {
         val body = client.requestOffer()
         assertNull(body.offerId, "offer exceeding max discount must be rejected (UP-09)")
     }
+
+    // ── UP-10: billing-period upsell at checkout (monthly → annual, same tier) ────
+
+    @Test
+    fun annualUpsellOfferedAtMonthlyCheckout() = apiTest(
+        offer = Offer(
+            offerId = "up10-annual-upsell",
+            kind = "upsell",
+            fromPlanId = "basic-monthly",
+            toPlanId = "basic-annual",
+            trigger = "checkout",
+            channels = setOf("web"),
+            source = "up10-campaign",
+            cta = "Switch to Annual and save 27%",
+        ),
+    ) { client ->
+        // UP-10: a subject checking out basic-monthly triggers an annual offer for the same tier.
+        // fromPlanId=basic-monthly (rank=1), toPlanId=basic-annual (rank=1) — same-rank upsell
+        // is valid (billing-period change within the same tier).
+        val body = client.post("/api/v1/offers/request?trigger=checkout&currentPlanId=basic-monthly") {
+            contentType(ContentType.Application.Json)
+            setBody(DecideRequest(visitorId = "vis-up10", articleId = "a-1", tier = "premium"))
+        }.body<OfferResponse>()
+        assertEquals("up10-annual-upsell", body.offerId,
+            "UP-10: annual upsell for same tier must pass the UP-09 rank guardrail (rank 1→1)")
+        assertEquals("upsell", body.kind)
+    }
+
+    // ── UP-11: tier upsell at basic checkout (basic → complete) ─────────────────
+
+    @Test
+    fun completeTierOfferedAtBasicCheckout() = apiTest(
+        offer = Offer(
+            offerId = "up11-tier-upsell",
+            kind = "upsell",
+            fromPlanId = "basic-monthly",
+            toPlanId = "complete-monthly",
+            trigger = "checkout",
+            channels = setOf("web"),
+            source = "up11-campaign",
+            cta = "Upgrade to Complete",
+        ),
+    ) { client ->
+        // UP-11: a subject checking out basic triggers a complete offer (rank 1 → rank 2).
+        val body = client.post("/api/v1/offers/request?trigger=checkout&currentPlanId=basic-monthly") {
+            contentType(ContentType.Application.Json)
+            setBody(DecideRequest(visitorId = "vis-up11", articleId = "a-1", tier = "premium"))
+        }.body<OfferResponse>()
+        assertEquals("up11-tier-upsell", body.offerId,
+            "UP-11: complete-tier upsell at basic checkout must be accepted (rank 1→2)")
+    }
+
+    @Test
+    fun sameRankUpsellNoLongerRejected() = apiTest(
+        offer = Offer(
+            offerId = "same-rank-billing",
+            kind = "upsell",
+            fromPlanId = "complete-monthly",
+            toPlanId = "complete-annual", // rank 2→2: billing-period upsell
+            trigger = "checkout",
+            channels = setOf("web"),
+            source = "up10-complete",
+        ),
+    ) { client ->
+        // Same rank (2→2) is a valid billing-period upsell (UP-10 for complete tier).
+        val body = client.requestOffer(trigger = "checkout")
+        assertEquals("same-rank-billing", body.offerId,
+            "UP-09/UP-10: same-rank billing-period upsell must pass the guardrail")
+    }
 }
