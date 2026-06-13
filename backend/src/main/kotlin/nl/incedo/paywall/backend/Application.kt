@@ -41,6 +41,7 @@ import nl.incedo.paywall.backend.auth.StaffRole
 import nl.incedo.paywall.backend.auth.requireStaff
 import nl.incedo.paywall.backend.content.ArticleRepository
 import nl.incedo.paywall.brands.BrandCreated
+import nl.incedo.paywall.plans.DefaultPlans
 import nl.incedo.paywall.brands.BrandDecision
 import nl.incedo.paywall.brands.BrandThemeUpdated
 import nl.incedo.paywall.brands.brandTag
@@ -966,6 +967,21 @@ fun Application.module(
                 .filter { it.value.exists }
                 .map { (id, b) -> BrandResponse(id, b.name, b.domain, b.locale, b.themeJson) }
                 .sortedBy { it.brandId })
+        }
+        // PAY-01/01a: plan catalogue — two tiers × two billing periods, with ranks
+        // for upsell/downsell logic. Configuration-driven; no auth required (public).
+        get("/api/v1/plans") {
+            call.respond(DefaultPlans.all.map { p ->
+                mapOf(
+                    "planId" to p.planId.value,
+                    "tier" to p.tier,
+                    "billingPeriod" to p.billingPeriod,
+                    "rank" to p.rank,
+                    "displayName" to p.displayName,
+                    "priceMinorUnits" to p.priceMinorUnits,
+                    "currency" to p.currency,
+                )
+            })
         }
         // ── Partner management (PA-01/02/03/05 / IPW-01) ─────────────────────
         // PA-01: create partner with optional seat cap and plan tier.
