@@ -96,6 +96,8 @@ data class AccessRequest(
      * the engine falls back to CEP advice + floor rule only.
      */
     val propensityScore: Int? = null,
+    /** AC-13: true when the visitor dismissed the soft gate within the current session window. */
+    val softGateDismissed: Boolean = false,
     val nowEpochMs: Long,
 )
 
@@ -182,9 +184,13 @@ object AccessDecisionEngine {
 
             is StrategyConfig.Dynamic -> {
                 val floorReached = !request.meter.hasCreditFor(article.id, strategy.floorLimit) // PW-42
+                val score = request.propensityScore
                 // DY-02: heuristic score gates at or above tSoft; floor rule and CEP advice gate unconditionally.
-                val scoreGates = request.propensityScore?.let { it >= strategy.tSoft } ?: false
-                if (request.cepAdvice.gateAdvised(request.nowEpochMs) || floorReached || scoreGates) {
+                val isHardGate = request.cepAdvice.gateAdvised(request.nowEpochMs) || floorReached ||
+                    (score != null && score >= strategy.tHard)
+                val isSoftGate = !isHardGate && score != null && score >= strategy.tSoft
+                // AC-13: soft gate is dismissible once per session; hard gate is not.
+                if (isHardGate || (isSoftGate && !request.softGateDismissed)) {
                     AccessDecision.Gated(strategy, meterUsed = request.meter.used, meterLimit = strategy.floorLimit)
                 } else {
                     AccessDecision.Full(
