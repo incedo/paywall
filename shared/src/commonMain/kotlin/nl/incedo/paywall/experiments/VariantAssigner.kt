@@ -43,6 +43,12 @@ data class Variant(
      * Enables copy/layout A/B tests through the standard experiment framework (PW-07).
      */
     val wallDesignId: String? = null,
+    /**
+     * PW-50: when true, anonymous visitors (no user account) see a registration
+     * wall before the metering/paywall strategy runs. Logged-in visitors skip the
+     * registration step and proceed to the normal access decision.
+     */
+    val registrationWall: Boolean = false,
 )
 
 /**

@@ -369,6 +369,11 @@ data class DecideResponse(
      * client should show a tier-upgrade offer instead of the base subscribe wall.
      */
     val tierLocked: Boolean = false,
+    /**
+     * PW-50: true when the variant requires registration before the paywall strategy.
+     * Anonymous visitors see a registration wall; once registered the normal gate applies.
+     */
+    val registrationRequired: Boolean = false,
 ) {
     companion object {
         fun from(outcome: AccessService.Outcome): DecideResponse = when (val d = outcome.decision) {
@@ -390,6 +395,7 @@ data class DecideResponse(
                 meterLimit = d.meterLimit,
                 wallDesignId = outcome.variant.wallDesignId, // ADM-14
                 tierLocked = d.tierLocked, // UP-12
+                registrationRequired = d.registrationRequired, // PW-50
             )
         }
 
