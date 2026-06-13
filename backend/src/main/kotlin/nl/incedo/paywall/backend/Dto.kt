@@ -147,6 +147,20 @@ data class EntitlementChangeRequest(
 )
 
 /**
+ * SUB-06: optional cancel-flow survey payload. Both fields may be null when
+ * the subscriber skips the survey (still logs the skip for funnel completeness).
+ * [reason] is one of: too_expensive, not_enough_content, technical_issues,
+ * temporary_break, other.
+ * [freeText] is trimmed to 500 chars server-side.
+ */
+@kotlinx.serialization.Serializable
+data class CancellationSurveyRequest(
+    val subjectId: String,
+    val reason: String? = null,
+    val freeText: String? = null,
+)
+
+/**
  * Grant management payload (FGA-03): article-scoped access independent of
  * subscriptions — day/week passes with TTL (PW-08), share-token redemptions
  * (BP-05), support grants. `active = false` revokes.

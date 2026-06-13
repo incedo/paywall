@@ -50,3 +50,22 @@ data class SubscriptionResumed(
     val resumedAtEpochMs: Long,
     override val tags: Set<String> = setOf("subject:${subjectId.value}"),
 ) : DomainEvent
+
+/**
+ * SUB-06: optional single-question cancellation survey. Logged when the
+ * subscriber submits (or skips) the survey during the cancel flow.
+ * [reason] is one of the offered choices (e.g. "too_expensive",
+ * "not_enough_content", "technical_issues", "temporary_break", "other").
+ * [freeText] captures any open-ended elaboration (trimmed to 500 chars).
+ * Both are null when the subscriber skips the survey.
+ */
+@Serializable
+data class CancellationSurveySubmitted(
+    val subjectId: SubjectId,
+    val reason: String? = null,
+    val freeText: String? = null,
+    val submittedAtEpochMs: Long,
+    override val tags: Set<String> = setOf("subject:${subjectId.value}", CANCEL_SURVEY_TAG),
+) : DomainEvent
+
+const val CANCEL_SURVEY_TAG = "cancel_survey"
