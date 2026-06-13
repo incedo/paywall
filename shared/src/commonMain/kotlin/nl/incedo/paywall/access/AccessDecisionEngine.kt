@@ -46,6 +46,10 @@ sealed interface StrategyConfig {
     data class Dynamic(
         /** PW-42: floor rule — gate always appears at or before the Nth premium article per month (default 10). */
         val floorLimit: Int = 10,
+        /** DY-02: heuristic score threshold — at or above this score the gate is shown (default 40). */
+        val tSoft: Int = 40,
+        /** DY-02: upper threshold — at or above this the hard-gate copy is used (default 70). */
+        val tHard: Int = 70,
     ) : StrategyConfig
 }
 
@@ -64,6 +68,12 @@ data class AccessRequest(
      * rule PW-42 on top — no synchronous CEP call in the decide path).
      */
     val cepAdvice: CepAdviceDecision = CepAdviceDecision(),
+    /**
+     * DY-01/02: local propensity score [0, 100] computed by [PropensityScorer]
+     * before calling the engine. Null means no local scorer is configured —
+     * the engine falls back to CEP advice + floor rule only.
+     */
+    val propensityScore: Int? = null,
     val nowEpochMs: Long,
 )
 
@@ -127,7 +137,9 @@ object AccessDecisionEngine {
 
             is StrategyConfig.Dynamic -> {
                 val floorReached = !request.meter.hasCreditFor(article.id, strategy.floorLimit) // PW-42
-                if (request.cepAdvice.gateAdvised(request.nowEpochMs) || floorReached) {
+                // DY-02: heuristic score gates at or above tSoft; floor rule and CEP advice gate unconditionally.
+                val scoreGates = request.propensityScore?.let { it >= strategy.tSoft } ?: false
+                if (request.cepAdvice.gateAdvised(request.nowEpochMs) || floorReached || scoreGates) {
                     AccessDecision.Gated(strategy, meterUsed = request.meter.used, meterLimit = strategy.floorLimit)
                 } else {
                     AccessDecision.Full(

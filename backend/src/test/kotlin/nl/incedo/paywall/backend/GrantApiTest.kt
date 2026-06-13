@@ -104,4 +104,37 @@ class GrantApiTest {
         val status = grant(client, GrantChangeRequest(grantId = "", subjectId = "visitor:v", articleId = "a-1"))
         assertEquals(HttpStatusCode.BadRequest, status)
     }
+
+    // FGA-02 TTL enforcement -------------------------------------------------------
+
+    @Test
+    fun grantWithoutExpiryDefaultsToThirtyDays() = apiTest { client ->
+        // FGA-02: expires_at defaults to 30 days when not supplied
+        val visitor = visitorIn("hard")
+        val status = grant(
+            client,
+            GrantChangeRequest(
+                grantId = "g-fga-default", subjectId = "visitor:$visitor", articleId = "a-1",
+                grantedBy = "support",
+                expiresAtEpochMs = null, // intentionally omitted
+            ),
+        )
+        assertEquals(HttpStatusCode.Accepted, status, "grant without expiry must be accepted with a default TTL")
+        assertEquals("full", decide(client, visitor, "a-1").access, "default-TTL grant must unlock the article")
+    }
+
+    @Test
+    fun grantExceedingMaxTtlIsRejected() = apiTest { client ->
+        // FGA-02: max TTL is 90 days
+        val ninetyOneDays = 91L * 24 * 3600 * 1000
+        val status = grant(
+            client,
+            GrantChangeRequest(
+                grantId = "g-fga-max", subjectId = "visitor:v-1", articleId = "a-1",
+                grantedBy = "support",
+                expiresAtEpochMs = System.currentTimeMillis() + ninetyOneDays,
+            ),
+        )
+        assertEquals(HttpStatusCode.BadRequest, status, "grant TTL > 90 days must be rejected (FGA-02)")
+    }
 }

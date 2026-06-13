@@ -30,15 +30,26 @@ data class Variant(
 )
 
 /**
- * EX-01: deterministic assignment via hash(visitor_id + experiment_id) mod
- * total weight — stable across visits, no flicker, platform-independent
+ * EX-01: deterministic assignment via hash(id + experiment_id) mod total
+ * weight — stable across visits, no flicker, platform-independent
  * (FNV-1a, not Kotlin's hashCode).
+ *
+ * EX-03: when a userId is present the user-keyed assignment takes precedence
+ * over the visitor-keyed one, ensuring the same variant is seen across
+ * devices after login.
  */
 object VariantAssigner {
 
-    fun assign(visitorId: VisitorId, experiment: ExperimentDefinition): Variant {
+    fun assign(visitorId: VisitorId, experiment: ExperimentDefinition): Variant =
+        assignByKey(visitorId.value, experiment)
+
+    /** EX-03: use userId as the assignment key for authenticated subjects. */
+    fun assign(subject: nl.incedo.paywall.access.Subject, experiment: ExperimentDefinition): Variant =
+        assignByKey(subject.userId?.value ?: subject.visitorId.value, experiment)
+
+    private fun assignByKey(key: String, experiment: ExperimentDefinition): Variant {
         val total = experiment.variants.sumOf { it.weight }
-        val bucket = (fnv1a32("${visitorId.value}:${experiment.id.value}").toLong() and 0xFFFFFFFFL) % total
+        val bucket = (fnv1a32("$key:${experiment.id.value}").toLong() and 0xFFFFFFFFL) % total
         var cumulative = 0L
         for (variant in experiment.variants) {
             cumulative += variant.weight

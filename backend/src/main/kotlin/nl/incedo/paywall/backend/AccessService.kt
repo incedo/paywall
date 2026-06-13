@@ -23,6 +23,8 @@ import nl.incedo.paywall.entitlements.EntitlementGranted
 import nl.incedo.paywall.experiments.ExperimentDefinition
 import nl.incedo.paywall.experiments.Variant
 import nl.incedo.paywall.experiments.VariantAssigner
+import nl.incedo.paywall.access.HeuristicPropensityScorer
+import nl.incedo.paywall.access.PropensityScorer
 import nl.incedo.paywall.grants.GrantDecision
 import nl.incedo.paywall.metering.MeterDecision
 import nl.incedo.paywall.metering.meterTag
@@ -51,6 +53,8 @@ class AccessService(
     private val experiment: ExperimentDefinition,
     private val clock: () -> Long,
     private val currentPeriod: () -> MeterPeriod,
+    /** DY-04: pluggable scorer; defaults to the phase-1 heuristic (DY-01). */
+    private val propensityScorer: PropensityScorer = HeuristicPropensityScorer,
 ) {
 
     private val entitlementCache = ConcurrentHashMap<String, CachedEntitlement>()
@@ -95,7 +99,9 @@ class AccessService(
         isBot: Boolean = false,
         isSuspicious: Boolean = false,
     ): Outcome {
-        val variant = VariantAssigner.assign(subject.visitorId, experiment)
+        // EX-03: authenticated subjects use userId as the assignment key so the
+        // variant is stable across devices after login.
+        val variant = VariantAssigner.assign(subject, experiment)
         val period = currentPeriod()
         val now = clock()
 
@@ -139,6 +145,10 @@ class AccessService(
         // subject-tagged); the access layer acts on them, it never calls the CEP.
         val cepAdvice = CepAdviceDecision().also { it.applyAll(events) }
 
+        // DY-01: compute the heuristic score once per decide(); only meaningful
+        // for dynamic strategy but computed regardless (cheap, always available).
+        val propensityScore = propensityScorer.score(events, meter.used, now)
+
         val decision = AccessDecisionEngine.decide(
             AccessRequest(
                 article = article,
@@ -148,6 +158,7 @@ class AccessService(
                 grant = grant,
                 meter = meter,
                 cepAdvice = cepAdvice,
+                propensityScore = propensityScore,
                 nowEpochMs = now,
             ),
         )
@@ -159,7 +170,7 @@ class AccessService(
             usedAfter += 1
         }
 
-        logWallEvent(subject, article, variant, channel, decision, now, isBot, isSuspicious)
+        logWallEvent(subject, article, variant, channel, decision, now, isBot, isSuspicious, propensityScore)
 
         val meterLimit = (variant.strategy as? StrategyConfig.Metered)?.let { strategy ->
             if (subject.registered) strategy.registeredLimit ?: strategy.limit else strategy.limit
@@ -221,6 +232,7 @@ class AccessService(
         now: Long,
         isBot: Boolean,
         isSuspicious: Boolean,
+        propensityScore: Int,
     ) {
         val event = when (decision) {
             is AccessDecision.Gated -> WallEventRecorded(
@@ -234,6 +246,7 @@ class AccessService(
                     put("wallType", variant.name)
                     decision.meterUsed?.let { put("meterUsed", it.toString()) }
                     decision.meterLimit?.let { put("meterLimit", it.toString()) }
+                    put("score", propensityScore.toString()) // PW-43: decision logged on every premium view
                     if (isBot) put("bot", "true")
                     if (isSuspicious) put("suspicious_ip", "true")
                 },
@@ -249,6 +262,7 @@ class AccessService(
                         articleId = article.id,
                         context = buildMap {
                             put("reason", decision.reason.name.lowercase())
+                            put("score", propensityScore.toString()) // PW-43
                             if (isBot) put("bot", "true")
                             if (isSuspicious) put("suspicious_ip", "true")
                         },
