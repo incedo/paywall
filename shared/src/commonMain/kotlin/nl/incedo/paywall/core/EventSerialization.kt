@@ -33,6 +33,7 @@ import nl.incedo.paywall.partners.PartnerMemberRemoved
 import nl.incedo.paywall.partners.PartnerOffboarded
 import nl.incedo.paywall.metering.MeterIncremented
 import nl.incedo.paywall.metering.MeterReset
+import nl.incedo.paywall.notifications.MailSent
 import nl.incedo.paywall.walls.WallConfigChanged
 import nl.incedo.paywall.walls.WallCreated
 import nl.incedo.paywall.walls.WallPublished
@@ -79,6 +80,7 @@ val paywallSerializersModule = SerializersModule {
         subclass(WallConfigChanged::class)
         subclass(WallPublished::class)
         subclass(WallTemplateCreated::class)
+        subclass(MailSent::class)
     }
 }
 

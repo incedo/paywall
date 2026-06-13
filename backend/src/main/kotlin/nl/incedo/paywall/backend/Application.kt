@@ -100,6 +100,7 @@ import nl.incedo.paywall.experiments.Variant
 import nl.incedo.paywall.experiments.VariantAssigner
 import nl.incedo.paywall.metering.MeterDecision
 import nl.incedo.paywall.metering.meterTag
+import nl.incedo.paywall.notifications.MailSent
 
 /**
  * Default experiment (EX-02): the four strategies of Doc 1 at equal weight.
@@ -524,20 +525,27 @@ fun Application.module(
             val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
             val subject = Subject(VisitorId(request.visitorId), userId)
             val variant = VariantAssigner.assign(subject, configStore?.experiment() ?: defaultExperiment) // EX-03
-            eventStore.append(
-                listOf(
-                    WallEventRecorded(
-                        eventType = type,
-                        subjectId = subject.subjectId,
-                        variant = variant.name,
-                        channel = request.channel,
-                        occurredAtEpochMs = System.currentTimeMillis(),
-                        articleId = request.articleId?.let(::ArticleId),
-                        context = request.context,
-                    ),
+            val nowMs = System.currentTimeMillis()
+            val eventsToAppend = mutableListOf<DomainEvent>(
+                WallEventRecorded(
+                    eventType = type,
+                    subjectId = subject.subjectId,
+                    variant = variant.name,
+                    channel = request.channel,
+                    occurredAtEpochMs = nowMs,
+                    articleId = request.articleId?.let(::ArticleId),
+                    context = request.context,
                 ),
-                condition = null,
             )
+            // US-10: purchase confirmation email logged on checkout_complete.
+            if (type == WallEventType.CHECKOUT_COMPLETE) {
+                eventsToAppend += MailSent(
+                    subjectId = subject.subjectId,
+                    kind = "purchase_confirmation",
+                    sentAtEpochMs = nowMs,
+                )
+            }
+            eventStore.append(eventsToAppend, condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to type.name))
         }
         // Wall designer API (ADM-01/02/11): wall definitions as structured
@@ -969,9 +977,11 @@ fun Application.module(
                 )
                 "canceled" -> listOf( // SUB-03: retain access until current_period_end
                     EntitlementGranted(subjectId, planId, subscriptionRef, change.validUntilEpochMs),
+                    MailSent(subjectId, "cancellation_confirmation", nowMs, planId.value, subscriptionRef.value), // US-10
                 )
                 "past_due" -> listOf( // SUB-05: 7-day grace period with access retained
                     EntitlementGranted(subjectId, planId, subscriptionRef, nowMs + gracePeriodMs),
+                    MailSent(subjectId, "payment_failure", nowMs, planId.value, subscriptionRef.value), // US-10
                 )
                 "paused" -> listOf( // SUB-07: billing suspended → access off
                     SubscriptionPaused(subjectId, subscriptionRef, planId, nowMs),
