@@ -81,6 +81,8 @@ enum class AccessReason {
     FREE_CONTENT, ENTITLED, GRANT, METER_CREDIT, DYNAMIC_OPEN,
     /** MT-05/SEO-02: verified search crawler (edge signal, not UA alone). */
     VERIFIED_CRAWLER,
+    /** PA-01/IPW-02: user is a member of a partner with an active subscription. */
+    PARTNER_ENTITLED,
 }
 
 sealed interface AccessDecision {
