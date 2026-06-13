@@ -22,9 +22,16 @@ interface CepClient {
      * @param currentPlanId  The plan the subject is currently on or checking out;
      *                       used by the CEP for UP-10 (billing-period upsell) and
      *                       UP-11 (tier upsell at checkout). Null if not subscribed.
+     * @param variant        UP-06: the A/B variant assigned to this subject so the CEP
+     *                       can tailor offer strategies per variant. Null if unknown.
      * @return an [Offer] when the CEP decides to present one, null when none applies.
      */
-    suspend fun requestOffer(subject: Subject, trigger: String, currentPlanId: String? = null): Offer?
+    suspend fun requestOffer(
+        subject: Subject,
+        trigger: String,
+        currentPlanId: String? = null,
+        variant: String? = null,
+    ): Offer?
 }
 
 /**
@@ -62,5 +69,10 @@ data class Offer(
  * Replace with the real CEP HTTP client in production.
  */
 class MockCepClient(private val fixedOffer: Offer? = null) : CepClient {
-    override suspend fun requestOffer(subject: Subject, trigger: String, currentPlanId: String?): Offer? = fixedOffer
+    override suspend fun requestOffer(
+        subject: Subject,
+        trigger: String,
+        currentPlanId: String?,
+        variant: String?,
+    ): Offer? = fixedOffer
 }

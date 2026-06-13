@@ -304,6 +304,11 @@ fun Application.module(
                     return@post
                 }
             }
+            // EX-05: staff debug override — forces a specific variant for QA.
+            // Applied only when the caller carries a valid staff JWT; silently
+            // ignored for regular readers (no 4xx). Analytics suppressed for debug runs.
+            val forceVariant = call.request.queryParameters["forceVariant"]
+                ?.takeIf { jwtValidator == null || jwtValidator.staffFrom(call.request.headers[HttpHeaders.Authorization]) != null }
             val outcome = service.decide(
                 subject = subject,
                 article = Article(ArticleId(request.articleId), tier),
@@ -311,6 +316,7 @@ fun Application.module(
                 isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]),
                 isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
                 isVerifiedCrawler = isVerifiedCrawler,
+                forceVariant = forceVariant,
             )
             call.respond(DecideResponse.from(outcome))
         }
@@ -391,8 +397,14 @@ fun Application.module(
         }
         // Integration inbound: the CEP publishes gate advice as events; the
         // access layer acts on them at decide time (no synchronous CEP call).
+        // API-08: webhook signature required — same shared secret as entitlements.
         post("/api/v1/integration/cep-advice") {
-            val advice = call.receive<CepAdviceEvent>()
+            val rawBody = call.receive<ByteArray>()
+            if (!webhookVerifier.verify(rawBody, call.request.headers[WebhookVerifier.SIGNATURE_HEADER])) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "invalid webhook signature (API-08)"))
+                return@post
+            }
+            val advice = kotlinx.serialization.json.Json.decodeFromString<CepAdviceEvent>(rawBody.decodeToString())
             if (advice.subjectId.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId must not be blank"))
                 return@post
@@ -969,10 +981,12 @@ fun Application.module(
                 call.respond(OfferResponse(offerId = null, kind = null))
                 return@post
             }
+            // UP-06: pass the variant so the CEP can tailor offer strategies per A/B arm.
             val ctx = OfferService.TriggerContext(
                 trigger = trigger,
                 channel = channel,
                 currentPlanId = currentPlanId,
+                variant = service.variantFor(subject),
             )
             val decision = offerService.decideOffer(subject, ctx)
             val offer = (decision as? OfferService.OfferDecision.Triggered)?.offer
