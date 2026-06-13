@@ -14,7 +14,12 @@ import nl.incedo.paywall.ui.CrmCard
 import nl.incedo.paywall.ui.CrmDivider
 import nl.incedo.paywall.ui.CrmText
 
-/** Experiment dashboard (AN-10): per-variant funnel numbers from /api/v1/stats. */
+/**
+ * Experiment dashboard (AN-10/AN-11/AN-12): per-variant funnel numbers
+ * from /api/v1/stats. Columns: visitors, reads, walls shown, gate CTR,
+ * registrations, checkouts, conversions, conversion rate with Wilson CI
+ * (AN-12), and reach cost vs. control (AN-11).
+ */
 @Composable
 fun DashboardScreen(stats: List<VariantStatsResponse>, statusMessage: String?) {
     Column(
@@ -30,6 +35,7 @@ fun DashboardScreen(stats: List<VariantStatsResponse>, statusMessage: String?) {
             )
         }
 
+        // Main funnel table (AN-10)
         CrmCard {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(
@@ -46,6 +52,9 @@ fun DashboardScreen(stats: List<VariantStatsResponse>, statusMessage: String?) {
                 HeaderCell("Checkouts", 1f)
                 HeaderCell("Conversions", 1f)
                 HeaderCell("Conv. rate", 1f)
+                // AN-12: Wilson 95% CI bounds
+                HeaderCell("CI low", 1f)
+                HeaderCell("CI high", 1f)
             }
             CrmDivider()
             if (stats.isEmpty()) {
@@ -68,12 +77,62 @@ fun DashboardScreen(stats: List<VariantStatsResponse>, statusMessage: String?) {
                     Cell(row.articleReads.toString())
                     Cell(row.wallsShown.toString())
                     Cell(row.gateCtr.asPercent())
-                    Cell(row.registrations.toString()) // AN-10
+                    Cell(row.registrations.toString())
                     Cell(row.checkoutStarts.toString())
                     Cell(row.conversions.toString())
-                    Cell(row.conversionRate.asPercent())
+                    // AN-12: flag small samples so analysts know not to conclude
+                    val rateLabel = if (row.sampleSizeTooSmall) "${row.conversionRate.asPercent()}*" else row.conversionRate.asPercent()
+                    Cell(rateLabel)
+                    Cell(row.conversionRateLow.asPercent())
+                    Cell(row.conversionRateHigh.asPercent())
                 }
                 if (index < stats.lastIndex) CrmDivider()
+            }
+            if (stats.any { it.sampleSizeTooSmall }) {
+                CrmText(
+                    "* Sample size < 100 — confidence interval too wide for reliable conclusions (AN-12)",
+                    style = CrmTheme.typography.bodySmall,
+                    color = CrmTheme.colors.onSurfaceVariant,
+                    modifier = Modifier.padding(CrmTheme.spacing.md),
+                )
+            }
+        }
+
+        // AN-11: reach cost table — only shown when a control variant exists
+        val withReachCost = stats.filter { it.pageViewsDeltaVsControl != null }
+        if (withReachCost.isNotEmpty()) {
+            CrmCard {
+                Column(modifier = Modifier.padding(CrmTheme.spacing.lg)) {
+                    CrmText(
+                        "Reach cost vs. control (AN-11)",
+                        style = CrmTheme.typography.label,
+                        color = CrmTheme.colors.onSurfaceVariant,
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(
+                        horizontal = CrmTheme.spacing.lg,
+                        vertical = CrmTheme.spacing.md,
+                    ),
+                ) {
+                    HeaderCell("Variant", 2f)
+                    HeaderCell("ΔPage views", 1f)
+                    HeaderCell("ΔArticle reads", 1f)
+                }
+                CrmDivider()
+                withReachCost.forEachIndexed { index, row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(
+                            horizontal = CrmTheme.spacing.lg,
+                            vertical = CrmTheme.spacing.md,
+                        ),
+                    ) {
+                        CrmText(row.variant, modifier = Modifier.weight(2f))
+                        Cell(row.pageViewsDeltaVsControl!!.signedString())
+                        Cell((row.articleReadsDeltaVsControl ?: 0).signedString())
+                    }
+                    if (index < withReachCost.lastIndex) CrmDivider()
+                }
             }
         }
     }
@@ -83,6 +142,8 @@ private fun Double.asPercent(): String {
     val tenths = (this * 1000).toInt()
     return "${tenths / 10}.${tenths % 10}%"
 }
+
+private fun Int.signedString(): String = if (this >= 0) "+$this" else "$this"
 
 @Composable
 private fun RowScope.Cell(text: String) {
