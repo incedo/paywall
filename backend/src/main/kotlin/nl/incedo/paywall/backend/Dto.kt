@@ -16,6 +16,9 @@ data class DecideRequest(
     val tier: String,
     /** API-06: web | app | chat. */
     val channel: String = "web",
+    /** DY-06: caller-supplied propensity score (0–100) from an external model (e.g. CDP LtC score).
+     *  When present, replaces the heuristic for the Dynamic strategy. */
+    val externalScore: Int? = null,
 )
 
 /**

@@ -147,6 +147,13 @@ class AccessService(
          * across the origin log, event store, and CEP.
          */
         correlationId: String? = null,
+        /**
+         * DY-06: caller-supplied propensity score (0–100) from an external model
+         * (e.g. a CDP Likelihood-to-Churn score). When present and in range,
+         * replaces the heuristic for the Dynamic strategy so the scoring interface
+         * can accept externally trained models without changing callers.
+         */
+        externalScore: Int? = null,
     ): Outcome {
         if (isVerifiedCrawler) {
             val variant = VariantAssigner.assign(subject, experimentLoader?.invoke() ?: experiment)
@@ -221,12 +228,16 @@ class AccessService(
         // subject-tagged); the access layer acts on them, it never calls the CEP.
         val cepAdvice = CepAdviceDecision().also { it.applyAll(events) }
 
-        // DY-01: compute the heuristic score once per decide(). For dynamic variants,
-        // use the strategy's configured weights so each A/B arm can tune independently.
-        val scorer = (variant.strategy as? StrategyConfig.Dynamic)
-            ?.let { HeuristicPropensityScorer(it.scorerWeights) }
-            ?: propensityScorer
-        val propensityScore = scorer.score(events, meter.used, now, subject.registered)
+        // DY-01/DY-06: compute propensity score. Caller may supply an external score
+        // (DY-06) from a CDP or ML model; if provided and in range it takes precedence.
+        // Otherwise the heuristic is used with variant-specific weights (DY-01).
+        val propensityScore = externalScore?.takeIf { it in 0..100 }
+            ?: run {
+                val scorer = (variant.strategy as? StrategyConfig.Dynamic)
+                    ?.let { HeuristicPropensityScorer(it.scorerWeights) }
+                    ?: propensityScorer
+                scorer.score(events, meter.used, now, subject.registered)
+            }
 
         val decision = AccessDecisionEngine.decide(
             AccessRequest(
@@ -338,7 +349,9 @@ class AccessService(
                 },
             )
             is AccessDecision.Full -> when {
-                // FGA-04: grant-based access is distinguishable in analytics by granted_by.
+                // FGA-04/AG-03: grant-based access is distinguishable in analytics by granted_by.
+                // "ad_gated" grants log granted_by=ad_gated so their cannibalization of
+                // subscriptions is measurable per requirement AG-03.
                 decision.reason == nl.incedo.paywall.access.AccessReason.GRANT ->
                     WallEventRecorded(
                         eventType = WallEventType.ARTICLE_READ,
