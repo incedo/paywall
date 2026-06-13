@@ -43,6 +43,10 @@ data class ScorerWeights(
     val tenureCap: Int = 60,
     /** DY-01: bonus added when the subject is a registered (logged-in) visitor. */
     val registeredBonus: Int = 5,
+    /** DY-01: bonus for visitors arriving via search engine (organic intent signal). */
+    val searchReferrerBonus: Int = 6,
+    /** DY-01: bonus for visitors arriving via social media (viral/high-intent signal). */
+    val socialReferrerBonus: Int = 8,
 )
 
 /** Per-variant strategy configuration (PW-05/06): parameters are config, not code. */

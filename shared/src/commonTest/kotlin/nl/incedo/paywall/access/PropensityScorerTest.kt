@@ -25,12 +25,17 @@ class PropensityScorerTest {
     private val period = MeterPeriod("2026-06")
     private val subjectId = SubjectId.of(VisitorId("v-dy"))
 
-    private fun wallEvent(type: WallEventType, ageMs: Long = 0L) = WallEventRecorded(
+    private fun wallEvent(
+        type: WallEventType,
+        ageMs: Long = 0L,
+        context: Map<String, String> = emptyMap(),
+    ) = WallEventRecorded(
         eventType = type,
         subjectId = subjectId,
         variant = "dynamic",
         channel = "web",
         occurredAtEpochMs = now - ageMs,
+        context = context,
     )
 
     private fun meterIncrement() = MeterIncremented(subjectId, ArticleId("a-1"), period)
@@ -81,6 +86,66 @@ class PropensityScorerTest {
         val score = HeuristicPropensityScorer(weights).score(events, meterUsed = 3, nowEpochMs = now, isRegistered = false)
         // meterUsed=3 × meterWeight=10 = 30; activity ignored; tenure=0; no bonus
         assertEquals(30, score, "custom meterWeight must be used instead of default")
+    }
+
+    // ── DY-01: referrer type bonus ───────────────────────────────────────────────
+
+    @Test
+    fun searchReferrerAddsConfiguredBonus() {
+        // DY-01: search referrer = organic intent signal; measure delta vs direct baseline
+        val withSearch = listOf(wallEvent(WallEventType.PAGE_VIEW, context = mapOf("referrer" to "search")))
+        val withDirect = listOf(wallEvent(WallEventType.PAGE_VIEW, context = mapOf("referrer" to "direct")))
+        val scorer = HeuristicPropensityScorer()
+        val scoreSearch = scorer.score(withSearch, meterUsed = 0, nowEpochMs = now, isRegistered = false)
+        val scoreDirect = scorer.score(withDirect, meterUsed = 0, nowEpochMs = now, isRegistered = false)
+        assertEquals(ScorerWeights().searchReferrerBonus, scoreSearch - scoreDirect,
+            "search referrer must add exactly searchReferrerBonus over the direct baseline")
+    }
+
+    @Test
+    fun socialReferrerAddsConfiguredBonus() {
+        // DY-01: social referrer = viral / high-intent signal; measure delta vs direct baseline
+        val withSocial = listOf(wallEvent(WallEventType.PAGE_VIEW, context = mapOf("referrer" to "social")))
+        val withDirect = listOf(wallEvent(WallEventType.PAGE_VIEW, context = mapOf("referrer" to "direct")))
+        val scorer = HeuristicPropensityScorer()
+        val scoreSocial = scorer.score(withSocial, meterUsed = 0, nowEpochMs = now, isRegistered = false)
+        val scoreDirect = scorer.score(withDirect, meterUsed = 0, nowEpochMs = now, isRegistered = false)
+        assertEquals(ScorerWeights().socialReferrerBonus, scoreSocial - scoreDirect,
+            "social referrer must add exactly socialReferrerBonus over the direct baseline")
+    }
+
+    @Test
+    fun directReferrerAddsNoBonus() {
+        // DY-01: direct referrer = baseline, no bonus
+        val withDirect = listOf(wallEvent(WallEventType.PAGE_VIEW, context = mapOf("referrer" to "direct")))
+        val withNone = listOf(wallEvent(WallEventType.PAGE_VIEW))
+        val scoreDirect = HeuristicPropensityScorer().score(withDirect, meterUsed = 0, nowEpochMs = now, isRegistered = false)
+        val scoreNone = HeuristicPropensityScorer().score(withNone, meterUsed = 0, nowEpochMs = now, isRegistered = false)
+        assertEquals(scoreNone, scoreDirect, "direct referrer must not differ from no-referrer score")
+    }
+
+    @Test
+    fun mostRecentPageViewReferrerWins() {
+        // DY-01: when the most-recent page_view says "direct", the earlier social signal is ignored
+        val older = wallEvent(WallEventType.PAGE_VIEW, ageMs = 1000L, context = mapOf("referrer" to "social"))
+        val newerDirect = wallEvent(WallEventType.PAGE_VIEW, ageMs = 0L, context = mapOf("referrer" to "direct"))
+        val newerNoCtx = wallEvent(WallEventType.PAGE_VIEW, ageMs = 0L)
+        // When most recent says "direct" → no bonus; equals having no referrer on either
+        val scoreNewerDirect = HeuristicPropensityScorer()
+            .score(listOf(older, newerDirect), meterUsed = 0, nowEpochMs = now, isRegistered = false)
+        val scoreNoReferrer = HeuristicPropensityScorer()
+            .score(listOf(older.copy(context = emptyMap()), newerNoCtx), meterUsed = 0, nowEpochMs = now, isRegistered = false)
+        assertEquals(scoreNoReferrer, scoreNewerDirect, "most-recent page_view with direct referrer must produce no bonus")
+    }
+
+    @Test
+    fun referrerBonusIsConfigurableViaWeights() {
+        // DY-01: weights in configuration — all other weights zeroed to isolate referrer bonus
+        val weights = ScorerWeights(meterWeight = 0, activityWeight = 0, tenureCap = 0, registeredBonus = 0,
+            searchReferrerBonus = 20, socialReferrerBonus = 30)
+        val events = listOf(wallEvent(WallEventType.PAGE_VIEW, context = mapOf("referrer" to "social")))
+        val score = HeuristicPropensityScorer(weights).score(events, meterUsed = 0, nowEpochMs = now, isRegistered = false)
+        assertEquals(30, score, "custom socialReferrerBonus must override default")
     }
 
     // ── DY-02: engine threshold mapping ─────────────────────────────────────────
