@@ -17,6 +17,9 @@ import nl.incedo.paywall.entitlements.EntitlementGranted
 import nl.incedo.paywall.entitlements.EntitlementRevoked
 import nl.incedo.paywall.entitlements.SubscriptionPaused
 import nl.incedo.paywall.entitlements.SubscriptionResumed
+import nl.incedo.paywall.offers.OfferDeclined
+import nl.incedo.paywall.offers.OfferSuppressed
+import nl.incedo.paywall.offers.OfferTriggered
 import nl.incedo.paywall.grants.GrantIssued
 import nl.incedo.paywall.grants.GrantRevoked
 import nl.incedo.paywall.grants.ShareTokenIssued
@@ -59,6 +62,9 @@ val paywallSerializersModule = SerializersModule {
         subclass(ExperimentConfigPublished::class)
         subclass(CepGateAdvised::class)
         subclass(CepGateAdviceWithdrawn::class)
+        subclass(OfferTriggered::class)
+        subclass(OfferSuppressed::class)
+        subclass(OfferDeclined::class)
         subclass(WallEventRecorded::class)
         subclass(WallCreated::class)
         subclass(WallConfigChanged::class)
