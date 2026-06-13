@@ -155,6 +155,12 @@ class AccessService(
          * can accept externally trained models without changing callers.
          */
         externalScore: Int? = null,
+        /**
+         * NFR-15: variant names that have been killed by an admin; visitors assigned
+         * to a killed variant receive full access so a misbehaving paywall can be
+         * neutralised without a deployment. Empty in normal operation.
+         */
+        killedVariants: Set<String> = emptySet(),
     ): Outcome {
         if (isVerifiedCrawler) {
             val variant = VariantAssigner.assign(subject, experimentLoader?.invoke() ?: experiment)
@@ -185,6 +191,10 @@ class AccessService(
                 ?: VariantAssigner.assign(subject, currentExperiment)
         } else {
             VariantAssigner.assign(subject, currentExperiment)
+        }
+        // NFR-15: killed variant → full access immediately; no metering, no events.
+        if (variant.name in killedVariants) {
+            return Outcome(nl.incedo.paywall.access.AccessDecision.Full(nl.incedo.paywall.access.AccessReason.VARIANT_KILLED), variant, meterUsedAfter = 0)
         }
         // MT-06: period type is per variant config; resolved via periodFor().
         val period = periodFor(variant.strategy)
