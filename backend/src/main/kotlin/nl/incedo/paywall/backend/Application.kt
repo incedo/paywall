@@ -1043,11 +1043,12 @@ fun Application.module(
                 )),
                 condition = null,
             )
-            val session = paymentProvider.createCheckoutSession(req.planId, req.subjectId)
-            call.respond(HttpStatusCode.Created, mapOf(
-                "sessionId" to session.sessionId,
-                "checkoutUrl" to session.checkoutUrl,
-            ))
+            val session = paymentProvider.createCheckoutSession(req.planId, req.subjectId, req.returnUrl)
+            call.respond(HttpStatusCode.Created, buildJsonObject {
+                put("sessionId", session.sessionId)
+                put("checkoutUrl", session.checkoutUrl)
+                if (req.returnUrl != null) put("returnUrl", req.returnUrl) // AC-12
+            })
         }
         // PAY-05 (mock): confirm a mock checkout session — used in the experiment to
         // complete checkout without a real payment provider. A real provider would
@@ -1087,7 +1088,11 @@ fun Application.module(
                 condition = null,
             )
             service.invalidateEntitlementCache(session.subjectId)
-            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "purchase_confirmed", "sessionId" to sessionId))
+            call.respond(HttpStatusCode.Accepted, buildJsonObject {
+                put("recorded", "purchase_confirmed")
+                put("sessionId", sessionId)
+                if (session.returnUrl != null) put("returnUrl", session.returnUrl) // AC-12
+            })
         }
         // Experiment dashboard numbers (AN-10/AN-11/AN-12): per-variant funnel stats,
         // rebuilt from the wall-event stream (projection — DM-04/DM-08).

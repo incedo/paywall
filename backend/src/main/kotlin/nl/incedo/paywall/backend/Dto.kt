@@ -162,6 +162,8 @@ data class CheckoutRequest(
     val planId: String,
     val channel: String = "web",
     val offerId: String? = null,
+    /** AC-12: article URL to return to after payment completes. */
+    val returnUrl: String? = null,
 )
 
 /**
