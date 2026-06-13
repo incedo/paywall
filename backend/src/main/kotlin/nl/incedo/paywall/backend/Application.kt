@@ -116,6 +116,12 @@ private suspend fun io.ktor.server.application.ApplicationCall.respondSaveResult
     }
 }
 
+/** XML entity escaping for RSS feed values (BP-04). */
+private fun String.xmlEscape() = replace("&", "&amp;")
+    .replace("<", "&lt;")
+    .replace(">", "&gt;")
+    .replace("\"", "&quot;")
+
 /**
  * SEO-01: JSON-LD paywalled-content structured data for verified crawler responses.
  * Tells Google this is not cloaking — the full body is provided transparently with
@@ -611,6 +617,35 @@ fun Application.module(
             }
             call.response.headers.append("X-Export-Position", result.position.toString())
             call.respondText(csv, io.ktor.http.ContentType.Text.CSV)
+        }
+        // BP-04: RSS 2.0 feed — premium articles carry teaser-only in the
+        // description so full bodies are never exposed via syndication.
+        // No authentication required: the feed is public (titles and teasers only).
+        get("/api/v1/feed.rss") {
+            val feedArticles = articles.findAll()
+            val rss = buildString {
+                appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
+                appendLine("""<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">""")
+                appendLine("  <channel>")
+                appendLine("    <title>Articles</title>")
+                appendLine("    <link>/</link>")
+                appendLine("    <description>Latest articles</description>")
+                feedArticles.forEach { article ->
+                    // BP-04: premium content exposes teaser only — never the full body.
+                    val description = when (article.tier) {
+                        ContentTier.PREMIUM -> ArticleRepository.teaserOf(article)
+                        ContentTier.FREE -> article.body
+                    }
+                    appendLine("    <item>")
+                    appendLine("      <title>${article.title.xmlEscape()}</title>")
+                    appendLine("      <guid>${article.id.value.xmlEscape()}</guid>")
+                    appendLine("      <description><![CDATA[${description}]]></description>")
+                    appendLine("    </item>")
+                }
+                appendLine("  </channel>")
+                append("</rss>")
+            }
+            call.respondText(rss, io.ktor.http.ContentType.Application.Xml)
         }
         // Integration inbound (MT-13): consent-based identity link signals —
         // login (US-04), newsletter tokens, share tokens (BP-05), extra devices.

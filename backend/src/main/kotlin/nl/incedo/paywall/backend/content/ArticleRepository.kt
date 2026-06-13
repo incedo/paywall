@@ -18,8 +18,12 @@ data class StoredArticle(
 class ArticleRepository(articles: List<StoredArticle> = emptyList()) {
 
     private val byId = articles.associateBy { it.id }
+    private val all = articles.toList()
 
     fun find(id: ArticleId): StoredArticle? = byId[id]
+
+    /** BP-04: all articles for syndication endpoints (RSS/Atom feed). */
+    fun findAll(): List<StoredArticle> = all
 
     companion object {
         /**

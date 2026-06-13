@@ -185,6 +185,30 @@ class ContentApiTest {
         assertEquals(HttpStatusCode.Unauthorized, response.status, "BP-02: request without edge secret is rejected")
     }
 
+    // BP-04: RSS feed ---------------------------------------------------------------
+
+    @Test
+    fun rssFeedExposesTeaserOnlyForPremiumArticles() = apiTest { client ->
+        // BP-04: the RSS feed must not expose the full premium body;
+        // free articles may expose their full body.
+        val response = client.get("/api/v1/feed.rss")
+        assertEquals(HttpStatusCode.OK, response.status)
+        val body = response.bodyAsText()
+
+        // Free article body is present
+        assertTrue("Everyone may read this." in body, "free article body must appear in the RSS feed")
+
+        // Premium sentinel (the last word of the full body) must NOT appear in the feed
+        assertFalse(premiumSentinel in body, "BP-04: premium body must be absent from the RSS feed")
+
+        // Some teaser text from the premium article must appear (first ~150 words)
+        assertTrue("word1" in body, "BP-04: premium article teaser must appear in the RSS feed")
+
+        // The feed is valid RSS 2.0
+        assertTrue(body.contains("<rss version=\"2.0\""), "feed must be RSS 2.0")
+        assertTrue(body.contains("<item>"), "feed must contain items")
+    }
+
     @Test
     fun freePageDoesNotCarryNoarchiveTag() = apiTest { client ->
         // Free content is publicly indexable; noarchive would wrongly suppress it.
