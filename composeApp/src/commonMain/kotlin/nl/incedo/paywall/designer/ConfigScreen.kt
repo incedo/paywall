@@ -27,6 +27,8 @@ import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
 import nl.incedo.paywall.ui.CrmDivider
 import nl.incedo.paywall.ui.CrmPrimaryButton
+import nl.incedo.paywall.ui.CrmSecondaryButton
+import nl.incedo.paywall.ui.CrmTag
 import nl.incedo.paywall.ui.CrmText
 import nl.incedo.paywall.ui.CrmTextField
 
@@ -34,16 +36,21 @@ import nl.incedo.paywall.ui.CrmTextField
  * ADM-02 MUST: full access-control configuration management — meter limits and periods
  * (MT-10), paywall-type parameters per variant (PW-06), dynamic thresholds (DY-02),
  * experiment definitions and weights (EX-02) — with diff preview and audited publish.
+ * NFR-15: variant kill-switch section shows killed variants and kill/restore buttons.
  * All writes go through the API (ADM-01: console owns no logic).
  */
 @Composable
 fun ConfigScreen(
     onLoadConfig: suspend () -> ExperimentConfigResponse?,
     onPublishConfig: suspend (ExperimentDefinition) -> Boolean,
+    onLoadKilledVariants: suspend () -> List<String>,
+    onKillVariant: suspend (String) -> Boolean,
+    onRestoreVariant: suspend (String) -> Boolean,
     statusMessage: String?,
 ) {
     val scope = rememberCoroutineScope()
     var config by remember { mutableStateOf<ExperimentConfigResponse?>(null) }
+    var killedVariants by remember { mutableStateOf<List<String>>(emptyList()) }
     var status by remember { mutableStateOf(statusMessage ?: "Loading config…") }
 
     // ── editable state (all as strings for text-field binding) ────────────────
@@ -88,6 +95,7 @@ fun ConfigScreen(
         if (config != null) {
             status = if (config!!.isDefault) "Showing default config (no override published)" else "Config loaded"
         }
+        killedVariants = runCatching { onLoadKilledVariants() }.getOrDefault(emptyList())
     }
 
     /** Build the updated ExperimentDefinition from all edit state. */
@@ -254,6 +262,61 @@ fun ConfigScreen(
                                 style = CrmTheme.typography.caption,
                                 color = CrmTheme.colors.onSurfaceVariant,
                             )
+                        }
+                    }
+                }
+            }
+
+            // ── NFR-15: variant kill switches ──────────────────────────────────
+            CrmCard {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm),
+                ) {
+                    CrmText("Variant kill switches (NFR-15)", style = CrmTheme.typography.h3)
+                    CrmText(
+                        "Kill any variant instantly — reverts traffic to control. Restoring re-enables it.",
+                        style = CrmTheme.typography.caption,
+                        color = CrmTheme.colors.onSurfaceVariant,
+                    )
+                    CrmDivider()
+                    exp.variants.forEach { v ->
+                        val killed = v.name in killedVariants
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CrmText(v.name, style = CrmTheme.typography.bodySmall)
+                                if (killed) CrmTag("KILLED", CrmTheme.colors.error, CrmTheme.colors.onError)
+                            }
+                            if (killed) {
+                                CrmSecondaryButton("Restore") {
+                                    scope.launch {
+                                        if (onRestoreVariant(v.name)) {
+                                            killedVariants = killedVariants - v.name
+                                            status = "${v.name} restored"
+                                        } else {
+                                            status = "Restore failed"
+                                        }
+                                    }
+                                }
+                            } else {
+                                CrmSecondaryButton("Kill") {
+                                    scope.launch {
+                                        if (onKillVariant(v.name)) {
+                                            killedVariants = killedVariants + v.name
+                                            status = "${v.name} killed — traffic to control"
+                                        } else {
+                                            status = "Kill failed"
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

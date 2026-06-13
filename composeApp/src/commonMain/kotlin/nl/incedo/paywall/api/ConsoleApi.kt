@@ -67,6 +67,21 @@ class ConsoleApi(private val baseUrl: String = "http://localhost:8080") {
     /** BP-06: bypass-rate estimation — ratio of gated renders with bypass markers. */
     suspend fun bypassRate(): BypassRateResponse = client.get("$baseUrl/api/v1/admin/bypass-rate").body()
 
+    /** AN-13: cohort view — conversion and 30-day retention by ISO week of first visit. */
+    suspend fun cohortStats(): List<CohortStatsResponse> = client.get("$baseUrl/api/v1/stats/cohorts").body()
+
+    // ── NFR-15: variant kill switches ─────────────────────────────────────────
+
+    suspend fun killedVariants(): List<String> =
+        client.get("$baseUrl/api/v1/admin/variant-kill-switches").body<Map<String, List<String>>>()["killed"]
+            ?: emptyList()
+
+    suspend fun killVariant(name: String): Boolean =
+        client.post("$baseUrl/api/v1/admin/variants/$name/kill").status.value in 200..299
+
+    suspend fun restoreVariant(name: String): Boolean =
+        client.post("$baseUrl/api/v1/admin/variants/$name/restore").status.value in 200..299
+
     // ── ADM-04: subject inspector ─────────────────────────────────────────────
 
     suspend fun inspectSubject(subjectId: String): SubjectInspectorResponse =

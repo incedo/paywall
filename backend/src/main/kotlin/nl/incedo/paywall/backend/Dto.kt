@@ -18,6 +18,7 @@ import nl.incedo.paywall.api.GrantAuditEntry
 import nl.incedo.paywall.api.InspectorWallEvent
 import nl.incedo.paywall.api.MeterResetRequest
 import nl.incedo.paywall.api.BypassRateResponse
+import nl.incedo.paywall.api.CohortStatsResponse
 import nl.incedo.paywall.api.OfferChannelStatsResponse
 import nl.incedo.paywall.api.OfferStatsResponse
 import nl.incedo.paywall.api.PartnerUsageResponse
@@ -293,7 +294,7 @@ data class DataGateCompletionRequest(
 )
 
 // GrantAuditEntry, OfferStatsResponse, OfferChannelStatsResponse, PartnerUsageResponse,
-// BypassRateResponse defined in shared module and imported above.
+// BypassRateResponse, CohortStatsResponse defined in shared module and imported above.
 
 /**
  * UP-08: inbound payload from the CEP when it pushes an offer for an async channel.
@@ -414,17 +415,6 @@ data class DecideResponse(
         }
     }
 }
-
-/** AN-13: one row in the cohort report (week of first visit). */
-@Serializable
-data class CohortStatsResponse(
-    val cohortWeek: String,
-    val visitors: Int,
-    val conversions: Int,
-    val conversionRate: Double,
-    val retainedAt30Days: Int,
-    val retentionRate: Double,
-)
 
 /** UP-02: maps a nullable [Offer] domain object to its API representation. */
 fun Offer?.toOfferResponse(): OfferResponse = OfferResponse(

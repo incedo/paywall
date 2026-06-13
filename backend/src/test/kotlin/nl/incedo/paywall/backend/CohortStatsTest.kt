@@ -15,6 +15,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
+import nl.incedo.paywall.api.CohortStatsResponse
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.SubjectId
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
