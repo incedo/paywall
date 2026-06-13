@@ -55,6 +55,7 @@ import nl.incedo.paywall.offers.offerTag
 import nl.incedo.paywall.cep.CepClient
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
+import nl.incedo.paywall.offers.OfferTriggered
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.BrandId
 import nl.incedo.paywall.core.DomainEvent
@@ -1128,6 +1129,66 @@ fun Application.module(
             )
             eventStore.append(listOf(event), condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "OfferAccepted"))
+        }
+        // UP-08: CEP-initiated offer push for async channels (email, chat).
+        // The CEP pushes offers here instead of being called synchronously;
+        // the paywall validates (UP-09), frequency-caps (UP-05), and logs
+        // OfferTriggered with trigger="cep_push" so the async channel can
+        // later fetch it as a pending offer.
+        post("/api/v1/integration/cep-offers") {
+            val rawBody = call.receive<ByteArray>()
+            if (!webhookVerifier.verify(rawBody, call.request.headers[WebhookVerifier.SIGNATURE_HEADER])) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "invalid webhook signature (API-08)"))
+                return@post
+            }
+            val req = kotlinx.serialization.json.Json.decodeFromString<CepOfferPushRequest>(rawBody.decodeToString())
+            if (req.subjectId.isBlank() || req.offerId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId and offerId are required"))
+                return@post
+            }
+            val subjectId = SubjectId(req.subjectId)
+            val offer = nl.incedo.paywall.cep.Offer(
+                offerId = req.offerId,
+                kind = req.kind,
+                fromPlanId = req.fromPlanId,
+                toPlanId = req.toPlanId,
+                discountPercent = req.discountPercent,
+                validForSeconds = req.validForSeconds,
+                pauseMonths = req.pauseMonths,
+                channels = req.channels,
+                source = req.source,
+                cta = req.cta,
+            )
+            when (val result = offerService?.receiveAsyncOffer(subjectId, offer, req.channel)) {
+                is OfferService.OfferDecision.Triggered ->
+                    call.respond(HttpStatusCode.Accepted, mapOf("offerId" to result.offer.offerId))
+                is OfferService.OfferDecision.Suppressed ->
+                    call.respond(HttpStatusCode.UnprocessableEntity, mapOf("suppressed" to result.reason))
+                null -> call.respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to "offer service not configured"))
+            }
+        }
+        // UP-08: query pending CEP-pushed offers for a subject, optionally filtered
+        // by channel. An offer is pending when it has been triggered (cep_push) but
+        // not yet accepted or declined by the subject.
+        get("/api/v1/subjects/{subjectId}/offers/pending") {
+            val subjectId = call.parameters["subjectId"]?.takeIf { it.isNotBlank() } ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId is required"))
+                return@get
+            }
+            val channel = call.request.queryParameters["channel"]
+            val events = eventStore.query(EventQuery(setOf("subject:$subjectId"))).events
+            val triggered = events.filterIsInstance<nl.incedo.paywall.offers.OfferTriggered>()
+                .filter { it.trigger == "cep_push" }
+                .filter { channel == null || it.channel == channel }
+            val settled = (
+                events.filterIsInstance<OfferAccepted>().map { it.offerId } +
+                    events.filterIsInstance<OfferDeclined>().map { it.offerId }
+            ).toSet()
+            val pending = triggered
+                .filter { it.offerId !in settled }
+                .sortedByDescending { it.triggeredAtEpochMs }
+                .map { PendingOfferResponse(it.offerId, it.kind, it.channel, it.triggeredAtEpochMs) }
+            call.respond(pending)
         }
         // BP-05: subscriber-generated signed share tokens that redeem into FGA grants.
         // POST /api/v1/articles/{id}/share — authenticated subscriber issues a token (≤5/month).

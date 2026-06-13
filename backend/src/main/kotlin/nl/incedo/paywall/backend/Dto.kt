@@ -341,6 +341,35 @@ data class OfferStatsResponse(
     val channels: Map<String, OfferChannelStatsResponse>,
 )
 
+/**
+ * UP-08: inbound payload from the CEP when it pushes an offer for an async channel.
+ * Mirrors [nl.incedo.paywall.cep.Offer] but is a serializable backend DTO.
+ */
+@Serializable
+data class CepOfferPushRequest(
+    val subjectId: String,
+    val channel: String,
+    val offerId: String,
+    val kind: String,
+    val fromPlanId: String? = null,
+    val toPlanId: String? = null,
+    val discountPercent: Int? = null,
+    val validForSeconds: Long? = null,
+    val pauseMonths: Int? = null,
+    val channels: Set<String> = emptySet(),
+    val source: String = "",
+    val cta: String? = null,
+)
+
+/** UP-08: an offer that has been triggered for a subject but not yet accepted/declined. */
+@Serializable
+data class PendingOfferResponse(
+    val offerId: String,
+    val kind: String,
+    val channel: String,
+    val triggeredAtEpochMs: Long,
+)
+
 /** AN-21/US-07: GDPR account deletion request from the CIAM webhook. */
 @Serializable
 data class AccountDeletionRequest(
