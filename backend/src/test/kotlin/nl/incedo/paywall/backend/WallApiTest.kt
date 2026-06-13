@@ -12,6 +12,8 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.testApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import nl.incedo.paywall.api.SaveWallRequest
 import nl.incedo.paywall.api.VariantStatsResponse
 import nl.incedo.paywall.api.WallResponse
@@ -103,6 +105,25 @@ class WallApiTest {
             HttpStatusCode.NotFound,
             client.post("/api/v1/walls/nope/publish") { contentType(ContentType.Application.Json) }.status,
         )
+    }
+
+    // ── AC-14: consent wall step ────────────────────────────────────────────
+
+    @Test
+    fun consentStepFlagIsPersistedAndReturned() = apiTest { client ->
+        val created: WallResponse = save(
+            client, "wall-consent",
+            draft().copy(requireConsentStep = true)
+        ).body()
+        assertTrue(created.requireConsentStep,
+            "AC-14: requireConsentStep must be persisted and returned in the response")
+    }
+
+    @Test
+    fun consentStepDefaultsToFalse() = apiTest { client ->
+        val created: WallResponse = save(client, "wall-no-consent", draft()).body()
+        assertFalse(created.requireConsentStep,
+            "AC-14: requireConsentStep must default to false")
     }
 
     // ── ADM-13: rollback ────────────────────────────────────────────────────

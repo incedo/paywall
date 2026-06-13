@@ -22,6 +22,12 @@ data class WallConfig(
     val channels: Set<String> = setOf("web"),
     /** ADM-10: brand this wall design belongs to; null = unbranded (default brand). */
     val brandId: String? = null,
+    /**
+     * AC-14: when true the client MUST show a distinct GDPR cookie-consent step
+     * before the subscription gate. The outcome feeds AN-20 consent state.
+     * Never bundled with payment consent (PAY-*) or data-exchange consent (DG-03).
+     */
+    val requireConsentStep: Boolean = false,
 )
 
 @Serializable

@@ -21,6 +21,12 @@ data class SaveWallRequest(
     val expectedVersion: Int? = null,
     /** ADM-10: optional brand this wall design belongs to. */
     val brandId: String? = null,
+    /**
+     * AC-14: when true the client must show a GDPR cookie-consent step before
+     * the subscription gate. Distinct from DG-03 (data-exchange consent) and
+     * PAY-* (payment consent). Configured in the wall editor (ADM-11).
+     */
+    val requireConsentStep: Boolean = false,
 )
 
 @Serializable
@@ -38,6 +44,8 @@ data class WallResponse(
     val lastEditedBy: String,
     /** ADM-10: brand this wall design is associated with, if any. */
     val brandId: String? = null,
+    /** AC-14: whether this wall design requires a consent step before the gate. */
+    val requireConsentStep: Boolean = false,
 )
 
 /** AN-10/AN-11/AN-12 dashboard numbers per variant. */
