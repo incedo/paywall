@@ -69,6 +69,7 @@ import nl.incedo.paywall.core.PartnerId
 import nl.incedo.paywall.core.PlanId
 import nl.incedo.paywall.core.SubscriptionId
 import nl.incedo.paywall.core.GrantId
+import nl.incedo.paywall.entitlements.CancellationSurveySubmitted
 import nl.incedo.paywall.entitlements.EntitlementGranted
 import nl.incedo.paywall.entitlements.EntitlementRevoked
 import nl.incedo.paywall.entitlements.SubscriptionPaused
@@ -903,6 +904,30 @@ fun Application.module(
                 condition = null,
             )
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "MeterReset"))
+        }
+        // SUB-06: cancel-flow survey — one optional question logged for churn analysis.
+        // Both reason and freeText may be null (skip path). Authenticated subjects are
+        // resolved from the JWT; unauthenticated calls use subjectId from the request body.
+        post("/api/v1/subjects/cancellation-survey") {
+            val request = call.receive<CancellationSurveyRequest>()
+            if (request.subjectId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId is required"))
+                return@post
+            }
+            val subjectId = SubjectId(request.subjectId)
+            val freeTextTrimmed = request.freeText?.take(500)
+            eventStore.append(
+                listOf(
+                    CancellationSurveySubmitted(
+                        subjectId = subjectId,
+                        reason = request.reason,
+                        freeText = freeTextTrimmed,
+                        submittedAtEpochMs = System.currentTimeMillis(),
+                    ),
+                ),
+                condition = null,
+            )
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "CancellationSurveySubmitted"))
         }
         // Experiment dashboard numbers (AN-10): per-variant funnel stats,
         // rebuilt from the wall-event stream (projection — DM-04/DM-08).

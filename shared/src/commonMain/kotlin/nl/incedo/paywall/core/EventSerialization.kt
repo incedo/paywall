@@ -16,6 +16,7 @@ import nl.incedo.paywall.analytics.SoftGateDismissed
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
+import nl.incedo.paywall.entitlements.CancellationSurveySubmitted
 import nl.incedo.paywall.entitlements.EntitlementGranted
 import nl.incedo.paywall.entitlements.EntitlementRevoked
 import nl.incedo.paywall.entitlements.SubscriptionPaused
@@ -55,6 +56,7 @@ val paywallSerializersModule = SerializersModule {
         subclass(EntitlementRevoked::class)
         subclass(SubscriptionPaused::class)
         subclass(SubscriptionResumed::class)
+        subclass(CancellationSurveySubmitted::class)
         subclass(DataGateConsentGiven::class)
         subclass(GrantIssued::class)
         subclass(GrantRevoked::class)
