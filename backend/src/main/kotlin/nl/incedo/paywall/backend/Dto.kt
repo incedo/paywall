@@ -34,6 +34,10 @@ data class ClientEventRequest(
 /**
  * Article rendering (AC-01/BP-01): for an unentitled request the premium
  * body is ABSENT — not hidden. The teaser is server-generated (AC-05).
+ *
+ * [structuredData]: SEO-01 JSON-LD for paywalled-content schema markup, included
+ * in responses served to verified crawlers (MT-05/SEO-02). The edge embeds it in
+ * the server-rendered HTML <script type="application/ld+json"> tag (SEO-03).
  */
 @Serializable
 data class ArticleResponse(
@@ -46,6 +50,7 @@ data class ArticleResponse(
     val teaser: String? = null,
     val gate: GateInfo? = null,
     val meterUsed: Int? = null,
+    val structuredData: String? = null,
 )
 
 @Serializable

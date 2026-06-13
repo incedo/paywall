@@ -46,7 +46,10 @@ class ContentApiTest {
             .map { "content-visitor-$it" }
             .first { VariantAssigner.assign(VisitorId(it), defaultExperiment).name == variant }
 
-    private fun apiTest(block: suspend (io.ktor.client.HttpClient) -> Unit) = testApplication {
+    private fun apiTest(
+        originSecret: String? = null,
+        block: suspend (io.ktor.client.HttpClient) -> Unit,
+    ) = testApplication {
         val store = InMemoryEventStore()
         val service = AccessService(
             eventStore = store,
@@ -54,7 +57,7 @@ class ContentApiTest {
             clock = { now },
             currentPeriod = { MeterPeriod("2026-06") },
         )
-        application { module(service, store, articles = articles) }
+        application { module(service, store, articles = articles, originSecret = originSecret) }
         val client = createClient { install(ContentNegotiation) { json() } }
         block(client)
     }
@@ -141,6 +144,69 @@ class ContentApiTest {
         val robotsTag = response.headers["X-Robots-Tag"]
         assertNotNull(robotsTag, "premium page must carry X-Robots-Tag header")
         assertTrue("noarchive" in robotsTag, "X-Robots-Tag must include noarchive, got: $robotsTag")
+    }
+
+    // MT-05/SEO-01/02: verified crawler exemption ------------------------------------
+
+    @Test
+    fun verifiedCrawlerGetsPremiumBodyWithoutMetering() = apiTest(originSecret = "edge-secret") { client ->
+        // MT-05/SEO-02: a request forwarded by the edge with X-Verified-Bot: true
+        // and the shared secret bypasses the gate and metering entirely.
+        // The hard-wall variant gates every other request — crawler is exempt.
+        val visitor = visitorIn("hard")
+        val response = client.get("/api/v1/articles/prem-1") {
+            header("X-Visitor-Id", visitor)
+            header("X-Origin-Secret", "edge-secret")  // proves edge is in front (INF-02)
+            header("X-Verified-Bot", "true")           // edge's crawler signal (SEO-02)
+        }
+        assertEquals(HttpStatusCode.OK, response.status)
+        val article: ArticleResponse = response.body()
+        assertEquals("full", article.access, "MT-05: verified crawler must not be gated")
+        assertTrue(article.body!!.contains(premiumSentinel), "SEO-02: verified crawler gets full body")
+        assertNull(article.gate, "verified crawler must not see gate info")
+        assertNull(article.meterUsed, "MT-05: meter is not incremented for verified crawlers")
+        // SEO-01: JSON-LD structured data included for edge HTML rendering
+        assertNotNull(article.structuredData, "SEO-01: JSON-LD must be included for premium crawler response")
+        assertTrue("isAccessibleForFree" in article.structuredData!!, "SEO-01: JSON-LD must carry isAccessibleForFree")
+    }
+
+    @Test
+    fun verifiedCrawlerSignalWithoutEdgeSecretIsIgnored() = apiTest(originSecret = "edge-secret") { client ->
+        // BP-02: the edge verified the crawler — UA alone grants nothing.
+        // If there is no shared secret in the request, X-Verified-Bot is untrusted.
+        val response = client.get("/api/v1/articles/prem-1") {
+            header("X-Visitor-Id", visitorIn("hard"))
+            // Deliberately NOT setting X-Origin-Secret — request did not come from edge.
+            header("X-Verified-Bot", "true")
+        }
+        // Request is blocked by origin trust check (no edge secret) — 401 (INF-02).
+        // In this test originSecret is configured so the request without the
+        // shared secret is rejected before the crawler signal is ever inspected.
+        assertEquals(HttpStatusCode.Unauthorized, response.status, "BP-02: request without edge secret is rejected")
+    }
+
+    // BP-04: RSS feed ---------------------------------------------------------------
+
+    @Test
+    fun rssFeedExposesTeaserOnlyForPremiumArticles() = apiTest { client ->
+        // BP-04: the RSS feed must not expose the full premium body;
+        // free articles may expose their full body.
+        val response = client.get("/api/v1/feed.rss")
+        assertEquals(HttpStatusCode.OK, response.status)
+        val body = response.bodyAsText()
+
+        // Free article body is present
+        assertTrue("Everyone may read this." in body, "free article body must appear in the RSS feed")
+
+        // Premium sentinel (the last word of the full body) must NOT appear in the feed
+        assertFalse(premiumSentinel in body, "BP-04: premium body must be absent from the RSS feed")
+
+        // Some teaser text from the premium article must appear (first ~150 words)
+        assertTrue("word1" in body, "BP-04: premium article teaser must appear in the RSS feed")
+
+        // The feed is valid RSS 2.0
+        assertTrue(body.contains("<rss version=\"2.0\""), "feed must be RSS 2.0")
+        assertTrue(body.contains("<item>"), "feed must contain items")
     }
 
     @Test
