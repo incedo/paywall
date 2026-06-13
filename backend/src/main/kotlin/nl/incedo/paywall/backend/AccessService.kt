@@ -4,8 +4,10 @@ import nl.incedo.paywall.access.AccessDecision
 import nl.incedo.paywall.access.AccessDecisionEngine
 import nl.incedo.paywall.access.AccessRequest
 import nl.incedo.paywall.access.Article
+import nl.incedo.paywall.access.StrategyConfig
 import nl.incedo.paywall.access.Subject
 import nl.incedo.paywall.accounts.IdentityLinkDecision
+import nl.incedo.paywall.accounts.IdentityLinked
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.cep.CepAdviceDecision
@@ -37,7 +39,13 @@ class AccessService(
     private val currentPeriod: () -> MeterPeriod,
 ) {
 
-    data class Outcome(val decision: AccessDecision, val variant: Variant, val meterUsedAfter: Int)
+    data class Outcome(
+        val decision: AccessDecision,
+        val variant: Variant,
+        val meterUsedAfter: Int,
+        /** The resolved meter limit for metered variants (PW-22/23 indicator). */
+        val meterLimit: Int? = null,
+    )
 
     suspend fun decide(subject: Subject, article: Article, channel: String = "web"): Outcome {
         val variant = VariantAssigner.assign(subject.visitorId, experiment)
@@ -58,6 +66,20 @@ class AccessService(
         // meter, across devices. Only when links exist does this cost a second
         // (equally bounded) query for the newly discovered subjects.
         val links = IdentityLinkDecision().also { it.applyAll(events) }
+
+        // US-04: on an authenticated request the visitor is linked to the user
+        // (once — idempotent), so the anonymous meter state merges (MT-03)
+        val userId = subject.userId
+        if (userId != null) {
+            val visitorSubject = SubjectId.of(subject.visitorId)
+            val userSubject = SubjectId.of(userId)
+            if (!links.isLinked(visitorSubject, userSubject)) {
+                val link = IdentityLinked(visitorSubject, userSubject, cause = "login")
+                eventStore.append(listOf(link), condition = null)
+                links.apply(link)
+            }
+        }
+
         val allSubjects = links.linkedSubjects(initialSubjects)
         if (allSubjects != initialSubjects) {
             events = eventStore.query(EventQuery(queryTags(allSubjects, article, period))).events
@@ -91,7 +113,11 @@ class AccessService(
         }
 
         logWallEvent(subject, article, variant, channel, decision, now)
-        return Outcome(decision, variant, usedAfter)
+
+        val meterLimit = (variant.strategy as? StrategyConfig.Metered)?.let { strategy ->
+            if (subject.registered) strategy.registeredLimit ?: strategy.limit else strategy.limit
+        }
+        return Outcome(decision, variant, usedAfter, meterLimit)
     }
 
     /**

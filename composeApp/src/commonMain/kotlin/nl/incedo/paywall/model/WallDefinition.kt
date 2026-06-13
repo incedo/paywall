@@ -39,6 +39,7 @@ enum class WallStatus(val label: String) {
 
 /** Row in the walls overview (design "Wall Designer", variant B1). */
 data class WallSummary(
+    val id: String,
     val name: String,
     val type: WallType,
     val channels: Set<Channel>,
@@ -50,6 +51,7 @@ data class WallSummary(
 
 val demoWalls = listOf(
     WallSummary(
+        id = "demo-1",
         name = "Metered limit — invoices",
         type = WallType.Metered,
         channels = setOf(Channel.Web, Channel.MobileApp, Channel.Chat, Channel.InProduct, Channel.Email),
@@ -59,6 +61,7 @@ val demoWalls = listOf(
         updated = "Today",
     ),
     WallSummary(
+        id = "demo-2",
         name = "Hard wall — trial expiry",
         type = WallType.Hard,
         channels = setOf(Channel.Web, Channel.MobileApp, Channel.Email, Channel.Sms),
@@ -68,6 +71,7 @@ val demoWalls = listOf(
         updated = "4 Jun",
     ),
     WallSummary(
+        id = "demo-3",
         name = "Freemium — premium content",
         type = WallType.Freemium,
         channels = setOf(Channel.Web, Channel.InProduct, Channel.Email),
@@ -77,6 +81,7 @@ val demoWalls = listOf(
         updated = "28 May",
     ),
     WallSummary(
+        id = "demo-4",
         name = "Dynamic — CEP gate",
         type = WallType.Dynamic,
         channels = setOf(Channel.Web),
@@ -86,3 +91,12 @@ val demoWalls = listOf(
         updated = "14 May",
     ),
 )
+
+/** API channel names are the enum names in lowercase (one contract, every target). */
+fun Channel.apiName(): String = name.lowercase()
+
+fun channelFromApi(value: String): Channel? =
+    Channel.entries.find { it.name.equals(value, ignoreCase = true) || it.label.equals(value, ignoreCase = true) }
+
+fun wallTypeFromApi(value: String): WallType =
+    WallType.entries.find { it.name.equals(value, ignoreCase = true) } ?: WallType.Metered

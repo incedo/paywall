@@ -1,5 +1,6 @@
 package nl.incedo.paywall.backend
 
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -7,14 +8,19 @@ import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import java.time.YearMonth
 import java.time.ZoneId
 import kotlinx.serialization.json.Json
+import nl.incedo.paywall.api.SaveWallRequest
+import nl.incedo.paywall.api.VariantStatsResponse
+import nl.incedo.paywall.api.WallResponse
 import nl.incedo.paywall.access.Article
 import nl.incedo.paywall.access.ContentTier
 import nl.incedo.paywall.access.StrategyConfig
@@ -25,19 +31,33 @@ import nl.incedo.paywall.analytics.VariantStatsProjection
 import nl.incedo.paywall.analytics.wallEventShardTags
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
+import nl.incedo.paywall.backend.auth.CiamJwtValidator
+import nl.incedo.paywall.backend.content.ArticleRepository
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.core.ArticleId
 import nl.incedo.paywall.core.ExperimentId
+import nl.incedo.paywall.core.PlanId
+import nl.incedo.paywall.core.SubscriptionId
+import nl.incedo.paywall.core.GrantId
+import nl.incedo.paywall.entitlements.EntitlementGranted
+import nl.incedo.paywall.entitlements.EntitlementRevoked
+import nl.incedo.paywall.grants.GrantIssued
+import nl.incedo.paywall.grants.GrantRevoked
+import nl.incedo.paywall.walls.WallConfig
+import nl.incedo.paywall.walls.WallView
 import nl.incedo.paywall.core.SubjectId
 import nl.incedo.paywall.core.UserId
 import nl.incedo.paywall.core.VisitorId
+import nl.incedo.paywall.core.WallId
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
 import nl.incedo.paywall.core.port.EventStore
 import nl.incedo.paywall.core.port.EventQuery
 import nl.incedo.paywall.experiments.ExperimentDefinition
 import nl.incedo.paywall.experiments.Variant
 import nl.incedo.paywall.experiments.VariantAssigner
+import nl.incedo.paywall.metering.MeterDecision
+import nl.incedo.paywall.metering.meterTag
 
 /**
  * Default experiment (EX-02): the four strategies of Doc 1 at equal weight.
@@ -67,6 +87,29 @@ val clientEventTypes: Map<String, WallEventType> = mapOf(
     "cancel" to WallEventType.CANCEL,
 )
 
+private fun WallView.toResponse() = WallResponse(
+    id = id.value,
+    name = config.name,
+    wallType = config.wallType,
+    title = config.title,
+    body = config.body,
+    primaryCta = config.primaryCta,
+    secondaryCta = config.secondaryCta,
+    channels = config.channels,
+    status = status,
+    version = version,
+    lastEditedBy = lastEditedBy,
+)
+
+private suspend fun io.ktor.server.application.ApplicationCall.respondSaveResult(result: WallService.SaveResult) {
+    when (result) {
+        is WallService.SaveResult.Saved -> respond(result.view.toResponse())
+        is WallService.SaveResult.NotFound -> respond(HttpStatusCode.NotFound, mapOf("error" to "unknown wall"))
+        is WallService.SaveResult.VersionConflict ->
+            respond(HttpStatusCode.Conflict, mapOf("error" to "version conflict", "currentVersion" to result.current.toString()))
+    }
+}
+
 /** PW-24: meter period is the calendar month in Europe/Amsterdam. */
 fun currentPeriod() = nl.incedo.paywall.metering.MeterPeriod(
     YearMonth.now(ZoneId.of("Europe/Amsterdam")).toString(),
@@ -89,12 +132,36 @@ fun main() {
         clock = { System.currentTimeMillis() },
         currentPeriod = ::currentPeriod,
     )
-    embeddedServer(CIO, port = 8080) { module(service, eventStore) }.start(wait = true)
+
+    // TS-04: Ory Hydra issues the tokens; JWKS via its public endpoint, e.g.
+    // CIAM_JWKS_URL=http://localhost:4444/.well-known/jwks.json
+    // CIAM_ISSUER=http://localhost:4444/
+    val jwtValidator = System.getenv("CIAM_JWKS_URL")?.let { jwks ->
+        CiamJwtValidator.fromJwksUrl(
+            jwksUrl = jwks,
+            issuer = System.getenv("CIAM_ISSUER") ?: jwks.substringBefore(".well-known").trimEnd('/') + "/",
+        )
+    }
+
+    embeddedServer(CIO, port = 8080) { module(service, eventStore, jwtValidator) }.start(wait = true)
 }
 
-fun Application.module(service: AccessService, eventStore: EventStore) {
+fun Application.module(
+    service: AccessService,
+    eventStore: EventStore,
+    /** Null = no CIAM configured: every request is anonymous (AC-07 fallback). */
+    jwtValidator: CiamJwtValidator? = null,
+    articles: ArticleRepository = ArticleRepository(),
+) {
     install(ContentNegotiation) {
         json(Json { ignoreUnknownKeys = true })
+    }
+    // Dev CORS for the Wasm console; in production every request enters
+    // through the Worker on the same origin (INF-01), so this disappears.
+    install(CORS) {
+        anyHost()
+        allowHeader(HttpHeaders.ContentType)
+        allowHeader(HttpHeaders.Authorization)
     }
     routing {
         get("/health") {
@@ -111,12 +178,60 @@ fun Application.module(service: AccessService, eventStore: EventStore) {
                     return@post
                 }
             }
+            // AC-07: identity exclusively from the validated CIAM JWT;
+            // anything not provably authentic degrades to anonymous
+            val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
             val outcome = service.decide(
-                subject = Subject(VisitorId(request.visitorId), request.userId?.let(::UserId)),
+                subject = Subject(VisitorId(request.visitorId), userId),
                 article = Article(ArticleId(request.articleId), tier),
                 channel = request.channel,
             )
             call.respond(DecideResponse.from(outcome))
+        }
+        // The consumer endpoint (AC-04: same rules as any page). The premium
+        // body is never present in a gated response (AC-01/BP-01); the teaser
+        // is generated server-side (AC-05/PW-02).
+        get("/api/v1/articles/{id}") {
+            val articleId = call.parameters["id"]?.takeIf { it.isNotBlank() }
+            val visitorId = call.request.headers["X-Visitor-Id"] ?: call.request.queryParameters["visitorId"]
+            if (articleId == null || visitorId.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "article id and visitor id are required"))
+                return@get
+            }
+            val stored = articles.find(ArticleId(articleId))
+            if (stored == null) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "unknown article"))
+                return@get
+            }
+            val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
+            val outcome = service.decide(
+                subject = Subject(VisitorId(visitorId), userId),
+                article = Article(stored.id, stored.tier),
+            )
+            val response = when (val decision = outcome.decision) {
+                is nl.incedo.paywall.access.AccessDecision.Full -> ArticleResponse(
+                    id = stored.id.value,
+                    title = stored.title,
+                    tier = stored.tier.name.lowercase(),
+                    access = "full",
+                    body = stored.body,
+                    meterUsed = outcome.meterUsedAfter,
+                )
+                is nl.incedo.paywall.access.AccessDecision.Gated -> ArticleResponse(
+                    id = stored.id.value,
+                    title = stored.title,
+                    tier = stored.tier.name.lowercase(),
+                    access = "gate",
+                    teaser = ArticleRepository.teaserOf(stored),
+                    gate = GateInfo(
+                        wallType = outcome.variant.name,
+                        variant = outcome.variant.name,
+                        meterUsed = decision.meterUsed,
+                        meterLimit = decision.meterLimit,
+                    ),
+                )
+            }
+            call.respond(response)
         }
         // Integration inbound: the CEP publishes gate advice as events; the
         // access layer acts on them at decide time (no synchronous CEP call).
@@ -147,7 +262,8 @@ fun Application.module(service: AccessService, eventStore: EventStore) {
                 )
                 return@post
             }
-            val subject = Subject(VisitorId(request.visitorId), request.userId?.let(::UserId))
+            val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
+            val subject = Subject(VisitorId(request.visitorId), userId)
             val variant = VariantAssigner.assign(subject.visitorId, defaultExperiment)
             eventStore.append(
                 listOf(
@@ -164,6 +280,129 @@ fun Application.module(service: AccessService, eventStore: EventStore) {
                 condition = null,
             )
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to type.name))
+        }
+        // Wall designer API (ADM-01/02/11): wall definitions as structured
+        // content, versioned via events, optimistic concurrency per ADM-06.
+        val wallService = WallService(eventStore)
+        get("/api/v1/walls") {
+            call.respond(wallService.list().map { it.toResponse() })
+        }
+        get("/api/v1/walls/{id}") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wall id required"))
+            val view = wallService.get(WallId(id))
+                ?: return@get call.respond(HttpStatusCode.NotFound, mapOf("error" to "unknown wall"))
+            call.respond(view.toResponse())
+        }
+        post("/api/v1/walls/{id}") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wall id required"))
+            val request = call.receive<SaveWallRequest>()
+            if (request.name.isBlank() || request.title.isBlank()) {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "name and title are required"))
+            }
+            if (request.wallType !in setOf("hard", "metered", "freemium", "dynamic")) {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wallType must be hard|metered|freemium|dynamic"))
+            }
+            val config = WallConfig(
+                name = request.name, wallType = request.wallType, title = request.title,
+                body = request.body, primaryCta = request.primaryCta,
+                secondaryCta = request.secondaryCta, channels = request.channels,
+            )
+            val wallId = WallId(id)
+            val result = if (wallService.get(wallId) == null) {
+                wallService.create(wallId, config, request.actor)
+            } else {
+                wallService.update(wallId, config, request.actor, request.expectedVersion)
+            }
+            call.respondSaveResult(result)
+        }
+        post("/api/v1/walls/{id}/publish") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wall id required"))
+            call.respondSaveResult(wallService.publish(WallId(id), actor = "console"))
+        }
+        // ADM-04: subject inspector — meter state, entitlements, identity
+        // links and recent wall events for one person, plus the audited
+        // meter-reset support action.
+        get("/api/v1/admin/subjects/{subjectId}") {
+            val subjectParam = call.parameters["subjectId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subject id required"))
+            val subjectId = SubjectId(subjectParam)
+            val period = currentPeriod()
+
+            val baseEvents = eventStore.query(
+                EventQuery(setOf("subject:${subjectId.value}", meterTag(subjectId, period))),
+            ).events
+            val links = nl.incedo.paywall.accounts.IdentityLinkDecision().also { it.applyAll(baseEvents) }
+            val allSubjects = links.linkedSubjects(setOf(subjectId))
+            val events = if (allSubjects == setOf(subjectId)) {
+                baseEvents
+            } else {
+                eventStore.query(
+                    EventQuery(
+                        allSubjects.flatMap { listOf("subject:${it.value}", meterTag(it, period)) }.toSet(),
+                    ),
+                ).events
+            }
+
+            val now = System.currentTimeMillis()
+            val meter = MeterDecision(period).also { it.applyAll(events) }
+            val entitlement = nl.incedo.paywall.entitlements.EntitlementDecision().also { it.applyAll(events) }
+            // Live grant ids across the linked subjects (FGA-08 browse)
+            val grantExpiry = mutableMapOf<String, Long?>()
+            events.forEach { event ->
+                when (event) {
+                    is GrantIssued -> grantExpiry[event.grantId.value] = event.expiresAtEpochMs
+                    is GrantRevoked -> grantExpiry.remove(event.grantId.value)
+                    else -> {}
+                }
+            }
+            val liveGrants = grantExpiry.filterValues { it == null || it > now }.keys.sorted()
+            val recent = events.filterIsInstance<WallEventRecorded>().takeLast(20).map {
+                InspectorWallEvent(
+                    type = it.eventType.name.lowercase(),
+                    articleId = it.articleId?.value,
+                    variant = it.variant,
+                    channel = it.channel,
+                    occurredAtEpochMs = it.occurredAtEpochMs,
+                )
+            }
+            val variant = subjectId.value.removePrefix("visitor:")
+                .takeIf { it != subjectId.value } // only visitor subjects carry an assignment
+                ?.let { VariantAssigner.assign(VisitorId(it), defaultExperiment).name }
+            call.respond(
+                SubjectInspectorResponse(
+                    subjectId = subjectId.value,
+                    variant = variant,
+                    meterPeriod = period.value,
+                    meterUsed = meter.used,
+                    entitled = entitlement.hasValidEntitlement(now),
+                    liveGrants = liveGrants,
+                    linkedSubjects = allSubjects.map { it.value }.sorted(),
+                    recentWallEvents = recent,
+                ),
+            )
+        }
+        post("/api/v1/admin/subjects/{subjectId}/meter-reset") {
+            val subjectParam = call.parameters["subjectId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subject id required"))
+            val request = call.receive<MeterResetRequest>()
+            if (request.actor.isBlank() || request.reason.isBlank()) {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "actor and reason are required (audited action)"))
+            }
+            eventStore.append(
+                listOf(
+                    nl.incedo.paywall.metering.MeterReset(
+                        subjectId = SubjectId(subjectParam),
+                        period = currentPeriod(),
+                        actor = request.actor,
+                        reason = request.reason,
+                    ),
+                ),
+                condition = null,
+            )
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "MeterReset"))
         }
         // Experiment dashboard numbers (AN-10): per-variant funnel stats,
         // rebuilt from the wall-event stream (projection — DM-04/DM-08).
@@ -185,6 +424,87 @@ fun Application.module(service: AccessService, eventStore: EventStore) {
                 )
             }.sortedBy { it.variant }
             call.respond(response)
+        }
+        // Integration inbound (AC-02, EA-*): entitlement changes from the
+        // external subscription administration. The paywall enforces; it
+        // never manages subscriptions (scope boundary).
+        post("/api/v1/integration/entitlements") {
+            val change = call.receive<EntitlementChangeRequest>()
+            if (change.subjectId.isBlank() || change.subscriptionRef.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId and subscriptionRef are required"))
+                return@post
+            }
+            val event = if (change.active) {
+                EntitlementGranted(
+                    subjectId = SubjectId(change.subjectId),
+                    planId = PlanId(change.planId ?: "unknown"),
+                    subscriptionRef = SubscriptionId(change.subscriptionRef),
+                    validUntilEpochMs = change.validUntilEpochMs,
+                )
+            } else {
+                EntitlementRevoked(
+                    subjectId = SubjectId(change.subjectId),
+                    subscriptionRef = SubscriptionId(change.subscriptionRef),
+                )
+            }
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to event::class.simpleName))
+        }
+        // FGA grant management (FGA-03): issue/revoke article-scoped grants —
+        // day/week passes carry TTL = pass duration (PW-08). All writes are
+        // events, hence audited by construction (ADM-03).
+        post("/api/v1/grants") {
+            val change = call.receive<GrantChangeRequest>()
+            if (change.grantId.isBlank() || change.subjectId.isBlank() || change.articleId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "grantId, subjectId and articleId are required"))
+                return@post
+            }
+            val event = if (change.active) {
+                GrantIssued(
+                    grantId = GrantId(change.grantId),
+                    subjectId = SubjectId(change.subjectId),
+                    articleId = ArticleId(change.articleId),
+                    grantedBy = change.grantedBy,
+                    expiresAtEpochMs = change.expiresAtEpochMs,
+                )
+            } else {
+                GrantRevoked(
+                    grantId = GrantId(change.grantId),
+                    subjectId = SubjectId(change.subjectId),
+                    articleId = ArticleId(change.articleId),
+                )
+            }
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to event::class.simpleName))
+        }
+        // AN-04: the wall-event stream is exportable for offline analysis.
+        // CSV here; Parquet via the warehouse pipeline later. `since` pages
+        // by store position so exports can run incrementally.
+        get("/api/v1/export/wall-events.csv") {
+            val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0L
+            val result = eventStore.query(EventQuery(wallEventShardTags(), since = since))
+            val rows = result.events.filterIsInstance<WallEventRecorded>()
+            val csv = buildString {
+                appendLine("occurred_at_epoch_ms,type,subject_id,variant,channel,article_id,context")
+                rows.forEach { event ->
+                    val context = event.context.entries.joinToString(";") { "${it.key}=${it.value}" }
+                    appendLine(
+                        listOf(
+                            event.occurredAtEpochMs.toString(),
+                            event.eventType.name.lowercase(),
+                            event.subjectId.value,
+                            event.variant,
+                            event.channel,
+                            event.articleId?.value ?: "",
+                            context,
+                        ).joinToString(",") { field ->
+                            if ("," in field || "\"" in field) "\"${field.replace("\"", "\"\"")}\"" else field
+                        },
+                    )
+                }
+            }
+            call.response.headers.append("X-Export-Position", result.position.toString())
+            call.respondText(csv, io.ktor.http.ContentType.Text.CSV)
         }
         // Integration inbound (MT-13): consent-based identity link signals —
         // login (US-04), newsletter tokens, share tokens (BP-05), extra devices.

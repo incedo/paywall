@@ -22,6 +22,9 @@ class IdentityLinkDecision {
 
     fun applyAll(events: Iterable<DomainEvent>) = events.forEach(::apply)
 
+    /** Is this exact pair currently linked? (idempotence check for US-04 auto-linking) */
+    fun isLinked(a: SubjectId, b: SubjectId): Boolean = normalize(a, b) in edges
+
     /** Transitive closure over the known edges, starting from [start]. */
     fun linkedSubjects(start: Set<SubjectId>): Set<SubjectId> {
         val reached = start.toMutableSet()

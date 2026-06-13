@@ -45,14 +45,17 @@ import nl.incedo.paywall.ui.CrmToggleChip
 @Composable
 fun WallDesignerScreen(
     wallName: String,
+    wallStatus: String,
     definition: WallDefinition,
     onDefinitionChange: (WallDefinition) -> Unit,
     onBack: () -> Unit,
+    onSaveDraft: () -> Unit,
+    onPublish: () -> Unit,
 ) {
     var mobilePreview by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        DesignerToolbar(wallName, onBack)
+        DesignerToolbar(wallName, wallStatus, onBack, onSaveDraft, onPublish)
         CrmDivider()
         Row(modifier = Modifier.fillMaxWidth()) {
             ConfigPanel(
@@ -85,7 +88,13 @@ fun WallDesignerScreen(
 }
 
 @Composable
-private fun DesignerToolbar(wallName: String, onBack: () -> Unit) {
+private fun DesignerToolbar(
+    wallName: String,
+    wallStatus: String,
+    onBack: () -> Unit,
+    onSaveDraft: () -> Unit,
+    onPublish: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -96,10 +105,10 @@ private fun DesignerToolbar(wallName: String, onBack: () -> Unit) {
     ) {
         CrmTextButton("Walls", onClick = onBack)
         CrmText("/ $wallName", style = CrmTheme.typography.h3)
-        CrmTag("Draft", CrmTheme.colors.surfaceVariant, CrmTheme.colors.onSurfaceVariant)
+        CrmTag(wallStatus, CrmTheme.colors.surfaceVariant, CrmTheme.colors.onSurfaceVariant)
         Row(modifier = Modifier.weight(1f)) {}
-        CrmSecondaryButton("Save draft")
-        CrmPrimaryButton("Publish")
+        CrmSecondaryButton("Save draft", onClick = onSaveDraft)
+        CrmPrimaryButton("Publish", onClick = onPublish)
     }
 }
 

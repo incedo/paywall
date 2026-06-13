@@ -13,6 +13,9 @@ import io.ktor.server.testing.testApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import nl.incedo.paywall.api.SaveWallRequest
+import nl.incedo.paywall.api.VariantStatsResponse
+import nl.incedo.paywall.api.WallResponse
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.analytics.wallEventShardTags
@@ -97,6 +100,23 @@ class AnalyticsApiTest {
             setBody(ClientEventRequest(type = "wall_shown", visitorId = "v-1"))
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
+    fun wallEventsExportAsCsvWithIncrementalPaging() = apiTest { client, _ ->
+        val visitor = visitorIn("hard")
+        decide(client, visitor, "a-1") // wall_shown
+
+        val response = client.get("/api/v1/export/wall-events.csv")
+        val csv = response.body<String>()
+        val lines = csv.trim().lines()
+        assertEquals("occurred_at_epoch_ms,type,subject_id,variant,channel,article_id,context", lines.first())
+        assertTrue(lines.any { "wall_shown" in it && "visitor:$visitor" in it }, "AN-04 export carries the event")
+
+        // Incremental export from the returned position yields nothing new
+        val position = response.headers["X-Export-Position"]!!.toLong()
+        val next = client.get("/api/v1/export/wall-events.csv?since=$position").body<String>()
+        assertEquals(1, next.trim().lines().size, "only the header after the last position")
     }
 
     @Test

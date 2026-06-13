@@ -15,6 +15,9 @@ import nl.incedo.paywall.grants.GrantIssued
 import nl.incedo.paywall.grants.GrantRevoked
 import nl.incedo.paywall.metering.MeterIncremented
 import nl.incedo.paywall.metering.MeterReset
+import nl.incedo.paywall.walls.WallConfigChanged
+import nl.incedo.paywall.walls.WallCreated
+import nl.incedo.paywall.walls.WallPublished
 
 /**
  * Polymorphic registration of every domain event, shared by all event-store
@@ -35,6 +38,9 @@ val paywallSerializersModule = SerializersModule {
         subclass(CepGateAdvised::class)
         subclass(CepGateAdviceWithdrawn::class)
         subclass(WallEventRecorded::class)
+        subclass(WallCreated::class)
+        subclass(WallConfigChanged::class)
+        subclass(WallPublished::class)
     }
 }
 
