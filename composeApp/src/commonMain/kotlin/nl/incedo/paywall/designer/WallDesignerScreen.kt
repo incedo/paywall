@@ -27,6 +27,7 @@ import nl.incedo.paywall.api.WallVersionSummary
 import nl.incedo.paywall.model.Channel
 import nl.incedo.paywall.model.WallDefinition
 import nl.incedo.paywall.model.WallType
+import nl.incedo.paywall.model.defaultCopyFor
 import nl.incedo.paywall.screens.ConsentStepScreen
 import nl.incedo.paywall.screens.ContentGateWall
 import nl.incedo.paywall.screens.MeterNudgeBanner
@@ -145,7 +146,19 @@ private fun ConfigPanel(
                 CrmToggleChip(
                     label = type.label,
                     selected = definition.type == type,
-                    onClick = { onDefinitionChange(definition.copy(type = type)) },
+                    onClick = {
+                        // PW-11: apply type-appropriate default copy when switching types,
+                        // but only if the title still matches the old type's default (not customised).
+                        val oldDefault = defaultCopyFor[definition.type]
+                        val newDefault = defaultCopyFor[type]
+                        val updatedDefinition = if (newDefault != null && oldDefault != null &&
+                            definition.title == oldDefault.title && definition.body == oldDefault.body) {
+                            definition.copy(type = type, title = newDefault.title, body = newDefault.body)
+                        } else {
+                            definition.copy(type = type)
+                        }
+                        onDefinitionChange(updatedDefinition)
+                    },
                 )
             }
         }
