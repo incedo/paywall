@@ -11,6 +11,7 @@ import kotlinx.serialization.Serializable
 @Serializable @JvmInline value class GrantId(val value: String)
 @Serializable @JvmInline value class PlanId(val value: String)
 @Serializable @JvmInline value class PartnerId(val value: String)
+@Serializable @JvmInline value class BrandId(val value: String)
 
 /** Reference to the external subscription administration's id — not owned here. */
 @Serializable @JvmInline value class SubscriptionId(val value: String)

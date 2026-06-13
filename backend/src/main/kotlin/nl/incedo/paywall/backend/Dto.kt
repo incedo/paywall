@@ -197,6 +197,34 @@ data class OfferResponse(
     val cta: String? = null,
 )
 
+/**
+ * ADM-10: brand creation/update request.
+ * Theme tokens are an opaque JSON object interpreted by the wall renderer.
+ */
+@Serializable
+data class CreateBrandRequest(
+    val brandId: String,
+    val name: String,
+    val domain: String,
+    val locale: String = "nl-NL",
+    val themeJson: String = "{}",
+)
+
+@Serializable
+data class UpdateBrandThemeRequest(
+    val themeJson: String,
+    val actor: String = "admin",
+)
+
+@Serializable
+data class BrandResponse(
+    val brandId: String,
+    val name: String,
+    val domain: String,
+    val locale: String,
+    val themeJson: String,
+)
+
 /** PA-01: partner creation request. */
 @Serializable
 data class CreatePartnerRequest(

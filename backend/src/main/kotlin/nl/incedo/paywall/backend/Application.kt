@@ -40,10 +40,15 @@ import nl.incedo.paywall.backend.auth.OriginTrust
 import nl.incedo.paywall.backend.auth.StaffRole
 import nl.incedo.paywall.backend.auth.requireStaff
 import nl.incedo.paywall.backend.content.ArticleRepository
+import nl.incedo.paywall.brands.BrandCreated
+import nl.incedo.paywall.brands.BrandDecision
+import nl.incedo.paywall.brands.BrandThemeUpdated
+import nl.incedo.paywall.brands.brandTag
 import nl.incedo.paywall.cep.CepClient
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.core.ArticleId
+import nl.incedo.paywall.core.BrandId
 import nl.incedo.paywall.core.ExperimentId
 import nl.incedo.paywall.core.PartnerId
 import nl.incedo.paywall.core.PlanId
@@ -117,6 +122,7 @@ private fun WallView.toResponse() = WallResponse(
     status = status,
     version = version,
     lastEditedBy = lastEditedBy,
+    brandId = config.brandId,
 )
 
 private suspend fun io.ktor.server.application.ApplicationCall.respondSaveResult(result: WallService.SaveResult) {
@@ -439,6 +445,7 @@ fun Application.module(
                 name = request.name, wallType = request.wallType, title = request.title,
                 body = request.body, primaryCta = request.primaryCta,
                 secondaryCta = request.secondaryCta, channels = request.channels,
+                brandId = request.brandId, // ADM-10: optional brand association
             )
             val wallId = WallId(id)
             // The actor is the authenticated staff subject, not client-supplied (ADM-03 audit).
@@ -867,6 +874,79 @@ fun Application.module(
                 ShareTokenService.RedeemResult.Expired ->
                     call.respond(HttpStatusCode.Gone, mapOf("error" to "share token has expired"))
             }
+        }
+        // ── Brand management (ADM-10) ────────────────────────────────────────
+        // ADM-10: create a brand (theme tokens, domain, locale).
+        post("/api/v1/admin/brands") {
+            call.requireStaff(jwtValidator, StaffRole.ADMIN) ?: return@post
+            val req = call.receive<CreateBrandRequest>()
+            if (req.brandId.isBlank() || req.name.isBlank() || req.domain.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "brandId, name and domain are required"))
+                return@post
+            }
+            val event = BrandCreated(
+                brandId = BrandId(req.brandId),
+                name = req.name,
+                domain = req.domain,
+                locale = req.locale,
+                themeJson = req.themeJson,
+                createdAtEpochMs = System.currentTimeMillis(),
+            )
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Created, mapOf("brandId" to req.brandId))
+        }
+        // ADM-10: update theme tokens for a brand.
+        post("/api/v1/admin/brands/{brandId}/theme") {
+            call.requireStaff(jwtValidator, StaffRole.ADMIN) ?: return@post
+            val brandId = call.parameters["brandId"]?.takeIf { it.isNotBlank() } ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "brandId required"))
+                return@post
+            }
+            val req = call.receive<UpdateBrandThemeRequest>()
+            val bId = BrandId(brandId)
+            val bEvents = eventStore.query(EventQuery(setOf(brandTag(bId)))).events
+            val brand = BrandDecision().also { it.applyAll(bEvents) }
+            if (!brand.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "brand not found"))
+                return@post
+            }
+            val event = BrandThemeUpdated(bId, req.themeJson, req.actor, System.currentTimeMillis())
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "BrandThemeUpdated"))
+        }
+        // ADM-10: get brand state.
+        get("/api/v1/admin/brands/{brandId}") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            val brandId = call.parameters["brandId"]?.takeIf { it.isNotBlank() } ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "brandId required"))
+                return@get
+            }
+            val bId = BrandId(brandId)
+            val bEvents = eventStore.query(EventQuery(setOf(brandTag(bId)))).events
+            val brand = BrandDecision().also { it.applyAll(bEvents) }
+            if (!brand.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "brand not found"))
+                return@get
+            }
+            call.respond(BrandResponse(brandId, brand.name, brand.domain, brand.locale, brand.themeJson))
+        }
+        // ADM-10: list all brands (for the admin console brand picker).
+        get("/api/v1/admin/brands") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            val events = eventStore.query(EventQuery(setOf("brands"))).events
+            val byBrand = mutableMapOf<String, BrandDecision>()
+            events.forEach { ev ->
+                val id = when (ev) {
+                    is BrandCreated -> ev.brandId.value
+                    is BrandThemeUpdated -> ev.brandId.value
+                    else -> return@forEach
+                }
+                byBrand.getOrPut(id) { BrandDecision() }.apply(ev)
+            }
+            call.respond(byBrand.entries
+                .filter { it.value.exists }
+                .map { (id, b) -> BrandResponse(id, b.name, b.domain, b.locale, b.themeJson) }
+                .sortedBy { it.brandId })
         }
         // ── Partner management (PA-01/02/03/05 / IPW-01) ─────────────────────
         // PA-01: create partner with optional seat cap and plan tier.
