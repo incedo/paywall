@@ -232,6 +232,10 @@ fun main() {
     val webhookSecret = System.getenv("WEBHOOK_SECRET")
     val webhookVerifier = WebhookVerifier(webhookSecret)
 
+    // ADM-04: Ory Kratos admin URL for session lookup; absent in dev (mock returns empty list).
+    val ciamSessionClient: CiamSessionClient = System.getenv("KRATOS_ADMIN_URL")
+        ?.let { KratosCiamSessionClient(it) } ?: MockCiamSessionClient()
+
     // API-07: mock CEP client for the experiment; replace with real HTTP client in production.
     val cepClient = nl.incedo.paywall.cep.MockCepClient()
     // UP-01: offer decision service — wraps the CEP client with guardrails and logging.
@@ -246,6 +250,7 @@ fun main() {
             webhookVerifier = webhookVerifier,
             cepClient = cepClient,
             offerService = offerService,
+            ciamSessionClient = ciamSessionClient,
         )
     }.start(wait = true)
 }
@@ -272,6 +277,8 @@ fun Application.module(
     rateLimiter: RequestRateLimiter? = null,
     /** PAY-05: payment provider for checkout; null = mock (tests/dev). */
     paymentProvider: PaymentProvider = MockPaymentProvider(),
+    /** ADM-04: CIAM session lookup for subject inspector; mock = empty list (tests/dev). */
+    ciamSessionClient: CiamSessionClient = MockCiamSessionClient(),
 ) {
     // UP-01: auto-construct the offer service from cepClient if not provided explicitly.
     // This keeps all test helpers that pass cepClient working without change.
@@ -810,6 +817,10 @@ fun Application.module(
             val variant = subjectId.value.removePrefix("visitor:")
                 .takeIf { it != subjectId.value } // only visitor subjects carry an assignment
                 ?.let { VariantAssigner.assign(VisitorId(it), configStore?.experiment() ?: defaultExperiment).name }
+            // ADM-04: fetch active CIAM sessions for user subjects (read-only from Ory Kratos).
+            val sessions = if (subjectId.value.startsWith("user:")) {
+                ciamSessionClient.activeSessions(subjectId.value.removePrefix("user:"))
+            } else emptyList()
             call.respond(
                 SubjectInspectorResponse(
                     subjectId = subjectId.value,
@@ -821,6 +832,7 @@ fun Application.module(
                     liveGrants = liveGrants,
                     linkedSubjects = allSubjects.map { it.value }.sorted(),
                     recentWallEvents = recent,
+                    sessions = sessions, // ADM-04
                 ),
             )
         }
