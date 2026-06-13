@@ -19,9 +19,13 @@ import nl.incedo.paywall.api.WallResponse
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.analytics.wallEventShardTags
+import nl.incedo.paywall.access.StrategyConfig
+import nl.incedo.paywall.core.ExperimentId
 import nl.incedo.paywall.core.VisitorId
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
 import nl.incedo.paywall.core.port.EventQuery
+import nl.incedo.paywall.experiments.ExperimentDefinition
+import nl.incedo.paywall.experiments.Variant
 import nl.incedo.paywall.experiments.VariantAssigner
 import nl.incedo.paywall.metering.MeterPeriod
 
@@ -67,6 +71,46 @@ class AnalyticsApiTest {
         assertEquals("hard", shown.variant)
         assertEquals("web", shown.channel)
         assertEquals("hard", shown.context["wallType"]) // AN-03 decision context
+    }
+
+    @Test
+    fun dynamicWallShownIncludesThresholds() {
+        // AN-03: wall_shown for Dynamic must carry tSoft and tHard so decisions
+        // are reproducible in offline analysis (DY-03).
+        val tSoft = 35
+        val tHard = 65
+        val dynamicOnlyExperiment = ExperimentDefinition(
+            id = ExperimentId("an03-test"),
+            name = "AN-03 threshold test",
+            variants = listOf(
+                Variant("dynamic", StrategyConfig.Dynamic(floorLimit = 1, tSoft = tSoft, tHard = tHard), weight = 100),
+            ),
+        )
+        testApplication {
+            val store = InMemoryEventStore()
+            val service = AccessService(
+                eventStore = store,
+                experiment = dynamicOnlyExperiment,
+                clock = { now },
+                currentPeriod = { MeterPeriod("2026-06") },
+            )
+            application { module(service, store) }
+            val client = createClient { install(ContentNegotiation) { json() } }
+            // floor=1: first visit (meterUsed=0) is open; second visit triggers gate.
+            client.post("/api/v1/decide") {
+                contentType(ContentType.Application.Json)
+                setBody(DecideRequest(visitorId = "an03-visitor", articleId = "a-1", tier = "premium"))
+            }
+            client.post("/api/v1/decide") {
+                contentType(ContentType.Application.Json)
+                setBody(DecideRequest(visitorId = "an03-visitor", articleId = "a-2", tier = "premium"))
+            }
+            val events = store.query(EventQuery(wallEventShardTags())).events.filterIsInstance<WallEventRecorded>()
+            val shown = events.firstOrNull { it.eventType == WallEventType.WALL_SHOWN }
+                ?: error("expected a WALL_SHOWN event")
+            assertEquals(tSoft.toString(), shown.context["tSoft"], "AN-03: tSoft must be in wall_shown context")
+            assertEquals(tHard.toString(), shown.context["tHard"], "AN-03: tHard must be in wall_shown context")
+        }
     }
 
     @Test
