@@ -36,7 +36,29 @@ class CiamJwtValidator(
     }
 
     /** @return the CIAM subject as [UserId], or null for anything not provably authentic. */
-    fun userIdFrom(authorizationHeader: String?): UserId? {
+    fun userIdFrom(authorizationHeader: String?): UserId? =
+        verify(authorizationHeader)?.subject?.takeIf { it.isNotBlank() }?.let(::UserId)
+
+    /**
+     * Staff principal for console/admin access (ADM-05): subject, role and
+     * step-up level. Role comes from the `role` claim (or first of `roles`);
+     * AAL2 is asserted by `acr == "aal2"` or an `amr` factor (NFR-22/AA-01).
+     * Returns null for any token that is not provably authentic (AC-07).
+     */
+    fun staffFrom(authorizationHeader: String?): StaffPrincipal? {
+        val jwt = verify(authorizationHeader) ?: return null
+        val sub = jwt.subject?.takeIf { it.isNotBlank() } ?: return null
+        val roleClaim = jwt.getClaim("role").asString()
+            ?: jwt.getClaim("roles").asList(String::class.java)?.firstOrNull()
+        val role = StaffRole.fromClaim(roleClaim) ?: return null
+        val acr = jwt.getClaim("acr").asString()
+        val amr = jwt.getClaim("amr").asList(String::class.java).orEmpty()
+        val aal2 = acr.equals("aal2", ignoreCase = true) ||
+            amr.any { it.lowercase() in setOf("mfa", "otp", "totp", "webauthn") }
+        return StaffPrincipal(userId = UserId(sub), role = role, aal2 = aal2)
+    }
+
+    private fun verify(authorizationHeader: String?): com.auth0.jwt.interfaces.DecodedJWT? {
         val token = authorizationHeader
             ?.takeIf { it.startsWith("Bearer ") }
             ?.removePrefix("Bearer ")
@@ -46,13 +68,35 @@ class CiamJwtValidator(
         return try {
             val keyId = JWT.decode(token).keyId ?: return null
             val publicKey = jwkProvider.get(keyId).publicKey as? RSAPublicKey ?: return null
-            val verified = JWT.require(Algorithm.RSA256(publicKey, null))
+            JWT.require(Algorithm.RSA256(publicKey, null))
                 .withIssuer(issuer)
                 .build()
                 .verify(token)
-            verified.subject?.takeIf { it.isNotBlank() }?.let(::UserId)
         } catch (_: Exception) {
             null // AC-07: degrade to anonymous — never an error page
         }
     }
 }
+
+/** Console roles (ADM-05), ordered by privilege. */
+enum class StaffRole {
+    VIEWER, OPERATOR, ADMIN;
+
+    fun satisfies(minimum: StaffRole): Boolean = ordinal >= minimum.ordinal
+
+    companion object {
+        fun fromClaim(value: String?): StaffRole? = when (value?.lowercase()) {
+            "viewer" -> VIEWER
+            "operator" -> OPERATOR
+            "admin" -> ADMIN
+            else -> null
+        }
+    }
+}
+
+data class StaffPrincipal(
+    val userId: UserId,
+    val role: StaffRole,
+    /** AA-01: step-up authentication level reached (TOTP/WebAuthn/email code). */
+    val aal2: Boolean,
+)
