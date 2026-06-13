@@ -46,8 +46,10 @@ import nl.incedo.paywall.brands.BrandDecision
 import nl.incedo.paywall.brands.BrandThemeUpdated
 import nl.incedo.paywall.brands.brandTag
 import nl.incedo.paywall.grants.DataGateConsentGiven
+import nl.incedo.paywall.offers.OFFER_EVENT_TAG
 import nl.incedo.paywall.offers.OfferAccepted
 import nl.incedo.paywall.offers.OfferDeclined
+import nl.incedo.paywall.offers.OfferStatsProjection
 import nl.incedo.paywall.offers.offerTag
 import nl.incedo.paywall.cep.CepClient
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
@@ -683,6 +685,31 @@ fun Application.module(
                 )
             }.sortedBy { it.variant }
             call.respond(response)
+        }
+        // AN-14: offer performance view — per offer_id funnel counts, acceptance rate,
+        // and channel breakdown. Rebuilt from the offer-event stream (DM-04).
+        get("/api/v1/stats/offers") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            val events = eventStore.query(EventQuery(setOf(OFFER_EVENT_TAG))).events
+            val projection = OfferStatsProjection().also { it.applyAll(events) }
+            call.respond(projection.stats().map { s ->
+                OfferStatsResponse(
+                    offerId = s.offerId,
+                    triggered = s.triggered,
+                    accepted = s.accepted,
+                    declined = s.declined,
+                    suppressed = s.suppressed,
+                    acceptanceRate = s.acceptanceRate,
+                    channels = s.channels.mapValues { (_, ch) ->
+                        OfferChannelStatsResponse(
+                            triggered = ch.triggered,
+                            accepted = ch.accepted,
+                            declined = ch.declined,
+                            suppressed = ch.suppressed,
+                        )
+                    },
+                )
+            })
         }
         // Integration inbound (AC-02, EA-*): entitlement changes from the
         // external subscription administration. The paywall enforces; it
