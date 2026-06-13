@@ -4,6 +4,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
+import nl.incedo.paywall.brands.BrandCreated
+import nl.incedo.paywall.brands.BrandThemeUpdated
 import nl.incedo.paywall.accounts.IdentityLinked
 import nl.incedo.paywall.accounts.IdentityUnlinked
 import nl.incedo.paywall.accounts.UserDeleted
@@ -45,6 +47,8 @@ val paywallSerializersModule = SerializersModule {
         subclass(PartnerMemberAdded::class)
         subclass(PartnerMemberRemoved::class)
         subclass(PartnerIpRangeConfigured::class)
+        subclass(BrandCreated::class)
+        subclass(BrandThemeUpdated::class)
         subclass(IdentityLinked::class)
         subclass(IdentityUnlinked::class)
         subclass(UserDeleted::class)

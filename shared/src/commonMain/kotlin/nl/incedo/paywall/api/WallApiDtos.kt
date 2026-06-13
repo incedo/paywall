@@ -19,6 +19,8 @@ data class SaveWallRequest(
     val actor: String = "console",
     /** Optimistic concurrency: the version the editor was looking at (ADM-06). */
     val expectedVersion: Int? = null,
+    /** ADM-10: optional brand this wall design belongs to. */
+    val brandId: String? = null,
 )
 
 @Serializable
@@ -34,6 +36,8 @@ data class WallResponse(
     val status: String,
     val version: Int,
     val lastEditedBy: String,
+    /** ADM-10: brand this wall design is associated with, if any. */
+    val brandId: String? = null,
 )
 
 /** AN-10/AN-11/AN-12 dashboard numbers per variant. */

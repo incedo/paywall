@@ -20,6 +20,8 @@ data class WallConfig(
     val primaryCta: String,
     val secondaryCta: String,
     val channels: Set<String> = setOf("web"),
+    /** ADM-10: brand this wall design belongs to; null = unbranded (default brand). */
+    val brandId: String? = null,
 )
 
 @Serializable
