@@ -28,6 +28,7 @@ import nl.incedo.paywall.model.Channel
 import nl.incedo.paywall.model.WallDefinition
 import nl.incedo.paywall.model.WallType
 import nl.incedo.paywall.model.defaultCopyFor
+import nl.incedo.paywall.walls.WallCopy
 import nl.incedo.paywall.screens.ConsentStepScreen
 import nl.incedo.paywall.screens.ContentGateWall
 import nl.incedo.paywall.screens.MeterNudgeBanner
@@ -139,6 +140,8 @@ private fun ConfigPanel(
     onDefinitionChange: (WallDefinition) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var newLocale by remember { mutableStateOf("") }
+
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg)) {
         CrmText("Wall type", style = CrmTheme.typography.label, color = CrmTheme.colors.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
@@ -187,6 +190,73 @@ private fun ConfigPanel(
             selectedIndex = if (definition.requireConsentStep) 1 else 0,
             onSelect = { onDefinitionChange(definition.copy(requireConsentStep = it == 1)) },
         )
+
+        // ADM-15: per-locale copy overrides
+        CrmText("Locale overrides", style = CrmTheme.typography.h3)
+        CrmText(
+            "Override copy for specific locales (BCP-47 tags, e.g. nl-NL).",
+            style = CrmTheme.typography.caption,
+            color = CrmTheme.colors.onSurfaceVariant,
+        )
+        definition.translations.forEach { (locale, copy) ->
+            CrmCard {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CrmText(locale, style = CrmTheme.typography.label)
+                        CrmTextButton("Remove") {
+                            onDefinitionChange(definition.copy(translations = definition.translations - locale))
+                        }
+                    }
+                    CrmTextField(
+                        "Title",
+                        copy.title ?: "",
+                        { onDefinitionChange(definition.copy(translations = definition.translations + (locale to copy.copy(title = it.ifBlank { null })))) },
+                    )
+                    CrmTextField(
+                        "Body",
+                        copy.body ?: "",
+                        { onDefinitionChange(definition.copy(translations = definition.translations + (locale to copy.copy(body = it.ifBlank { null })))) },
+                        singleLine = false,
+                    )
+                    CrmTextField(
+                        "Primary CTA",
+                        copy.primaryCta ?: "",
+                        { onDefinitionChange(definition.copy(translations = definition.translations + (locale to copy.copy(primaryCta = it.ifBlank { null })))) },
+                    )
+                    CrmTextField(
+                        "Secondary CTA",
+                        copy.secondaryCta ?: "",
+                        { onDefinitionChange(definition.copy(translations = definition.translations + (locale to copy.copy(secondaryCta = it.ifBlank { null })))) },
+                    )
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CrmTextField(
+                "Add locale (e.g. nl-NL)",
+                newLocale,
+                { newLocale = it },
+                modifier = Modifier.weight(1f),
+            )
+            CrmSecondaryButton("Add") {
+                val tag = newLocale.trim()
+                if (tag.isNotEmpty() && tag !in definition.translations) {
+                    onDefinitionChange(definition.copy(translations = definition.translations + (tag to WallCopy())))
+                    newLocale = ""
+                }
+            }
+        }
     }
 }
 

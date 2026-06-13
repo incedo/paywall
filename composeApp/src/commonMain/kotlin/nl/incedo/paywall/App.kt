@@ -286,6 +286,7 @@ private fun WallResponse.toDefinition() = WallDefinition(
     secondaryCta = secondaryCta,
     channels = channels.mapNotNull(::channelFromApi).toSet(),
     requireConsentStep = requireConsentStep,
+    translations = translations,
 )
 
 private fun WallDefinition.toSaveRequest(name: String, expectedVersion: Int?) = SaveWallRequest(
@@ -299,6 +300,7 @@ private fun WallDefinition.toSaveRequest(name: String, expectedVersion: Int?) = 
     actor = "console",
     expectedVersion = expectedVersion,
     requireConsentStep = requireConsentStep,
+    translations = translations,
 )
 
 @Composable

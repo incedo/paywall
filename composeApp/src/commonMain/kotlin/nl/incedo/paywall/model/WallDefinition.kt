@@ -33,6 +33,11 @@ data class WallDefinition(
     val registrationWall: Boolean = false,
     /** AC-14: show a GDPR consent step before the subscription gate where legally required. */
     val requireConsentStep: Boolean = false,
+    /**
+     * ADM-15: per-locale copy overrides keyed by BCP-47 locale tag (e.g. "nl-NL").
+     * Only fields that differ from the defaults need to be set; null = use default.
+     */
+    val translations: Map<String, nl.incedo.paywall.walls.WallCopy> = emptyMap(),
 )
 
 /**
