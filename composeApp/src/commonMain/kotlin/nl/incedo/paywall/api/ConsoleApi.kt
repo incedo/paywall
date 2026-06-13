@@ -86,4 +86,17 @@ class ConsoleApi(private val baseUrl: String = "http://localhost:8080") {
         }
         return response.status.isSuccess()
     }
+
+    // ── ADM-13: wall version history and rollback ─────────────────────────────
+
+    suspend fun wallHistory(wallId: String): List<WallVersionSummary> =
+        client.get("$baseUrl/api/v1/walls/$wallId/history").body()
+
+    suspend fun rollbackWall(wallId: String, version: Int): SaveOutcome {
+        val response = client.post("$baseUrl/api/v1/walls/$wallId/rollback?version=$version") {
+            contentType(ContentType.Application.Json)
+        }
+        return if (response.status.isSuccess()) SaveOutcome.Saved(response.body())
+        else SaveOutcome.Failed("Rollback failed (${response.status.value})")
+    }
 }

@@ -205,6 +205,20 @@ fun App() {
                     },
                     onSaveDraft = { if (!offline) saveDraft(current.wallId) else statusMessage = "Offline — cannot save" },
                     onPublish = { if (!offline) publish(current.wallId) else statusMessage = "Offline — cannot publish" },
+                    onLoadHistory = { api.wallHistory(current.wallId) },
+                    onRollback = { version ->
+                        when (val outcome = runCatching { api.rollbackWall(current.wallId, version) }.getOrElse { ConsoleApi.SaveOutcome.Failed("Backend unreachable") }) {
+                            is ConsoleApi.SaveOutcome.Saved -> {
+                                editingVersion = outcome.wall.version
+                                editingStatus = outcome.wall.status
+                                definition = outcome.wall.toDefinition()
+                                statusMessage = "Restored to v$version — now draft v${outcome.wall.version}"
+                                refreshWalls()
+                            }
+                            is ConsoleApi.SaveOutcome.Conflict -> statusMessage = outcome.message
+                            is ConsoleApi.SaveOutcome.Failed -> statusMessage = outcome.message
+                        }
+                    },
                 )
             }
         }
