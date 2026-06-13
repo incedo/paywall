@@ -1047,6 +1047,40 @@ fun Application.module(
             call.response.headers.append("X-Export-Position", result.position.toString())
             call.respondText(csv, io.ktor.http.ContentType.Text.CSV)
         }
+        // BP-06: bypass-rate estimation — ratio of gated-rendering requests that
+        // carry bypass markers (bot UA flag, suspicious-IP flag) relative to total
+        // wall-shown events. Reported, never blocked (DL-03). Optional `since`
+        // paginates by store position for incremental/periodic reporting.
+        get("/api/v1/admin/bypass-rate") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0L
+            val result = eventStore.query(EventQuery(wallEventShardTags(), since = since))
+            val wallEvents = result.events.filterIsInstance<WallEventRecorded>()
+            // Denominator: every gate render (wall shown to a visitor)
+            val gatedRenders = wallEvents.count {
+                it.eventType == nl.incedo.paywall.analytics.WallEventType.WALL_SHOWN
+            }
+            // Numerator: gate renders that arrived with a bypass marker
+            val markedGatedRenders = wallEvents.count {
+                it.eventType == nl.incedo.paywall.analytics.WallEventType.WALL_SHOWN &&
+                    (it.context["bot"] == "true" || it.context["suspicious_ip"] == "true")
+            }
+            // Secondary: flagged article reads that may represent successful bypasses
+            val flaggedReads = wallEvents.count {
+                it.eventType == nl.incedo.paywall.analytics.WallEventType.ARTICLE_READ &&
+                    (it.context["bot"] == "true" || it.context["suspicious_ip"] == "true")
+            }
+            val bypassRate = if (gatedRenders > 0) markedGatedRenders.toDouble() / gatedRenders else 0.0
+            call.respond(
+                BypassRateResponse(
+                    gatedRenders = gatedRenders,
+                    markedGatedRenders = markedGatedRenders,
+                    flaggedReads = flaggedReads,
+                    bypassRate = bypassRate,
+                    storePosition = result.position,
+                ),
+            )
+        }
         // BP-04: RSS 2.0 feed — premium articles carry teaser-only in the
         // description so full bodies are never exposed via syndication.
         // No authentication required: the feed is public (titles and teasers only).
