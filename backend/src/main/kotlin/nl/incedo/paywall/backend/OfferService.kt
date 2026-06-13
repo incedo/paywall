@@ -148,6 +148,12 @@ class OfferService(
 
         val offerTags = setOf("subject:${subjectId.value}", offerTag(subjectId, offer.offerId))
         val offerEvents = eventStore.query(EventQuery(offerTags)).events
+
+        // API-08: idempotent on offerId + subjectId — if already triggered, return immediately.
+        if (offerEvents.any { it is OfferTriggered && it.trigger == "cep_push" }) {
+            return OfferDecision.Triggered(offer)
+        }
+
         val frequency = OfferFrequencyDecision(frequencyCooldownMs).also { it.applyAll(offerEvents) }
 
         if (frequency.isCapped(offer.offerId, now)) {
