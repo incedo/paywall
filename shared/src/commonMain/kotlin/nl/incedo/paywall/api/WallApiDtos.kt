@@ -61,7 +61,6 @@ data class WallResponse(
 data class VariantStatsResponse(
     val variant: String,
     val visitors: Int,
-    /** AN-11: client-reported page views for reach-cost comparison vs control. */
     val pageViews: Int,
     val articleReads: Int,
     val wallsShown: Int,
@@ -77,4 +76,15 @@ data class VariantStatsResponse(
     val conversionRateHigh: Double,
     /** AN-12: true when n < 100 — CI too wide to draw reliable conclusions. */
     val sampleSizeTooSmall: Boolean,
+    /**
+     * AN-11: change in page views vs. the EX-04 control variant.
+     * Negative = fewer views than control (reach cost); positive = more.
+     * Null when no control variant is configured in the experiment.
+     */
+    val pageViewsDeltaVsControl: Int? = null,
+    /**
+     * AN-11: change in article reads vs. the EX-04 control variant.
+     * Null when no control variant is configured.
+     */
+    val articleReadsDeltaVsControl: Int? = null,
 )
