@@ -398,6 +398,9 @@ class AccessService(
                     decision.meterUsed?.let { put("meterUsed", it.toString()) }
                     decision.meterLimit?.let { put("meterLimit", it.toString()) }
                     put("score", propensityScore.toString()) // PW-43
+                    // AN-03: log thresholds for dynamic so decisions are reproducible in analysis (DY-03)
+                    val dyn = variant.strategy as? nl.incedo.paywall.access.StrategyConfig.Dynamic
+                    dyn?.let { put("tSoft", it.tSoft.toString()); put("tHard", it.tHard.toString()) }
                     if (isBot) put("bot", "true")
                     if (isSuspicious) put("suspicious_ip", "true")
                     correlationId?.let { put("request_id", it) } // NFR-14
