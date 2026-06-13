@@ -25,6 +25,8 @@ data class ExperimentDefinition(
     val startDate: Long? = null,
     /** EX-02: experiment end (epoch ms); null = no planned end. */
     val endDate: Long? = null,
+    /** FGA-02: maximum allowed TTL for any FGA grant in this experiment (days). Default 30. */
+    val maxGrantTtlDays: Int = 30,
 ) {
     init {
         require(variants.isNotEmpty()) { "An experiment needs at least one variant" }
