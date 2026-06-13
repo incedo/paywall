@@ -96,6 +96,12 @@ class CiamAuthTest {
             .map { "ciam-visitor-$it" }
             .first { VariantAssigner.assign(VisitorId(it), defaultExperiment).name == variant }
 
+    /** EX-03: find a user ID whose userId-keyed assignment is the given variant. */
+    private fun userIn(variant: String): String =
+        (0 until 10_000).asSequence()
+            .map { "ciam-user-$it" }
+            .first { VariantAssigner.assign(VisitorId(it), defaultExperiment).name == variant }
+
     private suspend fun decide(
         client: io.ktor.client.HttpClient,
         visitor: String,
@@ -204,18 +210,21 @@ class CiamAuthTest {
 
     @Test
     fun loginLinksVisitorToUserOnceAndMergesTheMeter() = apiTest { client, store ->
+        // EX-03: both the visitor and the user must be in the metered variant —
+        // the authenticated request uses the userId as assignment key.
         val visitor = visitorIn("metered")
+        val userId = userIn("metered")
         // Anonymous: three counted reads on this device
         for (i in 1..3) decide(client, visitor, article = "a-$i")
 
         // First authenticated request: US-04 auto-link, meter continues (MT-03)
-        val authed = decide(client, visitor, article = "a-4", bearer = token(sub = "ciam-user-9"))
+        val authed = decide(client, visitor, article = "a-4", bearer = token(sub = userId))
         assertEquals("full", authed.access)
         assertEquals(4, authed.meterUsed, "anonymous meter state merged into the user")
 
         // Second authenticated request: no duplicate link event
-        decide(client, visitor, article = "a-5", bearer = token(sub = "ciam-user-9"))
-        val links = store.query(EventQuery(setOf("subject:user:ciam-user-9"))).events
+        decide(client, visitor, article = "a-5", bearer = token(sub = userId))
+        val links = store.query(EventQuery(setOf("subject:user:$userId"))).events
             .filterIsInstance<IdentityLinked>()
         assertEquals(1, links.size, "US-04 link is appended exactly once")
         assertEquals("login", links.single().cause)

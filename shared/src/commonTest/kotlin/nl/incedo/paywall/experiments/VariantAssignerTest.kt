@@ -2,9 +2,12 @@ package nl.incedo.paywall.experiments
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import nl.incedo.paywall.access.StrategyConfig
+import nl.incedo.paywall.access.Subject
 import nl.incedo.paywall.core.ExperimentId
+import nl.incedo.paywall.core.UserId
 import nl.incedo.paywall.core.VisitorId
 
 class VariantAssignerTest {
@@ -51,6 +54,26 @@ class VariantAssignerTest {
         counts.forEach { (name, count) ->
             assertTrue(count in 800..1200, "variant $name got $count of 4000")
         }
+    }
+
+    @Test
+    fun authenticatedSubjectUsesUserIdForAssignment() {
+        // EX-03: the user-keyed assignment takes precedence so the same variant
+        // is seen across devices after login (the user ID is the stable key).
+        val visitorId = VisitorId("v-1")
+        val userId = UserId("u-1")
+        val subject = Subject(visitorId, userId)
+
+        val byUserId = VariantAssigner.assign(subject, experiment)
+        val byVisitorId = VariantAssigner.assign(visitorId, experiment)
+        // The two may or may not differ — what matters is that the subject overload
+        // uses the userId key (not the visitorId key) when userId is present.
+        assertEquals(VariantAssigner.assign(VisitorId(userId.value), experiment), byUserId,
+            "authenticated subject must use userId as assignment key (EX-03)")
+        // They differ when visitorId and userId hash to different buckets
+        val anonSubject = Subject(visitorId, null)
+        assertEquals(byVisitorId, VariantAssigner.assign(anonSubject, experiment),
+            "anonymous subject must fall back to visitorId key")
     }
 
     @Test

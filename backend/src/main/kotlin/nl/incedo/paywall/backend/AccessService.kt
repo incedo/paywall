@@ -99,7 +99,9 @@ class AccessService(
         isBot: Boolean = false,
         isSuspicious: Boolean = false,
     ): Outcome {
-        val variant = VariantAssigner.assign(subject.visitorId, experiment)
+        // EX-03: authenticated subjects use userId as the assignment key so the
+        // variant is stable across devices after login.
+        val variant = VariantAssigner.assign(subject, experiment)
         val period = currentPeriod()
         val now = clock()
 

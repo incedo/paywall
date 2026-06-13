@@ -306,7 +306,7 @@ fun Application.module(
             }
             val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
             val subject = Subject(VisitorId(request.visitorId), userId)
-            val variant = VariantAssigner.assign(subject.visitorId, defaultExperiment)
+            val variant = VariantAssigner.assign(subject, defaultExperiment) // EX-03
             eventStore.append(
                 listOf(
                     WallEventRecorded(
