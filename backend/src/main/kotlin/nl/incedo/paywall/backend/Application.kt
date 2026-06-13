@@ -173,6 +173,8 @@ private fun WallView.toResponse() = WallResponse(
     lastEditedBy = lastEditedBy,
     brandId = config.brandId,
     requireConsentStep = config.requireConsentStep,
+    imageUrl = config.imageUrl, // ADM-11
+    legalText = config.legalText, // ADM-11
     translations = config.translations, // ADM-15
 )
 
@@ -637,6 +639,8 @@ fun Application.module(
                 secondaryCta = request.secondaryCta, channels = request.channels,
                 brandId = request.brandId, // ADM-10: optional brand association
                 requireConsentStep = request.requireConsentStep, // AC-14: GDPR consent step
+                imageUrl = request.imageUrl, // ADM-11: optional image block
+                legalText = request.legalText, // ADM-11: optional legal text block
                 translations = request.translations, // ADM-15: per-locale copy overrides
             )
             val wallId = WallId(id)
@@ -790,6 +794,8 @@ fun Application.module(
                 body = request.body, primaryCta = request.primaryCta,
                 secondaryCta = request.secondaryCta, channels = request.channels,
                 brandId = null, // templates are always brand-neutral (ADM-16)
+                imageUrl = request.imageUrl, // ADM-11
+                legalText = request.legalText, // ADM-11
                 translations = request.translations,
             )
             val event = WallTemplateCreated(
@@ -802,6 +808,7 @@ fun Application.module(
                     wallType = config.wallType, title = config.title,
                     body = config.body, primaryCta = config.primaryCta,
                     secondaryCta = config.secondaryCta, channels = config.channels,
+                    imageUrl = config.imageUrl, legalText = config.legalText,
                     translations = config.translations, createdBy = staff.userId.value,
                 ),
             )

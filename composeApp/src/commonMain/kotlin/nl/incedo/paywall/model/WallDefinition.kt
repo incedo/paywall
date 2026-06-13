@@ -33,6 +33,10 @@ data class WallDefinition(
     val registrationWall: Boolean = false,
     /** AC-14: show a GDPR consent step before the subscription gate where legally required. */
     val requireConsentStep: Boolean = false,
+    /** ADM-11: optional image URL shown in the gate (empty = no image block). */
+    val imageUrl: String = "",
+    /** ADM-11: optional legal/disclaimer text rendered below CTAs (empty = no block). */
+    val legalText: String = "",
     /**
      * ADM-15: per-locale copy overrides keyed by BCP-47 locale tag (e.g. "nl-NL").
      * Only fields that differ from the defaults need to be set; null = use default.

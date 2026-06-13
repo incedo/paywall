@@ -125,6 +125,14 @@ fun PricingWall(definition: WallDefinition) {
             CrmText("Cancel anytime", style = CrmTheme.typography.bodySmall, color = CrmTheme.colors.onSurfaceVariant)
             CrmText("VAT invoices included", style = CrmTheme.typography.bodySmall, color = CrmTheme.colors.onSurfaceVariant)
         }
+        // ADM-11: optional legal text block (rendered when non-empty)
+        if (definition.legalText.isNotBlank()) {
+            CrmText(
+                definition.legalText,
+                style = CrmTheme.typography.caption,
+                color = CrmTheme.colors.onSurfaceVariant,
+            )
+        }
     }
 }
 

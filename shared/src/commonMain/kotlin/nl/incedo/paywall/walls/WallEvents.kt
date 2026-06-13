@@ -16,6 +16,8 @@ data class WallCopy(
     val body: String? = null,
     val primaryCta: String? = null,
     val secondaryCta: String? = null,
+    /** ADM-11: optional legal/disclaimer text rendered below CTAs; null = use wall default. */
+    val legalText: String? = null,
 )
 
 /**
@@ -43,8 +45,18 @@ data class WallConfig(
      */
     val requireConsentStep: Boolean = false,
     /**
+     * ADM-11: optional URL of an image shown in the gate (e.g. brand illustration).
+     * Empty string = no image block rendered.
+     */
+    val imageUrl: String = "",
+    /**
+     * ADM-11: optional legal/disclaimer text rendered below CTAs (e.g. "Cancel anytime.
+     * Prices include VAT."). Empty string = no legal text block rendered.
+     */
+    val legalText: String = "",
+    /**
      * ADM-15: per-locale copy overrides keyed by BCP-47 locale tag (e.g. "nl-NL").
-     * The default [title]/[body]/[primaryCta]/[secondaryCta] serve as the
+     * The default [title]/[body]/[primaryCta]/[secondaryCta]/[legalText] serve as the
      * nl-NL fallback; experiment starts with one locale, structure is ready for more.
      * Use [resolveForLocale] to obtain the effective copy for a given locale.
      */
@@ -57,12 +69,13 @@ data class WallConfig(
     fun resolveForLocale(locale: String): WallCopy {
         val override = translations[locale]
             ?: translations[locale.substringBefore("-")]
-            ?: return WallCopy(title, body, primaryCta, secondaryCta)
+            ?: return WallCopy(title, body, primaryCta, secondaryCta, legalText)
         return WallCopy(
             title = override.title ?: title,
             body = override.body ?: body,
             primaryCta = override.primaryCta ?: primaryCta,
             secondaryCta = override.secondaryCta ?: secondaryCta,
+            legalText = override.legalText ?: legalText,
         )
     }
 }

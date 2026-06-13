@@ -300,6 +300,8 @@ private fun WallResponse.toDefinition() = WallDefinition(
     secondaryCta = secondaryCta,
     channels = channels.mapNotNull(::channelFromApi).toSet(),
     requireConsentStep = requireConsentStep,
+    imageUrl = imageUrl,
+    legalText = legalText,
     translations = translations,
 )
 
@@ -314,6 +316,8 @@ private fun WallDefinition.toSaveRequest(name: String, expectedVersion: Int?) = 
     actor = "console",
     expectedVersion = expectedVersion,
     requireConsentStep = requireConsentStep,
+    imageUrl = imageUrl,
+    legalText = legalText,
     translations = translations,
 )
 

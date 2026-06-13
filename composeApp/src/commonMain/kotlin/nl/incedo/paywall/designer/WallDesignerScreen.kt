@@ -171,6 +171,17 @@ private fun ConfigPanel(
         CrmTextField("Body", definition.body, { onDefinitionChange(definition.copy(body = it)) }, singleLine = false)
         CrmTextField("Primary CTA", definition.primaryCta, { onDefinitionChange(definition.copy(primaryCta = it)) })
         CrmTextField("Secondary CTA", definition.secondaryCta, { onDefinitionChange(definition.copy(secondaryCta = it)) })
+        // ADM-11: optional image and legal-text blocks
+        CrmTextField(
+            "Image URL (ADM-11, leave blank for no image block)",
+            definition.imageUrl,
+            { onDefinitionChange(definition.copy(imageUrl = it)) },
+        )
+        CrmTextField(
+            "Legal text (ADM-11, leave blank for no legal text block)",
+            definition.legalText,
+            { onDefinitionChange(definition.copy(legalText = it)) },
+        )
 
         CrmText("Theme", style = CrmTheme.typography.label, color = CrmTheme.colors.onSurfaceVariant)
         CrmSegmentedToggle(
