@@ -15,6 +15,8 @@ import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
 import nl.incedo.paywall.entitlements.EntitlementGranted
 import nl.incedo.paywall.entitlements.EntitlementRevoked
+import nl.incedo.paywall.entitlements.SubscriptionPaused
+import nl.incedo.paywall.entitlements.SubscriptionResumed
 import nl.incedo.paywall.grants.GrantIssued
 import nl.incedo.paywall.grants.GrantRevoked
 import nl.incedo.paywall.grants.ShareTokenIssued
@@ -40,6 +42,8 @@ val paywallSerializersModule = SerializersModule {
         subclass(MeterReset::class)
         subclass(EntitlementGranted::class)
         subclass(EntitlementRevoked::class)
+        subclass(SubscriptionPaused::class)
+        subclass(SubscriptionResumed::class)
         subclass(GrantIssued::class)
         subclass(GrantRevoked::class)
         subclass(ShareTokenIssued::class)

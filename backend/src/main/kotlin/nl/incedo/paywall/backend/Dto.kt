@@ -120,8 +120,16 @@ data class IdentityLinkRequest(
 
 /**
  * Inbound integration payload: entitlement changes published by the external
- * subscription administration (AC-02, EA-*). `active = false` records a
- * revocation. The paywall never manages subscriptions — it ingests changes.
+ * subscription administration (AC-02, EA-*).
+ *
+ * Prefer [status] over the legacy [active] boolean:
+ *   active    → grant (open-ended or until [validUntilEpochMs])
+ *   canceled  → grant with access until [validUntilEpochMs] (current period end, SUB-03)
+ *   past_due  → grant with 7-day grace window (SUB-05)
+ *   paused    → billing suspended, access off immediately (SUB-07)
+ *   expired   → hard revoke
+ *
+ * [active]=false is the legacy revoke path; still accepted for back-compat.
  */
 @Serializable
 data class EntitlementChangeRequest(
@@ -129,7 +137,10 @@ data class EntitlementChangeRequest(
     val subscriptionRef: String,
     val planId: String? = null,
     val validUntilEpochMs: Long? = null,
+    /** Legacy boolean; ignored when [status] is present. */
     val active: Boolean = true,
+    /** SUB-07: subscription status from the payment provider. */
+    val status: String? = null,
 )
 
 /**

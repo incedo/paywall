@@ -27,3 +27,26 @@ data class EntitlementRevoked(
     val subscriptionRef: SubscriptionId,
     override val tags: Set<String> = setOf("subject:${subjectId.value}"),
 ) : DomainEvent
+
+/**
+ * SUB-07: subscription billing paused → access off immediately.
+ * The subscription record is retained so billing can auto-resume.
+ * Decision model treats any paused ref as no-access even if active map still holds it.
+ */
+@Serializable
+data class SubscriptionPaused(
+    val subjectId: SubjectId,
+    val subscriptionRef: SubscriptionId,
+    val planId: PlanId,
+    val pausedAtEpochMs: Long,
+    override val tags: Set<String> = setOf("subject:${subjectId.value}"),
+) : DomainEvent
+
+/** SUB-07: scheduled resume — clears the paused state, restoring access. */
+@Serializable
+data class SubscriptionResumed(
+    val subjectId: SubjectId,
+    val subscriptionRef: SubscriptionId,
+    val resumedAtEpochMs: Long,
+    override val tags: Set<String> = setOf("subject:${subjectId.value}"),
+) : DomainEvent

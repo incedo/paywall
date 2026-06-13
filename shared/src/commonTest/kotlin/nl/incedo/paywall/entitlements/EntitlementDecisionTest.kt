@@ -7,6 +7,8 @@ import nl.incedo.paywall.core.PlanId
 import nl.incedo.paywall.core.SubjectId
 import nl.incedo.paywall.core.SubscriptionId
 import nl.incedo.paywall.core.UserId
+import nl.incedo.paywall.entitlements.SubscriptionPaused
+import nl.incedo.paywall.entitlements.SubscriptionResumed
 
 class EntitlementDecisionTest {
 
@@ -62,5 +64,44 @@ class EntitlementDecisionTest {
         decision.apply(granted("sub-2"))
         decision.apply(EntitlementRevoked(subject, SubscriptionId("sub-1")))
         assertTrue(decision.hasValidEntitlement(now))
+    }
+
+    // SUB-07 — paused status has no access even though grant is still in the active map
+
+    @Test
+    fun pausedSubscriptionHasNoAccess() {
+        val decision = EntitlementDecision()
+        decision.apply(granted("sub-1"))
+        decision.apply(SubscriptionPaused(subject, SubscriptionId("sub-1"), PlanId("pro"), now))
+        assertFalse(decision.hasValidEntitlement(now), "paused subscription must yield no access (SUB-07)")
+    }
+
+    @Test
+    fun resumedSubscriptionRestoresAccess() {
+        val decision = EntitlementDecision()
+        decision.apply(granted("sub-1"))
+        decision.apply(SubscriptionPaused(subject, SubscriptionId("sub-1"), PlanId("pro"), now))
+        decision.apply(SubscriptionResumed(subject, SubscriptionId("sub-1"), resumedAtEpochMs = now + 1))
+        assertTrue(decision.hasValidEntitlement(now), "resumed subscription must restore access (SUB-07)")
+    }
+
+    @Test
+    fun pauseOnlyAffectsTargetSubscription() {
+        val decision = EntitlementDecision()
+        decision.apply(granted("sub-1"))
+        decision.apply(granted("sub-2"))
+        decision.apply(SubscriptionPaused(subject, SubscriptionId("sub-1"), PlanId("pro"), now))
+        assertTrue(decision.hasValidEntitlement(now), "a second active sub must still grant access")
+    }
+
+    @Test
+    fun hardRevokeAfterPauseCleansUpPausedSet() {
+        val decision = EntitlementDecision()
+        decision.apply(granted("sub-1"))
+        decision.apply(SubscriptionPaused(subject, SubscriptionId("sub-1"), PlanId("pro"), now))
+        decision.apply(EntitlementRevoked(subject, SubscriptionId("sub-1")))
+        // re-grant the same ref → must work as if never paused
+        decision.apply(granted("sub-1"))
+        assertTrue(decision.hasValidEntitlement(now), "revoked-then-regranted sub must not stay paused")
     }
 }
