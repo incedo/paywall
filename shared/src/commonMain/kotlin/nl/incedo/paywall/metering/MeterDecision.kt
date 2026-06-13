@@ -25,6 +25,9 @@ class MeterDecision(private val period: MeterPeriod) {
     /** Credits used this period (PW-22: "2 of 5 free articles this month"). */
     val used: Int get() = countedArticles.size
 
+    /** MT-11: article IDs counted toward the meter this period (for the admin inspector). */
+    fun countedArticleIds(): Set<ArticleId> = countedArticles.toSet()
+
     /** PW-21: a re-read of an already-counted article consumes no extra credit. */
     fun isCounted(articleId: ArticleId): Boolean = articleId in countedArticles
 

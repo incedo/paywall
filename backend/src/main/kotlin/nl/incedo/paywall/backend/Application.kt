@@ -30,6 +30,7 @@ import nl.incedo.paywall.access.StrategyConfig
 import nl.incedo.paywall.access.Subject
 import nl.incedo.paywall.accounts.IdentityLinked
 import nl.incedo.paywall.accounts.IdentityUnlinked
+import nl.incedo.paywall.accounts.UserDeleted
 import nl.incedo.paywall.analytics.VariantStatsProjection
 import nl.incedo.paywall.analytics.wallEventShardTags
 import nl.incedo.paywall.analytics.WallEventRecorded
@@ -458,6 +459,7 @@ fun Application.module(
                     variant = variant,
                     meterPeriod = period.value,
                     meterUsed = meter.used,
+                    meteredArticles = meter.countedArticleIds().map { it.value }.sorted(), // MT-11
                     entitled = entitlement.hasValidEntitlement(now),
                     liveGrants = liveGrants,
                     linkedSubjects = allSubjects.map { it.value }.sorted(),
@@ -662,6 +664,34 @@ fun Application.module(
             }
             eventStore.append(listOf(event), condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to event::class.simpleName))
+        }
+        // AN-21/US-07: GDPR account deletion. Severs all identity links involving
+        // the deleted user so event data becomes pseudonymous (visitor_id only).
+        // The user's wall-event history remains but is no longer linkable to a real
+        // identity. Caller is the CIAM webhook after account deletion in Kratos.
+        post("/api/v1/integration/account-deletion") {
+            val request = call.receive<AccountDeletionRequest>()
+            if (request.userId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "userId is required"))
+                return@post
+            }
+            val userSubject = SubjectId("user:${request.userId}")
+            val now = System.currentTimeMillis()
+
+            // Find all subjects linked to this user.
+            val events = eventStore.query(EventQuery(setOf("subject:${userSubject.value}"))).events
+            val links = nl.incedo.paywall.accounts.IdentityLinkDecision().also { it.applyAll(events) }
+            val linked = links.linkedSubjects(setOf(userSubject)) - userSubject
+
+            val deletionEvents = mutableListOf<nl.incedo.paywall.core.DomainEvent>()
+            // Audit record — written first so the intent is visible even if the rest fails.
+            deletionEvents.add(UserDeleted(userSubject, now))
+            // Sever each link: visitor events remain but are no longer attributed to the user.
+            linked.forEach { other ->
+                deletionEvents.add(IdentityUnlinked(userSubject, other, reason = "account_deletion"))
+            }
+            eventStore.append(deletionEvents, condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to deletionEvents.size, "linksRevoked" to linked.size))
         }
     }
 }

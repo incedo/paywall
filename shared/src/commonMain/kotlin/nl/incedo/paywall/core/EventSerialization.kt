@@ -6,6 +6,7 @@ import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
 import nl.incedo.paywall.accounts.IdentityLinked
 import nl.incedo.paywall.accounts.IdentityUnlinked
+import nl.incedo.paywall.accounts.UserDeleted
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
 import nl.incedo.paywall.cep.CepGateAdvised
@@ -35,6 +36,7 @@ val paywallSerializersModule = SerializersModule {
         subclass(GrantRevoked::class)
         subclass(IdentityLinked::class)
         subclass(IdentityUnlinked::class)
+        subclass(UserDeleted::class)
         subclass(CepGateAdvised::class)
         subclass(CepGateAdviceWithdrawn::class)
         subclass(WallEventRecorded::class)

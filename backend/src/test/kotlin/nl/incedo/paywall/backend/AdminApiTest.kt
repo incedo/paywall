@@ -82,6 +82,101 @@ class AdminApiTest {
         assertEquals("full", decide(client, visitor, "a-new").access)
     }
 
+    // MT-11: article list in meter inspector ------------------------------------------
+
+    @Test
+    fun inspectorIncludesMeteredArticleList() = apiTest { client ->
+        // MT-11: the inspector must show count, articles, and period — not just count.
+        val visitor = visitorIn("metered")
+        decide(client, visitor, "a-1")
+        decide(client, visitor, "a-3")
+
+        val inspector: SubjectInspectorResponse = client.get("/api/v1/admin/subjects/visitor:$visitor").body()
+        assertEquals(2, inspector.meterUsed)
+        assertTrue("a-1" in inspector.meteredArticles, "MT-11: a-1 must appear in meteredArticles")
+        assertTrue("a-3" in inspector.meteredArticles, "MT-11: a-3 must appear in meteredArticles")
+    }
+
+    // MT-09: cross-channel meter -------------------------------------------------------
+
+    @Test
+    fun crossChannelReadCountsTowardSameMeter() = apiTest { client ->
+        // MT-09: web + app + chat reads count against the same meter per subject.
+        val visitor = visitorIn("metered")
+        val channels = listOf("web", "app", "chat")
+        channels.forEach { channel ->
+            client.post("/api/v1/decide") {
+                contentType(ContentType.Application.Json)
+                setBody(DecideRequest(visitorId = visitor, articleId = "a-$channel", tier = "premium", channel = channel))
+            }
+        }
+        val inspector: SubjectInspectorResponse = client.get("/api/v1/admin/subjects/visitor:$visitor").body()
+        assertEquals(3, inspector.meterUsed, "MT-09: reads from web, app, chat all count toward the same meter")
+        assertEquals(setOf("a-web", "a-app", "a-chat"), inspector.meteredArticles.toSet())
+    }
+
+    // AN-21/US-07: account deletion pseudonymization -----------------------------------
+
+    @Test
+    fun accountDeletionUnlinksUserFromVisitors() = apiTest { client ->
+        // Simulate: visitor reads some articles, then logs in (linking visitor to user)
+        val visitor = visitorIn("metered")
+        decide(client, visitor, "a-1")
+
+        // Log in: link visitor to user (US-04 / MT-03)
+        client.post("/api/v1/integration/identity-link") {
+            contentType(ContentType.Application.Json)
+            setBody(IdentityLinkRequest(
+                subjectA = "visitor:$visitor",
+                subjectB = "user:deleted-user-1",
+                cause = "login",
+            ))
+        }
+
+        // Verify the link exists (visitor now shows as linked)
+        val before: SubjectInspectorResponse = client.get("/api/v1/admin/subjects/visitor:$visitor").body()
+        assertTrue("user:deleted-user-1" in before.linkedSubjects, "link must exist before deletion")
+
+        // GDPR deletion: user deletes their account
+        val deletion = client.post("/api/v1/integration/account-deletion") {
+            contentType(ContentType.Application.Json)
+            setBody(AccountDeletionRequest(userId = "deleted-user-1"))
+        }
+        assertEquals(HttpStatusCode.Accepted, deletion.status, "account deletion must be accepted")
+
+        // After deletion: visitor's linked subjects no longer include the user
+        val after: SubjectInspectorResponse = client.get("/api/v1/admin/subjects/visitor:$visitor").body()
+        assertFalse("user:deleted-user-1" in after.linkedSubjects,
+            "AN-21: user subject must be unlinked after account deletion")
+    }
+
+    @Test
+    fun accountDeletionRequiresUserId() = apiTest { client ->
+        val status = client.post("/api/v1/integration/account-deletion") {
+            contentType(ContentType.Application.Json)
+            setBody(AccountDeletionRequest(userId = ""))
+        }.status
+        assertEquals(HttpStatusCode.BadRequest, status)
+    }
+
+    // AA-03: friction guard -----------------------------------------------------------
+
+    @Test
+    fun articleAccessNeverRequiresStepUp() = apiTest { client ->
+        // AA-03: reading content must always succeed with AAL1. The articles endpoint
+        // has no requireStaff call — it uses jwtValidator (CiamJwtValidator) which
+        // returns null for an invalid/missing token, degrading to anonymous (AC-07).
+        // This test verifies the gate is applied (not a 401) even without a token.
+        val visitor = visitorIn("hard")
+        val response = client.get("/api/v1/articles/a-1?visitorId=$visitor")
+        // We get a 404 (no articles configured in this test) but crucially NOT a 401/403.
+        // A 401 would mean step-up is required, violating AA-03.
+        assertFalse(
+            response.status == HttpStatusCode.Unauthorized || response.status == HttpStatusCode.Forbidden,
+            "AA-03: article access must never require step-up auth, got ${response.status}",
+        )
+    }
+
     @Test
     fun nudgeAppearsWhenOneCreditRemains() = apiTest { client ->
         val visitor = visitorIn("metered") // limit 5
