@@ -17,8 +17,10 @@ import nl.incedo.paywall.api.ExperimentConfigResponse
 import nl.incedo.paywall.api.GrantAuditEntry
 import nl.incedo.paywall.api.InspectorWallEvent
 import nl.incedo.paywall.api.MeterResetRequest
+import nl.incedo.paywall.api.BypassRateResponse
 import nl.incedo.paywall.api.OfferChannelStatsResponse
 import nl.incedo.paywall.api.OfferStatsResponse
+import nl.incedo.paywall.api.PartnerUsageResponse
 import nl.incedo.paywall.api.PublishExperimentConfigRequest
 import nl.incedo.paywall.api.SubjectInspectorResponse
 import nl.incedo.paywall.api.UpdateBrandThemeRequest
@@ -290,18 +292,8 @@ data class DataGateCompletionRequest(
     val articleId: String? = null,
 )
 
-// GrantAuditEntry, OfferStatsResponse, OfferChannelStatsResponse defined in shared module and imported above.
-
-/**
- * PA-04: partner usage stats for contract management — reads per partner and
- * unique user count, derived from the wall-event stream.
- */
-@Serializable
-data class PartnerUsageResponse(
-    val partnerId: String,
-    val totalReads: Int,
-    val uniqueUsers: Int,
-)
+// GrantAuditEntry, OfferStatsResponse, OfferChannelStatsResponse, PartnerUsageResponse,
+// BypassRateResponse defined in shared module and imported above.
 
 /**
  * UP-08: inbound payload from the CEP when it pushes an offer for an async channel.
@@ -332,26 +324,7 @@ data class PendingOfferResponse(
     val triggeredAtEpochMs: Long,
 )
 
-// WallTemplateRequest and WallTemplateResponse are defined in shared (WallApiDtos.kt) and imported above.
-
-/**
- * BP-06: bypass-rate estimation response.
- * DL-03: suspicious traffic is reported, not auto-blocked, in the experiment phase.
- */
-@Serializable
-data class BypassRateResponse(
-    /** Total wall-shown events (gated render count) in the queried window. */
-    val gatedRenders: Int,
-    /** Gated renders that arrived with a bot or suspicious-IP marker. */
-    val markedGatedRenders: Int,
-    /** Flagged ARTICLE_READ events — possible successful bypasses. */
-    val flaggedReads: Int,
-    /** markedGatedRenders / gatedRenders; 0.0 when no gated renders observed. */
-    val bypassRate: Double,
-    /** Event store position at the time of the query — use as `since` for incremental polling. */
-    val storePosition: Long,
-    val note: String = "DL-03: reported only — not auto-blocked in experiment phase",
-)
+// WallTemplateRequest, WallTemplateResponse, BypassRateResponse defined in shared and imported above.
 
 /**
  * PR-03: profile completeness for a subject — traits collected with consent (AN-20).

@@ -171,3 +171,29 @@ data class OfferStatsResponse(
     val acceptanceRate: Double,
     val channels: Map<String, OfferChannelStatsResponse>,
 )
+
+/**
+ * PA-04: partner usage stats for contract management — reads per partner and
+ * unique user count, derived from the wall-event stream.
+ */
+@Serializable
+data class PartnerUsageResponse(
+    val partnerId: String,
+    val totalReads: Int,
+    val uniqueUsers: Int,
+)
+
+/**
+ * BP-06: bypass-rate estimation — ratio of gated renders with bypass markers.
+ * DL-03: reported only, not auto-blocked in experiment phase.
+ */
+@Serializable
+data class BypassRateResponse(
+    val gatedRenders: Int,
+    val markedGatedRenders: Int,
+    val flaggedReads: Int,
+    /** markedGatedRenders / gatedRenders; 0.0 when no gated renders observed. */
+    val bypassRate: Double,
+    val storePosition: Long,
+    val note: String = "DL-03: reported only — not auto-blocked in experiment phase",
+)
