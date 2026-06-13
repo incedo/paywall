@@ -60,6 +60,8 @@ import nl.incedo.paywall.core.WallId
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
 import nl.incedo.paywall.core.port.EventStore
 import nl.incedo.paywall.core.port.EventQuery
+import nl.incedo.paywall.experiments.ExperimentConfigPublished
+import nl.incedo.paywall.experiments.ExperimentConfigProjection
 import nl.incedo.paywall.experiments.ExperimentDefinition
 import nl.incedo.paywall.experiments.Variant
 import nl.incedo.paywall.experiments.VariantAssigner
@@ -147,11 +149,14 @@ fun main() {
         )
     } ?: InMemoryEventStore()
 
+    // API-03: hot-reloadable experiment config backed by the event store.
+    val configStore = ConfigStore(eventStore, fallback = defaultExperiment)
     val service = AccessService(
         eventStore = eventStore,
         experiment = defaultExperiment,
         clock = { System.currentTimeMillis() },
         currentPeriod = ::currentPeriod,
+        experimentLoader = configStore::experiment,
     )
 
     // TS-04: Ory Hydra issues the tokens; JWKS via its public endpoint, e.g.
@@ -168,7 +173,7 @@ fun main() {
     val originSecret = System.getenv("ORIGIN_SHARED_SECRET")
 
     embeddedServer(CIO, port = 8080) {
-        module(service, eventStore, jwtValidator, originSecret = originSecret)
+        module(service, eventStore, jwtValidator, originSecret = originSecret, configStore = configStore)
     }.start(wait = true)
 }
 
@@ -180,6 +185,8 @@ fun Application.module(
     articles: ArticleRepository = ArticleRepository(),
     /** INF-02: shared secret the edge presents; null = no edge in front (dev). */
     originSecret: String? = null,
+    /** API-03: hot-reloadable config; null = use defaultExperiment (tests/dev). */
+    configStore: ConfigStore? = null,
 ) {
     val originTrust = OriginTrust(originSecret)
     install(ContentNegotiation) {
@@ -339,7 +346,7 @@ fun Application.module(
             }
             val userId = jwtValidator?.userIdFrom(call.request.headers[HttpHeaders.Authorization])
             val subject = Subject(VisitorId(request.visitorId), userId)
-            val variant = VariantAssigner.assign(subject, defaultExperiment) // EX-03
+            val variant = VariantAssigner.assign(subject, configStore?.experiment() ?: defaultExperiment) // EX-03
             eventStore.append(
                 listOf(
                     WallEventRecorded(
@@ -397,6 +404,42 @@ fun Application.module(
             }
             call.respondSaveResult(result)
         }
+        // MT-10/ADM-02/API-03: read and update experiment + meter configuration.
+        // Configuration is stored as versioned events (auditable) and hot-reloadable.
+        get("/api/v1/admin/config") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            val events = eventStore.query(EventQuery(setOf("config:experiment"))).events
+            val projection = ExperimentConfigProjection().also { it.applyAll(events) }
+            val published = projection.current
+            call.respond(
+                ExperimentConfigResponse(
+                    experiment = published?.experiment ?: defaultExperiment,
+                    publishedBy = published?.actor,
+                    publishedAtEpochMs = published?.publishedAtEpochMs,
+                    isDefault = published == null,
+                ),
+            )
+        }
+        post("/api/v1/admin/config") {
+            val staff = call.requireStaff(jwtValidator, StaffRole.ADMIN) ?: return@post
+            val request = call.receive<PublishExperimentConfigRequest>()
+            // Validate: weights must sum to a positive value (relative weights, not required to sum to 100)
+            val experiment = request.experiment
+            if (experiment.variants.isEmpty()) {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "at least one variant is required"))
+            }
+            if (experiment.variants.any { it.weight <= 0 }) {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "all variant weights must be positive"))
+            }
+            val now = System.currentTimeMillis()
+            val event = ExperimentConfigPublished(
+                experiment = experiment,
+                actor = staff.userId.value,
+                publishedAtEpochMs = now,
+            )
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ExperimentConfigPublished", "actor" to staff.userId.value))
+        }
         post("/api/v1/walls/{id}/publish") {
             val staff = call.requireStaff(jwtValidator, StaffRole.ADMIN) ?: return@post
             val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
@@ -452,7 +495,7 @@ fun Application.module(
             }
             val variant = subjectId.value.removePrefix("visitor:")
                 .takeIf { it != subjectId.value } // only visitor subjects carry an assignment
-                ?.let { VariantAssigner.assign(VisitorId(it), defaultExperiment).name }
+                ?.let { VariantAssigner.assign(VisitorId(it), configStore?.experiment() ?: defaultExperiment).name }
             call.respond(
                 SubjectInspectorResponse(
                     subjectId = subjectId.value,

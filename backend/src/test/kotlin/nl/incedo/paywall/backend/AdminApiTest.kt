@@ -16,6 +16,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import nl.incedo.paywall.core.VisitorId
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
+import nl.incedo.paywall.access.StrategyConfig
+import nl.incedo.paywall.core.ExperimentId
+import nl.incedo.paywall.experiments.ExperimentDefinition
+import nl.incedo.paywall.experiments.Variant
 import nl.incedo.paywall.experiments.VariantAssigner
 import nl.incedo.paywall.metering.MeterPeriod
 
@@ -192,5 +196,72 @@ class AdminApiTest {
         // Read 5 exhausts: no nudge, next one gates
         assertFalse(decide(client, visitor, "a-5").nudge)
         assertEquals("gate", decide(client, visitor, "a-6").access)
+    }
+
+    // MT-10/API-03: hot-reloadable experiment config via event-sourced ConfigStore.
+
+    private fun configApiTest(block: suspend (io.ktor.client.HttpClient) -> Unit) = testApplication {
+        val store = InMemoryEventStore()
+        val configStore = ConfigStore(store, fallback = defaultExperiment, clock = { now }, cacheTtlMs = 0L)
+        val service = AccessService(
+            eventStore = store,
+            experiment = defaultExperiment,
+            clock = { now },
+            currentPeriod = { MeterPeriod(currentPeriod().value) },
+            experimentLoader = configStore::experiment,
+        )
+        application { module(service, store, configStore = configStore) }
+        val client = createClient { install(ContentNegotiation) { json() } }
+        block(client)
+    }
+
+    @Test
+    fun getConfigReturnsDefaultWhenNonePublished() = configApiTest { client ->
+        val resp = client.get("/api/v1/admin/config")
+        assertEquals(HttpStatusCode.OK, resp.status)
+        val body = resp.body<ExperimentConfigResponse>()
+        assertTrue(body.isDefault, "expected isDefault=true before any publish")
+        assertEquals(defaultExperiment, body.experiment)
+    }
+
+    @Test
+    fun publishConfigAndGetReturnsPublished() = configApiTest { client ->
+        val hardExperiment = ExperimentDefinition(
+            id = ExperimentId("hard-only"),
+            name = "Hard wall only",
+            variants = listOf(Variant("hard", StrategyConfig.Hard, weight = 1)),
+        )
+        val postResp = client.post("/api/v1/admin/config") {
+            contentType(ContentType.Application.Json)
+            setBody(PublishExperimentConfigRequest(hardExperiment))
+        }
+        assertEquals(HttpStatusCode.Accepted, postResp.status)
+
+        val getResp = client.get("/api/v1/admin/config")
+        val body = getResp.body<ExperimentConfigResponse>()
+        assertFalse(body.isDefault, "expected isDefault=false after publish")
+        assertEquals(hardExperiment, body.experiment)
+    }
+
+    @Test
+    fun publishConfigAffectsDecisions() = configApiTest { client ->
+        // Before publish: metered variant (from defaultExperiment) grants access
+        val meteredVisitor = visitorIn("metered")
+        assertEquals("full", decide(client, meteredVisitor, "art-1").access)
+
+        // Publish hard-wall-only config
+        val hardExperiment = ExperimentDefinition(
+            id = ExperimentId("hard-only"),
+            name = "Hard wall only",
+            variants = listOf(Variant("hard", StrategyConfig.Hard, weight = 1)),
+        )
+        client.post("/api/v1/admin/config") {
+            contentType(ContentType.Application.Json)
+            setBody(PublishExperimentConfigRequest(hardExperiment))
+        }
+
+        // After publish: every visitor gets the hard variant → gated on premium
+        val resp = decide(client, meteredVisitor, "art-2")
+        assertEquals("gate", resp.access, "hard wall should gate after config change")
     }
 }
