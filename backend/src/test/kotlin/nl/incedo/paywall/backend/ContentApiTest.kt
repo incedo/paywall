@@ -219,6 +219,49 @@ class ContentApiTest {
         assertTrue(robotsTag == null || "noarchive" !in robotsTag, "free page must not carry noarchive")
     }
 
+    // INF-09: Cloudflare bot score -----------------------------------------------
+
+    @Test
+    fun cfBotScoreBelowThresholdFlagsAsBot() = apiTest(originSecret = "edge-secret") { client ->
+        // INF-09: a score ≤29 forwarded by the Worker flags the request as bot.
+        // The article endpoint must gate access, identical to a bot UA.
+        val response = client.get("/api/v1/articles/prem-1") {
+            header("X-Visitor-Id", visitorIn("hard"))
+            header("X-Origin-Secret", "edge-secret")
+            header("X-CF-Bot-Score", "15")
+        }
+        val article: ArticleResponse = response.body()
+        assertEquals("gate", article.access, "INF-09: CF score ≤29 must not bypass the gate")
+        assertNull(article.body, "INF-09: premium body must be absent when CF score ≤29")
+    }
+
+    @Test
+    fun cfBotScoreAboveThresholdDoesNotFlagAsBot() = apiTest(originSecret = "edge-secret") { client ->
+        // INF-09: a score ≥30 is "likely human" — the request is not flagged as bot.
+        // A metered visitor with score 80 should still get full access on first read.
+        val visitor = visitorIn("metered")
+        val response = client.get("/api/v1/articles/prem-1") {
+            header("X-Visitor-Id", visitor)
+            header("X-Origin-Secret", "edge-secret")
+            header("X-CF-Bot-Score", "80")
+        }
+        val article: ArticleResponse = response.body()
+        assertEquals("full", article.access, "INF-09: CF score ≥30 must not flag as bot")
+    }
+
+    @Test
+    fun cfBotScoreIsIgnoredWithoutOriginSecret() = apiTest { client ->
+        // INF-09 / INF-02: the header is only trusted when the edge secret is present.
+        // Without an originSecret configured, the header is ignored (no DoS surface).
+        val visitor = visitorIn("metered")
+        val withLowScore = client.get("/api/v1/articles/prem-1") {
+            header("X-Visitor-Id", visitor)
+            header("X-CF-Bot-Score", "5")    // low score, but no origin secret configured
+        }
+        assertEquals("full", withLowScore.body<ArticleResponse>().access,
+            "INF-09: CF score must be ignored when no originSecret is configured")
+    }
+
     @Test
     fun fullPremiumResponseIsNotPubliclyCacheable() = apiTest { client ->
         // BP-07: a metered visitor reading a premium article must get Cache-Control:
