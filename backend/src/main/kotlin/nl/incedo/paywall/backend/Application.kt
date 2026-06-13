@@ -70,6 +70,7 @@ import nl.incedo.paywall.partners.PartnerDecision
 import nl.incedo.paywall.partners.PartnerIpRangeConfigured
 import nl.incedo.paywall.partners.PartnerMemberAdded
 import nl.incedo.paywall.partners.PartnerMemberRemoved
+import nl.incedo.paywall.partners.PartnerOffboarded
 import nl.incedo.paywall.partners.partnerTag
 import nl.incedo.paywall.walls.WallConfig
 import nl.incedo.paywall.walls.WallView
@@ -292,7 +293,7 @@ fun Application.module(
             if (partnerIdHeader != null) {
                 val pEvents = eventStore.query(EventQuery(setOf(partnerTag(PartnerId(partnerIdHeader))))).events
                 val partner = PartnerDecision().also { it.applyAll(pEvents) }
-                if (partner.name.isNotEmpty()) {
+                if (partner.name.isNotEmpty() && partner.isActive) { // PA-03: isActive false after offboarding
                     call.respond(DecideResponse(access = "full", reason = "partner_entitled", variant = "partner", meterUsed = null))
                     return@post
                 }
@@ -703,6 +704,20 @@ fun Application.module(
                 }
                 requested
             } else null
+            // FGA-03: max 10 active grants per subject per source (grantedBy) — prevent
+            // privilege escalation through a compromised CEP/AI integration (FGA-06).
+            if (change.active) {
+                val maxGrantsPerSource = 10
+                val subjectEvents = eventStore.query(EventQuery(setOf("subject:${change.subjectId}"))).events
+                val activeGrantsFromSource = subjectEvents
+                    .filterIsInstance<GrantIssued>()
+                    .count { it.grantedBy == change.grantedBy && (it.expiresAtEpochMs ?: Long.MAX_VALUE) > now }
+                if (activeGrantsFromSource >= maxGrantsPerSource) {
+                    call.respond(HttpStatusCode.TooManyRequests,
+                        mapOf("error" to "max active grants per source ($maxGrantsPerSource) reached (FGA-03)"))
+                    return@post
+                }
+            }
             val event = if (change.active) {
                 GrantIssued(
                     grantId = GrantId(change.grantId),
@@ -1148,6 +1163,32 @@ fun Application.module(
             )
             eventStore.append(listOf(event), condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "PartnerIpRangeConfigured"))
+        }
+        // PA-03: partner offboarding — transitively revokes all member access immediately.
+        // PartnerDecision.isActive becomes false; the decide path stops granting partner access.
+        post("/api/v1/admin/partners/{partnerId}/offboard") {
+            val staff = call.requireStaff(jwtValidator, StaffRole.ADMIN) ?: return@post
+            val partnerId = call.parameters["partnerId"]?.let { PartnerId(it) } ?: run {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "partnerId is required"))
+                return@post
+            }
+            val pEvents = eventStore.query(EventQuery(setOf(partnerTag(partnerId)))).events
+            val partner = PartnerDecision().also { it.applyAll(pEvents) }
+            if (partner.name.isEmpty()) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "partner not found"))
+                return@post
+            }
+            if (!partner.isActive) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "partner already offboarded"))
+                return@post
+            }
+            val event = PartnerOffboarded(
+                partnerId = partnerId,
+                offboardedBy = staff.userId.value,
+                offboardedAtEpochMs = System.currentTimeMillis(),
+            )
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "PartnerOffboarded", "partnerId" to partnerId.value))
         }
         // IPW-01: the edge polls this endpoint to build its CIDR → partner_id map.
         // No auth required from the edge (protected by origin secret at the intercept level).
