@@ -39,6 +39,8 @@ import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.backend.auth.CiamJwtValidator
 import nl.incedo.paywall.backend.auth.OriginTrust
 import nl.incedo.paywall.backend.auth.StaffRole
+import nl.incedo.paywall.backend.auth.TokenFailureMonitorPlugin
+import nl.incedo.paywall.backend.auth.TokenFailureTracker
 import nl.incedo.paywall.backend.auth.requireStaff
 import nl.incedo.paywall.backend.content.ArticleRepository
 import nl.incedo.paywall.brands.BrandCreated
@@ -266,6 +268,13 @@ fun Application.module(
         allowHeader(HttpHeaders.ContentType)
         allowHeader(HttpHeaders.Authorization)
         allowHeader(OriginTrust.ORIGIN_SECRET_HEADER)
+    }
+    // NFR-24: log token validation failures with reason; rate-track per source IP.
+    if (jwtValidator != null) {
+        install(TokenFailureMonitorPlugin) {
+            validator = jwtValidator
+            tracker = TokenFailureTracker()
+        }
     }
     // INF-02: every request except the health probe must arrive through the
     // edge (shared secret). No-op in dev where no secret is configured.
