@@ -492,6 +492,9 @@ fun Application.module(
                 )
             }
             eventStore.append(listOf(event), condition = null)
+            // AC-03: invalidate the per-session cache so the change takes effect
+            // immediately rather than waiting for the 5-minute TTL to expire.
+            service.invalidateEntitlementCache(change.subjectId)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to event::class.simpleName))
         }
         // FGA grant management (FGA-03): issue/revoke article-scoped grants —

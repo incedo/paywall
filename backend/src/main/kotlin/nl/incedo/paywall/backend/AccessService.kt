@@ -1,5 +1,6 @@
 package nl.incedo.paywall.backend
 
+import java.util.concurrent.ConcurrentHashMap
 import nl.incedo.paywall.access.AccessDecision
 import nl.incedo.paywall.access.AccessDecisionEngine
 import nl.incedo.paywall.access.AccessRequest
@@ -12,10 +13,13 @@ import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.analytics.WallEventType
 import nl.incedo.paywall.cep.CepAdviceDecision
 import nl.incedo.paywall.core.ArticleId
+import nl.incedo.paywall.core.PlanId
 import nl.incedo.paywall.core.SubjectId
+import nl.incedo.paywall.core.SubscriptionId
 import nl.incedo.paywall.core.port.EventQuery
 import nl.incedo.paywall.core.port.EventStore
 import nl.incedo.paywall.entitlements.EntitlementDecision
+import nl.incedo.paywall.entitlements.EntitlementGranted
 import nl.incedo.paywall.experiments.ExperimentDefinition
 import nl.incedo.paywall.experiments.Variant
 import nl.incedo.paywall.experiments.VariantAssigner
@@ -25,6 +29,12 @@ import nl.incedo.paywall.metering.meterTag
 import nl.incedo.paywall.metering.MeterPeriod
 import nl.incedo.paywall.metering.RecordArticleRead
 import nl.incedo.paywall.metering.RecordArticleReadHandler
+
+// AC-03: entitlement results are cached per authenticated user for at most
+// 5 minutes; cancellation/expiry propagate within that window.
+private const val ENTITLEMENT_CACHE_TTL_MS = 5 * 60 * 1000L
+
+private data class CachedEntitlement(val valid: Boolean, val expiresAtMs: Long)
 
 /**
  * Application service behind `POST /api/v1/decide` (API-05): assigns the
@@ -38,6 +48,15 @@ class AccessService(
     private val clock: () -> Long,
     private val currentPeriod: () -> MeterPeriod,
 ) {
+
+    private val entitlementCache = ConcurrentHashMap<String, CachedEntitlement>()
+
+    /** AC-03: force a cache miss for the given subject on the next decide call.
+     *  Called by the integration endpoint whenever an entitlement changes. */
+    fun invalidateEntitlementCache(subjectId: String) {
+        val userId = subjectId.removePrefix("user:")
+        if (userId != subjectId) entitlementCache.remove(userId)
+    }
 
     data class Outcome(
         val decision: AccessDecision,
@@ -86,7 +105,7 @@ class AccessService(
         }
 
         val meter = MeterDecision(period).also { it.applyAll(events) }
-        val entitlement = EntitlementDecision().also { it.applyAll(events) }
+        val entitlement = cachedEntitlement(subject, events, now)
         val grant = GrantDecision(article.id).also { it.applyAll(events) }
         // CEP advice arrives as published events (same union query — they are
         // subject-tagged); the access layer acts on them, it never calls the CEP.
@@ -118,6 +137,46 @@ class AccessService(
             if (subject.registered) strategy.registeredLimit ?: strategy.limit else strategy.limit
         }
         return Outcome(decision, variant, usedAfter, meterLimit)
+    }
+
+    /**
+     * AC-03: return an EntitlementDecision for the subject, using a per-user
+     * in-memory cache (TTL 5 min) for authenticated requests. Unauthenticated
+     * (anonymous) requests always build from events — no userId to key on.
+     */
+    private fun cachedEntitlement(
+        subject: Subject,
+        events: List<nl.incedo.paywall.core.DomainEvent>,
+        now: Long,
+    ): EntitlementDecision {
+        val userId = subject.userId
+        if (userId != null) {
+            val cached = entitlementCache[userId.value]
+            if (cached != null && cached.expiresAtMs > now) {
+                return if (cached.valid) {
+                    EntitlementDecision().apply {
+                        apply(
+                            EntitlementGranted(
+                                subjectId = subject.subjectId,
+                                planId = PlanId("cached"),
+                                subscriptionRef = SubscriptionId("cached-${userId.value}"),
+                                validUntilEpochMs = null,
+                            ),
+                        )
+                    }
+                } else {
+                    EntitlementDecision()
+                }
+            }
+        }
+        val decision = EntitlementDecision().also { it.applyAll(events) }
+        if (userId != null) {
+            entitlementCache[userId.value] = CachedEntitlement(
+                valid = decision.hasValidEntitlement(now),
+                expiresAtMs = now + ENTITLEMENT_CACHE_TTL_MS,
+            )
+        }
+        return decision
     }
 
     /**
