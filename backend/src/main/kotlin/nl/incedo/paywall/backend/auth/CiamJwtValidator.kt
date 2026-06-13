@@ -33,10 +33,13 @@ class CiamJwtValidator(
     private val audience: String? = null,
 ) {
     companion object {
-        /** Production wiring: JWKS via Hydra's public endpoint, keys cached (NFR-23). */
+        /**
+         * Production wiring: JWKS fetched from the CIAM endpoint, keys cached for 24 h
+         * with automatic refresh on unknown kid so key rotation needs no deploy (NFR-21/NFR-23).
+         */
         fun fromJwksUrl(jwksUrl: String, issuer: String, audience: String? = null) = CiamJwtValidator(
             jwkProvider = JwkProviderBuilder(URL(jwksUrl))
-                .cached(10, 24, TimeUnit.HOURS)
+                .cached(10, 24, TimeUnit.HOURS)   // NFR-21: cache ≥ 1 h; unknown kid triggers fresh fetch
                 .rateLimited(10, 1, TimeUnit.MINUTES)
                 .build(),
             issuer = issuer,

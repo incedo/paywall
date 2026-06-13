@@ -3,7 +3,7 @@ package nl.incedo.paywall.cep
 import nl.incedo.paywall.access.Subject
 
 /**
- * API-07: outbound CEP integration interface.
+ * UP-01a/API-07: outbound CEP integration interface.
  *
  * The paywall calls [requestOffer] when a trigger event fires (e.g. gate shown,
  * cancel intent, payment failure). The CEP engine applies its rules and returns
