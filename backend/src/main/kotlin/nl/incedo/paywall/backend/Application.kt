@@ -277,8 +277,9 @@ fun Application.module(
             val tier = when (request.tier.lowercase()) {
                 "free" -> ContentTier.FREE
                 "premium" -> ContentTier.PREMIUM
+                "complete" -> ContentTier.COMPLETE // UP-12: complete-tier content
                 else -> {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tier must be free or premium"))
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tier must be free, premium, or complete"))
                     return@post
                 }
             }
@@ -346,14 +347,14 @@ fun Application.module(
             // BP-03: premium pages carry noarchive so archive crawlers only
             // snapshot the teaser and not the full body (also applies to verified
             // search crawlers — noarchive suppresses Google Cache, not indexing).
-            if (stored.tier == ContentTier.PREMIUM) {
+            if (stored.tier != ContentTier.FREE) {
                 call.response.headers.append("X-Robots-Tag", "noarchive")
             }
             val response = when (val decision = outcome.decision) {
                 is nl.incedo.paywall.access.AccessDecision.Full -> {
                     // BP-07: full premium responses must not be cached by shared caches
                     // (CDN/proxy); private is sufficient since the body is personalized.
-                    if (stored.tier == ContentTier.PREMIUM) {
+                    if (stored.tier != ContentTier.FREE) {
                         call.response.headers.append(HttpHeaders.CacheControl, "private, no-store")
                     }
                     val isCrawlerAccess =
@@ -367,7 +368,7 @@ fun Application.module(
                         meterUsed = if (isCrawlerAccess) null else outcome.meterUsedAfter,
                         // SEO-01: JSON-LD paywalled-content schema for verified crawlers
                         // so Googlebot doesn't treat the full-body serving as cloaking.
-                        structuredData = if (isCrawlerAccess && stored.tier == ContentTier.PREMIUM) {
+                        structuredData = if (isCrawlerAccess && stored.tier != ContentTier.FREE) {
                             buildSeoStructuredData(stored.id.value, stored.title)
                         } else null,
                     )
@@ -802,10 +803,10 @@ fun Application.module(
                 appendLine("    <link>/</link>")
                 appendLine("    <description>Latest articles</description>")
                 feedArticles.forEach { article ->
-                    // BP-04: premium content exposes teaser only — never the full body.
+                    // BP-04: premium/complete content exposes teaser only — never the full body.
                     val description = when (article.tier) {
-                        ContentTier.PREMIUM -> ArticleRepository.teaserOf(article)
                         ContentTier.FREE -> article.body
+                        ContentTier.PREMIUM, ContentTier.COMPLETE -> ArticleRepository.teaserOf(article)
                     }
                     appendLine("    <item>")
                     appendLine("      <title>${article.title.xmlEscape()}</title>")

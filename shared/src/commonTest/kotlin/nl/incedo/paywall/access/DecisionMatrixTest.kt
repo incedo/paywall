@@ -19,10 +19,15 @@ import nl.incedo.paywall.metering.MeterPeriod
 
 /**
  * NFR-12: the decision matrix — each paywall type × (anonymous, registered,
- * subscriber, expired) × (free, premium). 4 × 4 × 2 = 32 cases, exercised
- * exhaustively below. Gating states are chosen deterministically: the meter
- * is exhausted and the CEP advises a gate, so every non-entitled premium
- * case must gate.
+ * subscriber, expired) × (free, premium, complete). 4 × 4 × 3 = 48 cases,
+ * exercised exhaustively below (minimum NFR-12 requirement is 32; UP-12 adds
+ * the complete-tier column). Gating states are chosen deterministically: the
+ * meter is exhausted and the CEP advises a gate, so every non-entitled
+ * premium/complete case must gate.
+ *
+ * NOTE: the SUBSCRIBER state uses PlanId("pro") which has rank=0 (unknown plan).
+ * Rank-0 entitlements receive full access on all tiers for backward compatibility
+ * (UP-12). Tier-lock for basic subscribers is verified in TierLockTest.
  */
 class DecisionMatrixTest {
 
@@ -99,7 +104,7 @@ class DecisionMatrixTest {
         )
 
     @Test
-    fun decisionMatrix_all32Cases() {
+    fun decisionMatrix_all48Cases() {
         var cases = 0
         for ((name, strategy) in strategies) {
             for (state in VisitorState.entries) {
@@ -115,7 +120,8 @@ class DecisionMatrixTest {
                                 decision,
                                 label,
                             )
-                        // A valid entitlement always wins (PW-04/AC-02)
+                        // A valid entitlement always wins for PREMIUM (PW-04/AC-02);
+                        // for COMPLETE the "pro" plan has rank=0 (unknown = full access, UP-12)
                         state == VisitorState.SUBSCRIBER ->
                             assertEquals(
                                 AccessDecision.Full(AccessReason.ENTITLED),
@@ -129,7 +135,7 @@ class DecisionMatrixTest {
                 }
             }
         }
-        assertEquals(32, cases, "NFR-12 requires a minimum of 32 matrix cases")
+        assertEquals(48, cases, "Decision matrix covers 4 strategies × 4 states × 3 tiers = 48 cases (NFR-12 minimum 32)")
     }
 
     @Test

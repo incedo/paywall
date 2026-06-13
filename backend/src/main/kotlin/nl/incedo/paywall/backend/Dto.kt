@@ -340,6 +340,11 @@ data class DecideResponse(
      * renderer resolves brand → wall design → this override when non-null.
      */
     val wallDesignId: String? = null,
+    /**
+     * UP-12: true when a basic subscriber requests complete-tier content. The
+     * client should show a tier-upgrade offer instead of the base subscribe wall.
+     */
+    val tierLocked: Boolean = false,
 ) {
     companion object {
         fun from(outcome: AccessService.Outcome): DecideResponse = when (val d = outcome.decision) {
@@ -360,6 +365,7 @@ data class DecideResponse(
                 meterUsed = d.meterUsed,
                 meterLimit = d.meterLimit,
                 wallDesignId = outcome.variant.wallDesignId, // ADM-14
+                tierLocked = d.tierLocked, // UP-12
             )
         }
 

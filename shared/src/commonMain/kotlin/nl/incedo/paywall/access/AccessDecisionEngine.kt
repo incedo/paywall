@@ -10,8 +10,11 @@ import nl.incedo.paywall.entitlements.EntitlementDecision
 import nl.incedo.paywall.grants.GrantDecision
 import nl.incedo.paywall.metering.MeterDecision
 
-/** PW-01: every article has a content tier; free articles are never gated. */
-enum class ContentTier { FREE, PREMIUM }
+/**
+ * PW-01: content tier. FREE is never gated. PREMIUM requires any active subscription.
+ * COMPLETE requires a rank-2 (complete) plan — basic subscribers are tier-locked (UP-12).
+ */
+enum class ContentTier { FREE, PREMIUM, COMPLETE }
 
 @Serializable
 data class Article(val id: ArticleId, val tier: ContentTier)
@@ -97,6 +100,8 @@ sealed interface AccessDecision {
         val strategy: StrategyConfig,
         val meterUsed: Int? = null,
         val meterLimit: Int? = null,
+        /** UP-12: basic subscriber hitting complete-tier content → client shows tier-upgrade offer. */
+        val tierLocked: Boolean = false,
     ) : AccessDecision
 }
 
@@ -113,6 +118,21 @@ object AccessDecisionEngine {
         if (article.tier == ContentTier.FREE) {
             return AccessDecision.Full(AccessReason.FREE_CONTENT)
         }
+
+        // UP-12: complete-tier content requires a rank-2 (complete) plan.
+        // Basic subscribers (rank=1) are gated with tierLocked=true so the client
+        // can show a tier-upgrade offer. Grants still override tier-lock.
+        if (article.tier == ContentTier.COMPLETE) {
+            if (request.entitlement.hasValidEntitlementForTier(request.nowEpochMs, minRank = 2)) {
+                return AccessDecision.Full(AccessReason.ENTITLED)
+            }
+            if (request.grant.hasLiveGrant(request.nowEpochMs)) {
+                return AccessDecision.Full(AccessReason.GRANT)
+            }
+            val isBasicSubscriber = request.entitlement.hasValidEntitlement(request.nowEpochMs)
+            return AccessDecision.Gated(request.strategy, tierLocked = isBasicSubscriber)
+        }
+
         if (request.entitlement.hasValidEntitlement(request.nowEpochMs)) {
             return AccessDecision.Full(AccessReason.ENTITLED)
         }
