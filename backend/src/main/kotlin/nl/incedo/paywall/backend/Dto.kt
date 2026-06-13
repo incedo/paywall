@@ -3,10 +3,14 @@ package nl.incedo.paywall.backend
 import kotlinx.serialization.Serializable
 import nl.incedo.paywall.access.AccessDecision
 import nl.incedo.paywall.access.StrategyConfig
+import nl.incedo.paywall.api.AddPartnerMemberRequest
 import nl.incedo.paywall.api.BrandResponse
 import nl.incedo.paywall.api.CiamSession
 import nl.incedo.paywall.api.CreateBrandRequest
+import nl.incedo.paywall.api.CreatePartnerRequest
 import nl.incedo.paywall.api.GrantChangeRequest
+import nl.incedo.paywall.api.PartnerIpRangeRequest
+import nl.incedo.paywall.api.PartnerResponse
 import nl.incedo.paywall.api.WallTemplateRequest
 import nl.incedo.paywall.api.WallTemplateResponse
 import nl.incedo.paywall.api.ExperimentConfigResponse
@@ -229,45 +233,11 @@ data class OfferResponse(
     val channels: Set<String> = emptySet(),
 )
 
-/** PA-01: partner creation request. */
-@Serializable
-data class CreatePartnerRequest(
-    val partnerId: String,
-    val name: String,
-    val maxSeats: Int? = null,
-    val planId: String = "complete",
-)
-
-/** PA-02/PA-05: add member to partner. */
-@Serializable
-data class AddPartnerMemberRequest(
-    val subjectId: String,
-    val addedBy: String = "admin",
-)
-
-/** IPW-01: add or deactivate an IP CIDR range for a partner. */
-@Serializable
-data class PartnerIpRangeRequest(
-    val cidr: String,
-    val active: Boolean = true,
-)
-
 /** IPW-01: edge polling response — all partner → CIDR mappings for IP matching. */
 @Serializable
 data class IpAllowlistEntry(
     val partnerId: String,
     val cidrs: List<String>,
-)
-
-/** PA-01: partner state summary for admin inspection. */
-@Serializable
-data class PartnerResponse(
-    val partnerId: String,
-    val name: String,
-    val maxSeats: Int?,
-    val activeSeats: Int,
-    val planId: String,
-    val activeCidrs: List<String>,
 )
 
 /** PAY-01/01a/02: plan catalogue entry returned by GET /api/v1/plans. */

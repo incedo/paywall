@@ -128,3 +128,39 @@ data class GrantChangeRequest(
     val expiresAtEpochMs: Long? = null,
     val active: Boolean = true,
 )
+
+// ── ADM-03: partner management DTOs (PA-01/02/03/05, IPW-01) ──────────────────
+
+/** PA-01: summary of one partner — returned by GET /api/v1/admin/partners and /{id}. */
+@Serializable
+data class PartnerResponse(
+    val partnerId: String,
+    val name: String,
+    val maxSeats: Int?,
+    val activeSeats: Int,
+    val planId: String,
+    val activeCidrs: List<String>,
+)
+
+/** PA-01: create a new partner with optional seat cap. */
+@Serializable
+data class CreatePartnerRequest(
+    val partnerId: String,
+    val name: String,
+    val maxSeats: Int? = null,
+    val planId: String = "complete",
+)
+
+/** PA-02/PA-05: add or remove a member from a partner. */
+@Serializable
+data class AddPartnerMemberRequest(
+    val subjectId: String,
+    val addedBy: String = "admin",
+)
+
+/** IPW-01: add or deactivate an IP CIDR range for a partner (IPW-03: validated server-side). */
+@Serializable
+data class PartnerIpRangeRequest(
+    val cidr: String,
+    val active: Boolean = true,
+)

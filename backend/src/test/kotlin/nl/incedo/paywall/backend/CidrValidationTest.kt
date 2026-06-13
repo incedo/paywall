@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import nl.incedo.paywall.api.PartnerIpRangeRequest
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
 import nl.incedo.paywall.metering.MeterPeriod
 

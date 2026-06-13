@@ -14,6 +14,8 @@ import io.ktor.server.testing.testApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import nl.incedo.paywall.api.AddPartnerMemberRequest
+import nl.incedo.paywall.api.CreatePartnerRequest
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
 import nl.incedo.paywall.metering.MeterPeriod
 

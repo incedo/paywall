@@ -26,10 +26,14 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import nl.incedo.paywall.api.AddPartnerMemberRequest
 import nl.incedo.paywall.api.BrandResponse
 import nl.incedo.paywall.api.CiamSession
 import nl.incedo.paywall.api.CreateBrandRequest
+import nl.incedo.paywall.api.CreatePartnerRequest
 import nl.incedo.paywall.api.ExperimentConfigResponse
+import nl.incedo.paywall.api.PartnerIpRangeRequest
+import nl.incedo.paywall.api.PartnerResponse
 import nl.incedo.paywall.api.GrantAuditEntry
 import nl.incedo.paywall.api.GrantChangeRequest
 import nl.incedo.paywall.api.InspectorWallEvent
@@ -2009,6 +2013,25 @@ fun Application.module(
             })
         }
         // ── Partner management (PA-01/02/03/05 / IPW-01) ─────────────────────
+        // PA-01: list all partners — enabled by the "partners" catalog tag on PartnerCreated.
+        get("/api/v1/admin/partners") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            val createdEvents = eventStore.query(EventQuery(setOf("partners"))).events
+                .filterIsInstance<PartnerCreated>()
+            val partners = createdEvents.map { created ->
+                val pEvents = eventStore.query(EventQuery(setOf(partnerTag(created.partnerId)))).events
+                val partner = PartnerDecision().also { it.applyAll(pEvents) }
+                PartnerResponse(
+                    partnerId = created.partnerId.value,
+                    name = partner.name,
+                    maxSeats = partner.maxSeats,
+                    activeSeats = partner.activeSeatCount(),
+                    planId = partner.planId,
+                    activeCidrs = partner.activeCidrs(),
+                )
+            }.filter { it.name.isNotEmpty() }
+            call.respond(partners)
+        }
         // PA-01: create partner with optional seat cap and plan tier.
         post("/api/v1/admin/partners") {
             call.requireStaff(jwtValidator, StaffRole.ADMIN) ?: return@post
