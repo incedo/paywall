@@ -121,6 +121,13 @@ class AccessService(
         val meterUsedAfter: Int,
         /** The resolved meter limit for metered variants (PW-22/23 indicator). */
         val meterLimit: Int? = null,
+        /**
+         * DY-05: what each other (non-killed) variant would have decided for the
+         * same visitor and article, using the same decision models (meter, entitlement,
+         * grant). Enables offline A/B counterfactual comparison without re-playing events.
+         * Key = variant name, value = "gate" | "full".
+         */
+        val counterfactuals: Map<String, String> = emptyMap(),
     )
 
     suspend fun decide(
@@ -279,15 +286,40 @@ class AccessService(
             usedAfter += 1
         }
 
+        // DY-05: counterfactuals — reuse the same decision models (no extra queries).
+        // Only computed for real (non-debug) calls so QA runs don't inflate the map.
+        val counterfactuals: Map<String, String> = if (forceVariant == null) {
+            currentExperiment.variants
+                .filter { it.name != variant.name && it.name !in killedVariants }
+                .associate { other ->
+                    val cfDecision = AccessDecisionEngine.decide(
+                        AccessRequest(
+                            article = article,
+                            subject = subject,
+                            strategy = other.strategy,
+                            entitlement = entitlement,
+                            grant = grant,
+                            meter = meter,
+                            cepAdvice = cepAdvice,
+                            propensityScore = propensityScore,
+                            softGateDismissed = softGateDismissed,
+                            registrationWall = other.registrationWall,
+                            nowEpochMs = now,
+                        )
+                    )
+                    other.name to if (cfDecision is AccessDecision.Full) "full" else "gate"
+                }
+        } else emptyMap()
+
         // EX-05: suppress analytics for debug overrides so QA runs don't skew funnel data.
         if (forceVariant == null) {
-            logWallEvent(subject, article, variant, channel, decision, grant, now, isBot, isSuspicious, propensityScore, correlationId)
+            logWallEvent(subject, article, variant, channel, decision, grant, now, isBot, isSuspicious, propensityScore, correlationId, counterfactuals)
         }
 
         val meterLimit = (variant.strategy as? StrategyConfig.Metered)?.let { strategy ->
             if (subject.registered) strategy.registeredLimit ?: strategy.limit else strategy.limit
         }
-        return Outcome(decision, variant, usedAfter, meterLimit)
+        return Outcome(decision, variant, usedAfter, meterLimit, counterfactuals)
     }
 
     /**
@@ -348,6 +380,7 @@ class AccessService(
         isSuspicious: Boolean,
         propensityScore: Int,
         correlationId: String? = null,
+        counterfactuals: Map<String, String> = emptyMap(), // DY-05
     ) {
         val event: WallEventRecorded? = when (decision) {
             is AccessDecision.Gated -> WallEventRecorded(
@@ -365,6 +398,7 @@ class AccessService(
                     if (isBot) put("bot", "true")
                     if (isSuspicious) put("suspicious_ip", "true")
                     correlationId?.let { put("request_id", it) } // NFR-14
+                    counterfactuals.forEach { (name, outcome) -> put("cf_$name", outcome) } // DY-05
                 },
             )
             is AccessDecision.Full -> when {
@@ -386,6 +420,7 @@ class AccessService(
                             if (isBot) put("bot", "true")
                             if (isSuspicious) put("suspicious_ip", "true")
                             correlationId?.let { put("request_id", it) } // NFR-14
+                            counterfactuals.forEach { (name, outcome) -> put("cf_$name", outcome) } // DY-05
                         },
                     )
                 decision.countsTowardMeter ->
@@ -402,6 +437,7 @@ class AccessService(
                             if (isBot) put("bot", "true")
                             if (isSuspicious) put("suspicious_ip", "true")
                             correlationId?.let { put("request_id", it) } // NFR-14
+                            counterfactuals.forEach { (name, outcome) -> put("cf_$name", outcome) } // DY-05
                         },
                     )
                 else -> null // entitled/free full reads are page views, not funnel events
