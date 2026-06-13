@@ -1285,17 +1285,18 @@ fun Application.module(
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "grantId, subjectId and articleId are required"))
                 return@post
             }
-            // FGA-02: every grant is time-bound (expires_at required, max 90 days).
-            // If not supplied, default to 30 days from now.
+            // FGA-02: every grant is time-bound (expires_at required, max TTL configurable,
+            // default 30 days). If not supplied, default to 30 days from now.
             val now = System.currentTimeMillis()
-            val maxGrantTtlMs = 90L * 24 * 3600 * 1000
+            val maxGrantTtlDays = service.currentExperiment().maxGrantTtlDays
+            val maxGrantTtlMs = maxGrantTtlDays * 24L * 3600 * 1000
             val defaultGrantTtlMs = 30L * 24 * 3600 * 1000
             val expiresAt = if (change.active) {
                 val requested = change.expiresAtEpochMs ?: (now + defaultGrantTtlMs)
                 if (requested > now + maxGrantTtlMs) {
                     call.respond(
                         HttpStatusCode.BadRequest,
-                        mapOf("error" to "grant TTL exceeds maximum of 90 days (FGA-02)"),
+                        mapOf("error" to "grant TTL exceeds maximum of $maxGrantTtlDays days (FGA-02)"),
                     )
                     return@post
                 }

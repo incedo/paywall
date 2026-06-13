@@ -158,16 +158,40 @@ class GrantApiTest {
 
     @Test
     fun grantExceedingMaxTtlIsRejected() = apiTest { client ->
-        // FGA-02: max TTL is 90 days
-        val ninetyOneDays = 91L * 24 * 3600 * 1000
+        // FGA-02: default max TTL is 30 days (configurable via ExperimentDefinition.maxGrantTtlDays)
+        val thirtyOneDays = 31L * 24 * 3600 * 1000
         val status = grant(
             client,
             GrantChangeRequest(
                 grantId = "g-fga-max", subjectId = "visitor:v-1", articleId = "a-1",
                 grantedBy = "support",
-                expiresAtEpochMs = System.currentTimeMillis() + ninetyOneDays,
+                expiresAtEpochMs = System.currentTimeMillis() + thirtyOneDays,
             ),
         )
-        assertEquals(HttpStatusCode.BadRequest, status, "grant TTL > 90 days must be rejected (FGA-02)")
+        assertEquals(HttpStatusCode.BadRequest, status, "grant TTL > maxGrantTtlDays (30 days default) must be rejected (FGA-02)")
+    }
+
+    @Test
+    fun maxGrantTtlIsConfigurableViaExperiment() = testApplication {
+        // FGA-02: maxGrantTtlDays is configurable — 60-day limit set in experiment allows a 45-day grant.
+        val store = InMemoryEventStore()
+        val experiment = defaultExperiment.copy(maxGrantTtlDays = 60)
+        val service = AccessService(
+            eventStore = store, experiment = experiment,
+            clock = { now }, currentPeriod = { MeterPeriod("2026-06") },
+        )
+        application { module(service, store) }
+        val client = createClient { install(ContentNegotiation) { json() } }
+        val fortyFiveDays = 45L * 24 * 3600 * 1000
+        val status = client.post("/api/v1/grants") {
+            contentType(ContentType.Application.Json)
+            setBody(GrantChangeRequest(
+                grantId = "g-configurable", subjectId = "visitor:v-ttl", articleId = "a-1",
+                grantedBy = "support",
+                expiresAtEpochMs = System.currentTimeMillis() + fortyFiveDays,
+            ))
+        }.status
+        assertEquals(HttpStatusCode.Accepted, status,
+            "FGA-02: 45-day grant must be accepted when maxGrantTtlDays=60 in experiment config")
     }
 }
