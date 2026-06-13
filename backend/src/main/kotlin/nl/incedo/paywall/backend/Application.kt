@@ -293,6 +293,11 @@ fun Application.module(
             // configured — proves the request came through the edge (INF-02/BP-02).
             val isVerifiedCrawler = originSecret != null &&
                 call.request.headers["X-Verified-Bot"] == "true"
+            // NFR-14: correlation ID for structured log tracing. Echoed in the response
+            // header so clients can correlate their requests with the event store.
+            val correlationId = call.request.headers["X-Request-ID"]
+                ?: java.util.UUID.randomUUID().toString()
+            call.response.headers.append("X-Request-ID", correlationId)
             // IPW-02: partner_id is edge-injected after CIDR match (INF-01/02).
             // Only trust it when origin secret is configured.
             val partnerIdHeader = if (originSecret != null) call.request.headers["X-Partner-Id"] else null
@@ -300,6 +305,23 @@ fun Application.module(
                 val pEvents = eventStore.query(EventQuery(setOf(partnerTag(PartnerId(partnerIdHeader))))).events
                 val partner = PartnerDecision().also { it.applyAll(pEvents) }
                 if (partner.name.isNotEmpty() && partner.isActive) { // PA-03: isActive false after offboarding
+                    // PA-04: log partner access as a wall event so reads per partner are
+                    // reportable from the event store for contract management (AN-04 export).
+                    val partnerEvent = nl.incedo.paywall.analytics.WallEventRecorded(
+                        eventType = nl.incedo.paywall.analytics.WallEventType.ARTICLE_READ,
+                        subjectId = subject.subjectId,
+                        variant = "partner",
+                        channel = request.channel,
+                        occurredAtEpochMs = System.currentTimeMillis(),
+                        articleId = ArticleId(request.articleId),
+                        context = buildMap {
+                            put("reason", "partner_entitled")
+                            put("partner_id", partnerIdHeader)
+                            put("partner_name", partner.name)
+                            put("request_id", correlationId) // NFR-14
+                        },
+                    )
+                    eventStore.append(listOf(partnerEvent), condition = null)
                     call.respond(DecideResponse(access = "full", reason = "partner_entitled", variant = "partner", meterUsed = null))
                     return@post
                 }
@@ -317,6 +339,7 @@ fun Application.module(
                 isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
                 isVerifiedCrawler = isVerifiedCrawler,
                 forceVariant = forceVariant,
+                correlationId = correlationId,
             )
             call.respond(DecideResponse.from(outcome))
         }
