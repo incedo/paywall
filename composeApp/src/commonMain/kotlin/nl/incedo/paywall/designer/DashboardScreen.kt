@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import nl.incedo.paywall.api.BypassRateResponse
 import nl.incedo.paywall.api.VariantStatsResponse
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
@@ -19,9 +20,10 @@ import nl.incedo.paywall.ui.CrmText
  * from /api/v1/stats. Columns: visitors, reads, walls shown, gate CTR,
  * registrations, checkouts, conversions, conversion rate with Wilson CI
  * (AN-12), and reach cost vs. control (AN-11).
+ * BP-06: bypass-rate card shown when bypassRate is available.
  */
 @Composable
-fun DashboardScreen(stats: List<VariantStatsResponse>, statusMessage: String?) {
+fun DashboardScreen(stats: List<VariantStatsResponse>, bypassRate: BypassRateResponse?, statusMessage: String?) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.xl),
         verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg),
@@ -95,6 +97,37 @@ fun DashboardScreen(stats: List<VariantStatsResponse>, statusMessage: String?) {
                     color = CrmTheme.colors.onSurfaceVariant,
                     modifier = Modifier.padding(CrmTheme.spacing.md),
                 )
+            }
+        }
+
+        // BP-06: bypass-rate card — only shown when data is available
+        if (bypassRate != null) {
+            CrmCard {
+                Column(modifier = Modifier.padding(CrmTheme.spacing.lg), verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm)) {
+                    CrmText(
+                        "Bypass rate (BP-06)",
+                        style = CrmTheme.typography.label,
+                        color = CrmTheme.colors.onSurfaceVariant,
+                    )
+                    CrmDivider()
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        HeaderCell("Gated renders", 1f)
+                        HeaderCell("Marked renders", 1f)
+                        HeaderCell("Flagged reads", 1f)
+                        HeaderCell("Bypass rate", 1f)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Cell(bypassRate.gatedRenders.toString())
+                        Cell(bypassRate.markedGatedRenders.toString())
+                        Cell(bypassRate.flaggedReads.toString())
+                        Cell(bypassRate.bypassRate.asPercent())
+                    }
+                    CrmText(
+                        bypassRate.note,
+                        style = CrmTheme.typography.bodySmall,
+                        color = CrmTheme.colors.onSurfaceVariant,
+                    )
+                }
             }
         }
 

@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import nl.incedo.paywall.api.CreatePartnerRequest
 import nl.incedo.paywall.api.PartnerResponse
+import nl.incedo.paywall.api.PartnerUsageResponse
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
 import nl.incedo.paywall.ui.CrmDivider
@@ -35,10 +36,12 @@ import nl.incedo.paywall.ui.CrmTextButton
 /**
  * ADM-03: partner management screen — create partners (PA-01), manage members (PA-02/03/PA-05),
  * configure IP CIDR allowlists (IPW-01/03), and offboard partners (PA-03). All writes audited.
+ * PA-04: shows per-partner usage (reads + unique users) for contract management.
  */
 @Composable
 fun PartnersScreen(
     onLoadPartners: suspend () -> List<PartnerResponse>,
+    onLoadUsage: suspend () -> List<PartnerUsageResponse>,
     onCreatePartner: suspend (CreatePartnerRequest) -> Boolean,
     onAddMember: suspend (partnerId: String, subjectId: String) -> Boolean,
     onRemoveMember: suspend (partnerId: String, subjectId: String) -> Boolean,
@@ -48,12 +51,14 @@ fun PartnersScreen(
 ) {
     val scope = rememberCoroutineScope()
     var partners by remember { mutableStateOf<List<PartnerResponse>>(emptyList()) }
+    var usage by remember { mutableStateOf<Map<String, PartnerUsageResponse>>(emptyMap()) }
     var selected by remember { mutableStateOf<PartnerResponse?>(null) }
     var status by remember { mutableStateOf(statusMessage) }
     var showCreate by remember { mutableStateOf(false) }
 
     suspend fun reload() {
         partners = runCatching { onLoadPartners() }.getOrDefault(emptyList())
+        usage = runCatching { onLoadUsage() }.getOrDefault(emptyList()).associateBy { it.partnerId }
         selected = selected?.let { s -> partners.find { it.partnerId == s.partnerId } }
     }
 
@@ -129,6 +134,7 @@ fun PartnersScreen(
                 )
                 selected != null -> PartnerDetail(
                     partner = selected!!,
+                    usage = usage[selected!!.partnerId],
                     onAddMember = { subjectId ->
                         scope.launch {
                             val ok = onAddMember(selected!!.partnerId, subjectId)
@@ -171,6 +177,7 @@ fun PartnersScreen(
 @Composable
 private fun PartnerDetail(
     partner: PartnerResponse,
+    usage: PartnerUsageResponse?,
     onAddMember: (String) -> Unit,
     onRemoveMember: (String) -> Unit,
     onAddIpRange: (String) -> Unit,
@@ -194,6 +201,13 @@ private fun PartnerDetail(
                     "Seats",
                     "${partner.activeSeats} active${partner.maxSeats?.let { " / $it max (PA-05)" } ?: " (unlimited)"}",
                 )
+                // PA-04: contract management usage figures
+                if (usage != null) {
+                    PartnerRow("Reads (PA-04)", "${usage.totalReads}")
+                    PartnerRow("Unique users", "${usage.uniqueUsers}")
+                } else {
+                    PartnerRow("Reads (PA-04)", "—")
+                }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     CrmSecondaryButton("Offboard (PA-03)", onClick = onOffboard)
                 }

@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import nl.incedo.paywall.access.ContentTier
 import nl.incedo.paywall.access.StrategyConfig
+import nl.incedo.paywall.api.BypassRateResponse
 import nl.incedo.paywall.backend.content.ArticleRepository
 import nl.incedo.paywall.backend.content.StoredArticle
 import nl.incedo.paywall.core.ArticleId

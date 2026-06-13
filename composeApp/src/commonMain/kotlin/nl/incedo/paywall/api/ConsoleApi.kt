@@ -61,6 +61,12 @@ class ConsoleApi(private val baseUrl: String = "http://localhost:8080") {
     /** AN-14: per-offer triggered/accepted/declined/suppressed with channel breakdown. */
     suspend fun offerStats(): List<OfferStatsResponse> = client.get("$baseUrl/api/v1/stats/offers").body()
 
+    /** PA-04: partner usage — reads per partner and unique users for contract management. */
+    suspend fun partnerUsage(): List<PartnerUsageResponse> = client.get("$baseUrl/api/v1/stats/partners").body()
+
+    /** BP-06: bypass-rate estimation — ratio of gated renders with bypass markers. */
+    suspend fun bypassRate(): BypassRateResponse = client.get("$baseUrl/api/v1/admin/bypass-rate").body()
+
     // ── ADM-04: subject inspector ─────────────────────────────────────────────
 
     suspend fun inspectSubject(subjectId: String): SubjectInspectorResponse =
