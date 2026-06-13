@@ -116,6 +116,8 @@ enum class AccessReason {
     VERIFIED_CRAWLER,
     /** PA-01/IPW-02: user is a member of a partner with an active subscription. */
     PARTNER_ENTITLED,
+    /** NFR-15: admin kill switch active for this variant — open access until restored. */
+    VARIANT_KILLED,
 }
 
 sealed interface AccessDecision {

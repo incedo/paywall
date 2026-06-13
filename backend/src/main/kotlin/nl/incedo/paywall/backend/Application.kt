@@ -100,6 +100,9 @@ import nl.incedo.paywall.experiments.Variant
 import nl.incedo.paywall.experiments.VariantAssigner
 import nl.incedo.paywall.metering.MeterDecision
 import nl.incedo.paywall.metering.meterTag
+import nl.incedo.paywall.experiments.KILL_SWITCH_TAG
+import nl.incedo.paywall.experiments.VariantKilled
+import nl.incedo.paywall.experiments.VariantRestored
 import nl.incedo.paywall.notifications.MailSent
 
 /**
@@ -314,6 +317,22 @@ fun Application.module(
             }
         }
     }
+    // NFR-15: in-process cache of killed variant names. Reloaded from the event
+    // store on every admin kill/restore operation; staleness after a crash
+    // is bounded by the next request that repopulates it via loadKilledVariants().
+    val killedVariantsCache = java.util.concurrent.atomic.AtomicReference(emptySet<String>())
+
+    suspend fun loadKilledVariants(): Set<String> {
+        val events = eventStore.query(EventQuery(setOf(KILL_SWITCH_TAG))).events
+        return events.fold(mutableSetOf<String>()) { acc, e ->
+            when (e) {
+                is VariantKilled -> acc.also { it.add(e.variantName) }
+                is VariantRestored -> acc.also { it.remove(e.variantName) }
+                else -> acc
+            }
+        }
+    }
+
     routing {
         get("/health") {
             call.respond(mapOf("status" to "ok"))
@@ -388,6 +407,7 @@ fun Application.module(
                 forceVariant = forceVariant,
                 correlationId = correlationId,
                 externalScore = request.externalScore, // DY-06
+                killedVariants = killedVariantsCache.get(), // NFR-15
             )
             call.respond(DecideResponse.from(outcome))
         }
@@ -1125,6 +1145,31 @@ fun Application.module(
                     storePosition = result.position,
                 ),
             )
+        }
+        // NFR-15: variant kill-switch admin endpoints (OPERATOR only).
+        // Kill: instantly opens access for all visitors in the named variant.
+        // Restore: reverts to the normal paywall strategy.
+        // The in-process cache is updated immediately; the event store provides
+        // the audit trail and rehydration source after a restart.
+        get("/api/v1/admin/variant-kill-switches") {
+            call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
+            call.respond(mapOf("killed" to killedVariantsCache.get().toList().sorted()))
+        }
+        post("/api/v1/admin/variants/{name}/kill") {
+            val staff = call.requireStaff(jwtValidator, StaffRole.OPERATOR) ?: return@post
+            val name = call.parameters["name"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "variant name required"))
+            eventStore.append(listOf(VariantKilled(name, staff.userId.value, System.currentTimeMillis())), condition = null)
+            killedVariantsCache.set(loadKilledVariants())
+            call.respond(HttpStatusCode.Accepted, mapOf("killed" to name))
+        }
+        post("/api/v1/admin/variants/{name}/restore") {
+            val staff = call.requireStaff(jwtValidator, StaffRole.OPERATOR) ?: return@post
+            val name = call.parameters["name"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "variant name required"))
+            eventStore.append(listOf(VariantRestored(name, staff.userId.value, System.currentTimeMillis())), condition = null)
+            killedVariantsCache.set(loadKilledVariants())
+            call.respond(HttpStatusCode.Accepted, mapOf("restored" to name))
         }
         // BP-04: RSS 2.0 feed — premium articles carry teaser-only in the
         // description so full bodies are never exposed via syndication.

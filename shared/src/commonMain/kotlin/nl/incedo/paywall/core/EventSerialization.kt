@@ -10,6 +10,8 @@ import nl.incedo.paywall.accounts.IdentityLinked
 import nl.incedo.paywall.accounts.IdentityUnlinked
 import nl.incedo.paywall.accounts.UserDeleted
 import nl.incedo.paywall.experiments.ExperimentConfigPublished
+import nl.incedo.paywall.experiments.VariantKilled
+import nl.incedo.paywall.experiments.VariantRestored
 import nl.incedo.paywall.analytics.SoftGateDismissed
 import nl.incedo.paywall.analytics.WallEventRecorded
 import nl.incedo.paywall.cep.CepGateAdviceWithdrawn
@@ -68,6 +70,8 @@ val paywallSerializersModule = SerializersModule {
         subclass(IdentityUnlinked::class)
         subclass(UserDeleted::class)
         subclass(ExperimentConfigPublished::class)
+        subclass(VariantKilled::class)
+        subclass(VariantRestored::class)
         subclass(CepGateAdvised::class)
         subclass(CepGateAdviceWithdrawn::class)
         subclass(OfferAccepted::class)
