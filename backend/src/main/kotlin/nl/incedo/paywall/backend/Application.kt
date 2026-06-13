@@ -140,6 +140,8 @@ private suspend fun io.ktor.server.application.ApplicationCall.respondSaveResult
         is WallService.SaveResult.NotFound -> respond(HttpStatusCode.NotFound, mapOf("error" to "unknown wall"))
         is WallService.SaveResult.VersionConflict ->
             respond(HttpStatusCode.Conflict, mapOf("error" to "version conflict", "currentVersion" to result.current.toString()))
+        is WallService.SaveResult.VersionNotFound ->
+            respond(HttpStatusCode.NotFound, mapOf("error" to "version not found in history"))
     }
 }
 
@@ -516,6 +518,21 @@ fun Application.module(
             val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
                 ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wall id required"))
             call.respondSaveResult(wallService.publish(WallId(id), actor = staff.userId.value))
+        }
+        // ADM-13: rollback a wall to a previous version. In event-sourcing terms this
+        // re-applies the historical config as a new draft — history is never deleted.
+        post("/api/v1/walls/{id}/rollback") {
+            val staff = call.requireStaff(jwtValidator, StaffRole.ADMIN) ?: return@post
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wall id required"))
+            val targetVersion = call.request.queryParameters["version"]?.toIntOrNull()
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "version query parameter required (integer)"))
+            val result = wallService.rollback(WallId(id), targetVersion, actor = staff.userId.value)
+            if (result is WallService.SaveResult.VersionNotFound) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "version $targetVersion not found in wall history (ADM-13)"))
+            } else {
+                call.respondSaveResult(result)
+            }
         }
         // ADM-04: subject inspector — meter state, entitlements, identity
         // links and recent wall events for one person, plus the audited

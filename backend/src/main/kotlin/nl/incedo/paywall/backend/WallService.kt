@@ -25,6 +25,8 @@ class WallService(private val eventStore: EventStore) {
         data class Saved(val view: WallView) : SaveResult
         data object NotFound : SaveResult
         data class VersionConflict(val current: Int) : SaveResult
+        /** ADM-13: rollback target version does not exist in history. */
+        data object VersionNotFound : SaveResult
     }
 
     suspend fun list(): List<WallView> {
@@ -65,6 +67,38 @@ class WallService(private val eventStore: EventStore) {
             AppendCondition(wallQuery(id), position),
         )
         return SaveResult.Saved(get(id)!!)
+    }
+
+    /**
+     * ADM-13: rollback to a previous version by re-applying its config as a new
+     * WallConfigChanged event. In event-sourcing terms this is "time travel forward"
+     * — history is preserved; the old config becomes the new draft.
+     */
+    suspend fun rollback(id: WallId, targetVersion: Int, actor: String): SaveResult {
+        val result = eventStore.query(wallQuery(id))
+        if (result.events.isEmpty()) return SaveResult.NotFound
+        // Walk the event history to find the config at the target version
+        val configAtVersion = configHistory(result.events)
+        val targetConfig = configAtVersion[targetVersion] ?: return SaveResult.VersionNotFound
+        eventStore.append(
+            listOf(WallConfigChanged(id, targetConfig, actor)),
+            AppendCondition(wallQuery(id), result.position),
+        )
+        return SaveResult.Saved(get(id)!!)
+    }
+
+    /** Returns a map of version → WallConfig for every versioned config event. */
+    private fun configHistory(events: List<nl.incedo.paywall.core.DomainEvent>): Map<Int, WallConfig> {
+        val history = mutableMapOf<Int, WallConfig>()
+        var version = 0
+        for (event in events) {
+            when (event) {
+                is WallCreated -> { version = 1; history[version] = event.config }
+                is WallConfigChanged -> { version++; history[version] = event.config }
+                else -> {}
+            }
+        }
+        return history
     }
 
     private fun wallQuery(id: WallId) = EventQuery(setOf("wall:${id.value}"))

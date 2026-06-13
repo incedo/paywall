@@ -104,4 +104,40 @@ class WallApiTest {
             client.post("/api/v1/walls/nope/publish") { contentType(ContentType.Application.Json) }.status,
         )
     }
+
+    // ── ADM-13: rollback ────────────────────────────────────────────────────
+
+    @Test
+    fun rollbackRestoresPreviousConfig() = apiTest { client ->
+        // v1: "Original title"
+        save(client, "wall-rb", draft(name = "W").copy(title = "Original title"))
+        // v2: "Changed title"
+        save(client, "wall-rb", draft(name = "W").copy(title = "Changed title", expectedVersion = 1))
+
+        // Rollback to v1 — creates v3 with the original config
+        val rolledBack: WallResponse = client.post("/api/v1/walls/wall-rb/rollback?version=1") {
+            contentType(ContentType.Application.Json)
+        }.body()
+        assertEquals("draft", rolledBack.status, "rollback must return the wall to draft (ADM-13)")
+        assertEquals("Original title", rolledBack.title, "config must match version 1 (ADM-13)")
+        assertEquals(3, rolledBack.version, "rollback is a new version — history is preserved")
+    }
+
+    @Test
+    fun rollbackToUnknownVersionReturns404() = apiTest { client ->
+        save(client, "wall-rb2", draft())
+        val resp = client.post("/api/v1/walls/wall-rb2/rollback?version=99") {
+            contentType(ContentType.Application.Json)
+        }
+        assertEquals(HttpStatusCode.NotFound, resp.status)
+    }
+
+    @Test
+    fun rollbackMissingVersionParamReturns400() = apiTest { client ->
+        save(client, "wall-rb3", draft())
+        val resp = client.post("/api/v1/walls/wall-rb3/rollback") {
+            contentType(ContentType.Application.Json)
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status)
+    }
 }
