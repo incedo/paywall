@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import nl.incedo.paywall.api.ExperimentConfigResponse
+import nl.incedo.paywall.api.ExperimentConfigVersionSummary
 import nl.incedo.paywall.experiments.ExperimentDefinition
 import nl.incedo.paywall.experiments.Variant
 import nl.incedo.paywall.access.StrategyConfig
@@ -36,6 +37,7 @@ import nl.incedo.paywall.ui.CrmTextField
  * ADM-02 MUST: full access-control configuration management — meter limits and periods
  * (MT-10), paywall-type parameters per variant (PW-06), dynamic thresholds (DY-02),
  * experiment definitions and weights (EX-02) — with diff preview and audited publish.
+ * ADM-06 SHOULD: config version history + rollback (newest-first list, rollback by version).
  * NFR-15: variant kill-switch section shows killed variants and kill/restore buttons.
  * All writes go through the API (ADM-01: console owns no logic).
  */
@@ -43,6 +45,8 @@ import nl.incedo.paywall.ui.CrmTextField
 fun ConfigScreen(
     onLoadConfig: suspend () -> ExperimentConfigResponse?,
     onPublishConfig: suspend (ExperimentDefinition) -> Boolean,
+    onLoadHistory: suspend () -> List<ExperimentConfigVersionSummary>,
+    onRollback: suspend (Int) -> Boolean,
     onLoadKilledVariants: suspend () -> List<String>,
     onKillVariant: suspend (String) -> Boolean,
     onRestoreVariant: suspend (String) -> Boolean,
@@ -50,6 +54,7 @@ fun ConfigScreen(
 ) {
     val scope = rememberCoroutineScope()
     var config by remember { mutableStateOf<ExperimentConfigResponse?>(null) }
+    var configHistory by remember { mutableStateOf<List<ExperimentConfigVersionSummary>>(emptyList()) }
     var killedVariants by remember { mutableStateOf<List<String>>(emptyList()) }
     var status by remember { mutableStateOf(statusMessage ?: "Loading config…") }
 
@@ -96,6 +101,7 @@ fun ConfigScreen(
             status = if (config!!.isDefault) "Showing default config (no override published)" else "Config loaded"
         }
         killedVariants = runCatching { onLoadKilledVariants() }.getOrDefault(emptyList())
+        configHistory = runCatching { onLoadHistory() }.getOrDefault(emptyList())
     }
 
     /** Build the updated ExperimentDefinition from all edit state. */
@@ -262,6 +268,55 @@ fun ConfigScreen(
                                 style = CrmTheme.typography.caption,
                                 color = CrmTheme.colors.onSurfaceVariant,
                             )
+                        }
+                    }
+                }
+            }
+
+            // ── ADM-06: config version history + rollback ──────────────────────
+            if (configHistory.isNotEmpty()) {
+                CrmCard {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.lg),
+                        verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.sm),
+                    ) {
+                        CrmText("Config history (ADM-06)", style = CrmTheme.typography.h3)
+                        CrmText(
+                            "Roll back to any previous config — creates a new publish event from the old definition.",
+                            style = CrmTheme.typography.caption,
+                            color = CrmTheme.colors.onSurfaceVariant,
+                        )
+                        CrmDivider()
+                        configHistory.forEach { entry ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column {
+                                    CrmText("v${entry.version} — ${entry.variantNames}", style = CrmTheme.typography.bodySmall)
+                                    CrmText(
+                                        "by ${entry.actor}",
+                                        style = CrmTheme.typography.caption,
+                                        color = CrmTheme.colors.onSurfaceVariant,
+                                    )
+                                }
+                                CrmSecondaryButton("Roll back") {
+                                    scope.launch {
+                                        val ok = onRollback(entry.version)
+                                        if (ok) {
+                                            runCatching { onLoadConfig() }.getOrNull()?.let { fresh ->
+                                                config = fresh
+                                                initEdits(fresh)
+                                            }
+                                            configHistory = runCatching { onLoadHistory() }.getOrDefault(configHistory)
+                                            status = "Rolled back to v${entry.version} (ADM-06)"
+                                        } else {
+                                            status = "Rollback failed"
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

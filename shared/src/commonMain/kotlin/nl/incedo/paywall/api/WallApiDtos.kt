@@ -82,6 +82,24 @@ data class WallVersionSummary(
 )
 
 /**
+ * ADM-06: one entry in the experiment config version history — needed by the console
+ * rollback picker. Carries a human-readable summary instead of the full definition
+ * so the history list stays compact.
+ */
+@Serializable
+data class ExperimentConfigVersionSummary(
+    /** 1-indexed position in the config history (1 = oldest); use as the rollback target. */
+    val version: Int,
+    /** Staff user who published this config. */
+    val actor: String,
+    val publishedAtEpochMs: Long,
+    /** Number of variants in this version. */
+    val variantCount: Int,
+    /** Comma-separated variant names for display. */
+    val variantNames: String,
+)
+
+/**
  * ADM-16: create or update a wall design template.
  * Templates are brand-neutral; theme tokens come from the target brand at render time.
  */

@@ -70,6 +70,14 @@ class ConsoleApi(private val baseUrl: String = "http://localhost:8080") {
     /** AN-13: cohort view — conversion and 30-day retention by ISO week of first visit. */
     suspend fun cohortStats(): List<CohortStatsResponse> = client.get("$baseUrl/api/v1/stats/cohorts").body()
 
+    // ── ADM-06: experiment config history + rollback ───────────────────────────
+
+    suspend fun configHistory(): List<ExperimentConfigVersionSummary> =
+        client.get("$baseUrl/api/v1/admin/config/history").body()
+
+    suspend fun rollbackConfig(version: Int): Boolean =
+        client.post("$baseUrl/api/v1/admin/config/rollback?version=$version").status.value in 200..299
+
     // ── NFR-15: variant kill switches ─────────────────────────────────────────
 
     suspend fun killedVariants(): List<String> =
