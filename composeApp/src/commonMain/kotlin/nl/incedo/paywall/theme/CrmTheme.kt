@@ -183,6 +183,8 @@ data class CrmFocus(
     val minTouchTarget: Dp = 48.dp,
 )
 
+enum class WindowSizeClass { COMPACT, MEDIUM, EXPANDED, LARGE }
+
 val LocalCrmColors = staticCompositionLocalOf { LightCrmColors }
 val LocalCrmTypography = staticCompositionLocalOf { CrmTypography() }
 val LocalCrmSpacing = staticCompositionLocalOf { CrmSpacing() }
@@ -192,6 +194,7 @@ val LocalCrmAnimation = staticCompositionLocalOf { CrmAnimation() }
 val LocalCrmOpacity = staticCompositionLocalOf { CrmOpacity() }
 val LocalCrmIconSize = staticCompositionLocalOf { CrmIconSize() }
 val LocalCrmFocus = staticCompositionLocalOf { CrmFocus() }
+val LocalWindowSizeClass = staticCompositionLocalOf { WindowSizeClass.EXPANDED }
 
 object CrmTheme {
     val colors: CrmColors
@@ -212,6 +215,8 @@ object CrmTheme {
         @Composable get() = LocalCrmIconSize.current
     val focus: CrmFocus
         @Composable get() = LocalCrmFocus.current
+    val windowSizeClass: WindowSizeClass
+        @Composable get() = LocalWindowSizeClass.current
 }
 
 @Composable
