@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paywall — Follow-up Specs</title>
+<style>
+  :root{--primary:#1A73E8;--bg:#F8F9FA;--surface:#FFFFFF;--surface-variant:#F1F3F4;
+    --on-bg:#202124;--on-variant:#5F6368;--divider:#DADCE0}
+  *{box-sizing:border-box}
+  body{font-family:"Roboto","Google Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    font-size:14px;line-height:20px;color:var(--on-bg);background:var(--bg);margin:0;padding:0 0 64px}
+  .wrap{max-width:880px;margin:0 auto;padding:0 24px}
+  header.top{background:var(--surface);border-bottom:1px solid var(--divider);padding:24px 0;margin-bottom:24px}
+  h1{font-size:24px;line-height:32px;font-weight:700;margin:0 0 4px}
+  p{margin:0 0 12px}
+  a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
+  .lead{color:var(--on-variant)}
+  table{width:100%;border-collapse:collapse;margin:12px 0;background:var(--surface);border:1px solid var(--divider);border-radius:8px;overflow:hidden}
+  th,td{text-align:left;padding:12px;border-bottom:1px solid var(--divider);vertical-align:top}
+  th{font-size:12px;font-weight:600;color:var(--on-variant);background:var(--surface-variant)}
+  tr:last-child td{border-bottom:none}
+  code{font-family:"Roboto Mono",monospace;font-size:13px;background:var(--surface-variant);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <h1>Paywall — Follow-up Specs</h1>
+  <p class="lead">Improvement &amp; design specs written from a review of <code>main</code> · 2026-06-14</p>
+</div></header>
+<div class="wrap">
+<p>These specs sit alongside the v1 requirements in <a href="../requirements/index.html">requirements/</a>.
+They capture <em>what could be better</em> and <em>design intentions not yet built</em>, found by reviewing
+the code on <code>main</code> (16 bounded contexts, 523 tests, 96% line coverage). They do not change v1
+scope; each item cites the requirement ID it extends.</p>
+
+<table>
+  <tr><th>Spec</th><th>Contents</th><th>Prefix</th></tr>
+  <tr>
+    <td><a href="visual-editor-drag-drop.html">Visual Wall Editor — Block Composition &amp; Drag-and-Drop</a></td>
+    <td>Turns ADM-11's "constrained block library" into a block model, a drag-and-drop (with accessible
+      button fallback) editor, a how-far-are-we assessment, a build order, and the open product decisions.</td>
+    <td><code>VWE-*</code></td>
+  </tr>
+  <tr>
+    <td><a href="quality-gap-analysis.html">Quality &amp; Requirements Gap Analysis</a></td>
+    <td>Concrete code-quality, requirements-traceability, test-depth and security findings with severity and
+      suggested improvements, grouped by area.</td>
+    <td><code>Q-*</code></td>
+  </tr>
+</table>
+</div>
+</body>
+</html>
