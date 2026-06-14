@@ -17,11 +17,9 @@ import nl.incedo.paywall.model.WallType
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
 import nl.incedo.paywall.ui.CrmDivider
-import nl.incedo.paywall.ui.CrmPrimaryButton
 import nl.incedo.paywall.ui.CrmSecondaryButton
 import nl.incedo.paywall.ui.CrmTag
 import nl.incedo.paywall.ui.CrmText
-import nl.incedo.paywall.ui.CrmUsageMeter
 
 private data class Invoice(
     val number: String,
@@ -124,15 +122,12 @@ private fun GateCard(definition: WallDefinition, used: Int, limit: Int) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
         ) {
-            if (definition.type == WallType.Metered) {
-                CrmUsageMeter("Free documents used", used, limit, modifier = Modifier.widthIn(max = 320.dp))
-            }
-            CrmText(definition.title, style = CrmTheme.typography.h3)
-            CrmText(definition.body, color = CrmTheme.colors.onSurfaceVariant)
-            Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md)) {
-                CrmPrimaryButton(definition.primaryCta)
-                CrmSecondaryButton(definition.secondaryCta)
-            }
+            // VWE-01/05: render via WallLayout so preview and public gate share one renderer
+            WallLayoutRenderer(
+                layout = definition.toWallLayout(),
+                meterUsed = used,
+                meterLimit = limit,
+            )
             val note = when (definition.type) {
                 WallType.Metered -> "Your limit resets on 1 July."
                 WallType.Freemium -> "Premium content — always gated on Free."
