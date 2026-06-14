@@ -835,6 +835,14 @@ fun Application.module(
             if (experiment.variants.any { it.weight <= 0 }) {
                 return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "all variant weights must be positive"))
             }
+            // MT-06: rolling_30d is not implemented; reject at config-load so the config cannot silently lie.
+            val unsupportedPeriod = experiment.variants
+                .mapNotNull { (it.strategy as? nl.incedo.paywall.access.StrategyConfig.Metered)?.periodType }
+                .firstOrNull { it != "calendar_month" }
+            if (unsupportedPeriod != null) {
+                return@post call.respond(HttpStatusCode.BadRequest,
+                    mapOf("error" to "unsupported meterPeriodType '$unsupportedPeriod'; only 'calendar_month' is implemented (MT-06)"))
+            }
             val now = System.currentTimeMillis()
             val event = ExperimentConfigPublished(
                 experiment = experiment,

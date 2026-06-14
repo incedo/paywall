@@ -489,13 +489,13 @@ class AccessService(
 
     /**
      * MT-06: resolve the meter period for the given strategy. Only "calendar_month"
-     * (the default) is active in the experiment phase. "rolling_30d" is recognised
-     * as a future value and falls back to calendar month; a different tag scheme
-     * is required before rolling windows can be enforced.
+     * is implemented; any other periodType is rejected at config-load (API-03).
+     * This error() fires only if a legacy config bypassed that validation.
      */
     internal fun periodFor(strategy: StrategyConfig): MeterPeriod =
         when {
-            strategy is StrategyConfig.Metered && strategy.periodType == "rolling_30d" -> currentPeriod()
+            strategy is StrategyConfig.Metered && strategy.periodType != "calendar_month" ->
+                error("unsupported meterPeriodType '${strategy.periodType}' — rejected at config-load (MT-06)")
             else -> currentPeriod()
         }
 
