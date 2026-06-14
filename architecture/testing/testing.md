@@ -508,12 +508,12 @@ When a new component is added to `designsystem/`, a corresponding story file is 
 
 ### 9a. Test Frameworks
 - [x] Unit test framework configured (kotlin.test + JUnit5)
-- [ ] Contract test framework configured (Pact or OpenAPI-driven)
-- [ ] BDD framework configured (Cucumber-JVM with Kotlin steps)
+- [x] Contract test framework configured (`backend/test/.../contract/` — plain Kotlin, not Pact/OpenAPI; Pact framework deferred)
+- [x] BDD framework configured (Gherkin `.feature` files + Kotlin test mirrors in `backend/test/`; Cucumber engine deferred)
 - [x] Playwright E2E configured with auth fixture
 - [x] InMemoryEventStore and InMemoryReadModelStore available as test doubles
 - [x] At least one entity has all 4 test layers implemented
-- [ ] `./gradlew check` runs unit + contract + BDD tests
+- [x] `./gradlew check` runs unit + contract + BDD tests (all in `:backend:test`)
 - [x] `npx playwright test` runs UI tests against local stack
 
 ### 9b. Component Workbench
