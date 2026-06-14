@@ -82,7 +82,7 @@ class DataGateTest {
         val grant = events.filterIsInstance<GrantIssued>().firstOrNull { it.grantedBy == "data_gate" }
         assertTrue(grant != null, "data_gate GrantIssued must be recorded (DG-02)")
         val sevenDaysMs = 7L * 24 * 60 * 60 * 1000
-        assertTrue((grant.expiresAtEpochMs ?: 0) > System.currentTimeMillis() + sevenDaysMs - 5000,
+        assertTrue(grant.expiresAtEpochMs > System.currentTimeMillis() + sevenDaysMs - 5000,
             "grant TTL must be 7 days (DG-02)")
     }
 

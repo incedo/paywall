@@ -14,7 +14,8 @@ class GrantDecisionTest {
     private val article = ArticleId("a-1")
     private val now = 1_750_000_000_000L
 
-    private fun issued(id: String, articleId: ArticleId = article, expiresAt: Long? = null) = GrantIssued(
+    // default: expires 1 h in the future so every plain issued() is a live grant
+    private fun issued(id: String, articleId: ArticleId = article, expiresAt: Long = now + 3_600_000) = GrantIssued(
         grantId = GrantId(id),
         subjectId = subject,
         articleId = articleId,
@@ -31,9 +32,9 @@ class GrantDecisionTest {
 
     @Test
     fun expiredPassGivesNoAccess() {
-        // PW-08: day/week passes carry TTL = pass duration
+        // PW-08: day/week passes carry TTL = pass duration; FGA-02: fail closed on expired
         val decision = GrantDecision(article)
-        decision.apply(issued("g-1", expiresAt = now))
+        decision.apply(issued("g-1", expiresAt = now - 1))
         assertFalse(decision.hasLiveGrant(now))
     }
 
@@ -51,5 +52,20 @@ class GrantDecisionTest {
         val decision = GrantDecision(article)
         decision.apply(issued("g-1", articleId = ArticleId("a-other")))
         assertFalse(decision.hasLiveGrant(now))
+    }
+
+    @Test
+    fun cachedGrantIsLive() {
+        // FGA-05: ofCached uses Long.MAX_VALUE sentinel so cached grants are always live
+        // within the 60s cache window; the cache layer enforces its own TTL.
+        val d = GrantDecision.ofCached(article, hasGrant = true, grantedBy = "day_pass")
+        assertTrue(d.hasLiveGrant(now))
+        assertTrue(d.hasLiveGrant(Long.MAX_VALUE - 1))
+    }
+
+    @Test
+    fun cachedGrantWithNoGrantIsFalse() {
+        val d = GrantDecision.ofCached(article, hasGrant = false, grantedBy = null)
+        assertFalse(d.hasLiveGrant(now))
     }
 }

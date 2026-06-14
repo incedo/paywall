@@ -1055,7 +1055,7 @@ fun Application.module(
             val meter = MeterDecision(period).also { it.applyAll(events) }
             val entitlement = nl.incedo.paywall.entitlements.EntitlementDecision().also { it.applyAll(events) }
             // Live grant ids across the linked subjects (FGA-08 browse)
-            val grantExpiry = mutableMapOf<String, Long?>()
+            val grantExpiry = mutableMapOf<String, Long>()
             events.forEach { event ->
                 when (event) {
                     is GrantIssued -> grantExpiry[event.grantId.value] = event.expiresAtEpochMs
@@ -1063,7 +1063,7 @@ fun Application.module(
                     else -> {}
                 }
             }
-            val liveGrants = grantExpiry.filterValues { it == null || it > now }.keys.sorted()
+            val liveGrants = grantExpiry.filterValues { it > now }.keys.sorted()
             val recent = events.filterIsInstance<WallEventRecorded>().takeLast(20).map {
                 InspectorWallEvent(
                     type = it.eventType.name.lowercase(),
@@ -1123,8 +1123,7 @@ fun Application.module(
                         grantedBy = g.grantedBy,
                         reason = g.reason, // FGA-01
                         expiresAtEpochMs = g.expiresAtEpochMs,
-                        isLive = g.grantId.value !in revoked &&
-                            (g.expiresAtEpochMs?.let { it > now } ?: true),
+                        isLive = g.grantId.value !in revoked && g.expiresAtEpochMs > now,
                     )
                 }
             call.respond(entries)
@@ -1565,53 +1564,51 @@ fun Application.module(
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "grantId, subjectId and articleId are required"))
                 return@post
             }
+            if (!change.active) {
+                val event = GrantRevoked(
+                    grantId = GrantId(change.grantId),
+                    subjectId = SubjectId(change.subjectId),
+                    articleId = ArticleId(change.articleId),
+                )
+                eventStore.append(listOf(event), condition = null)
+                service.invalidateGrantCache(change.subjectId, change.articleId)
+                call.respond(HttpStatusCode.Accepted, mapOf("recorded" to event::class.simpleName))
+                return@post
+            }
             // FGA-02: every grant is time-bound (expires_at required, max TTL configurable,
             // default 30 days). If not supplied, default to 30 days from now.
             val now = System.currentTimeMillis()
             val maxGrantTtlDays = service.currentExperiment().maxGrantTtlDays
             val maxGrantTtlMs = maxGrantTtlDays * 24L * 3600 * 1000
             val defaultGrantTtlMs = 30L * 24 * 3600 * 1000
-            val expiresAt = if (change.active) {
-                val requested = change.expiresAtEpochMs ?: (now + defaultGrantTtlMs)
-                if (requested > now + maxGrantTtlMs) {
-                    call.respond(
-                        HttpStatusCode.BadRequest,
-                        mapOf("error" to "grant TTL exceeds maximum of $maxGrantTtlDays days (FGA-02)"),
-                    )
-                    return@post
-                }
-                requested
-            } else null
+            val expiresAt: Long = change.expiresAtEpochMs ?: (now + defaultGrantTtlMs)
+            if (expiresAt > now + maxGrantTtlMs) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    mapOf("error" to "grant TTL exceeds maximum of $maxGrantTtlDays days (FGA-02)"),
+                )
+                return@post
+            }
             // FGA-03: max 10 active grants per subject per source (grantedBy) — prevent
             // privilege escalation through a compromised CEP/AI integration (FGA-06).
-            if (change.active) {
-                val maxGrantsPerSource = 10
-                val subjectEvents = eventStore.query(EventQuery(setOf("subject:${change.subjectId}"))).events
-                val activeGrantsFromSource = subjectEvents
-                    .filterIsInstance<GrantIssued>()
-                    .count { it.grantedBy == change.grantedBy && (it.expiresAtEpochMs ?: Long.MAX_VALUE) > now }
-                if (activeGrantsFromSource >= maxGrantsPerSource) {
-                    call.respond(HttpStatusCode.TooManyRequests,
-                        mapOf("error" to "max active grants per source ($maxGrantsPerSource) reached (FGA-03)"))
-                    return@post
-                }
+            val maxGrantsPerSource = 10
+            val subjectEvents = eventStore.query(EventQuery(setOf("subject:${change.subjectId}"))).events
+            val activeGrantsFromSource = subjectEvents
+                .filterIsInstance<GrantIssued>()
+                .count { it.grantedBy == change.grantedBy && it.expiresAtEpochMs > now }
+            if (activeGrantsFromSource >= maxGrantsPerSource) {
+                call.respond(HttpStatusCode.TooManyRequests,
+                    mapOf("error" to "max active grants per source ($maxGrantsPerSource) reached (FGA-03)"))
+                return@post
             }
-            val event = if (change.active) {
-                GrantIssued(
-                    grantId = GrantId(change.grantId),
-                    subjectId = SubjectId(change.subjectId),
-                    articleId = ArticleId(change.articleId),
-                    grantedBy = change.grantedBy,
-                    reason = change.reason, // FGA-01
-                    expiresAtEpochMs = expiresAt,
-                )
-            } else {
-                GrantRevoked(
-                    grantId = GrantId(change.grantId),
-                    subjectId = SubjectId(change.subjectId),
-                    articleId = ArticleId(change.articleId),
-                )
-            }
+            val event = GrantIssued(
+                grantId = GrantId(change.grantId),
+                subjectId = SubjectId(change.subjectId),
+                articleId = ArticleId(change.articleId),
+                grantedBy = change.grantedBy,
+                reason = change.reason, // FGA-01
+                expiresAtEpochMs = expiresAt,
+            )
             eventStore.append(listOf(event), condition = null)
             // FGA-05: invalidate the 60s grant result cache so the change takes effect immediately.
             service.invalidateGrantCache(change.subjectId, change.articleId)
@@ -1806,7 +1803,7 @@ fun Application.module(
             val subjectEvents = eventStore.query(EventQuery(setOf("subject:${subjectId.value}"))).events
             val adGrantsToday = subjectEvents
                 .filterIsInstance<nl.incedo.paywall.grants.GrantIssued>()
-                .count { it.grantedBy == "ad_gated" && (it.expiresAtEpochMs ?: 0) >= todayStart }
+                .count { it.grantedBy == "ad_gated" && it.expiresAtEpochMs >= todayStart }
             val dailyCap = 2
             if (adGrantsToday >= dailyCap) {
                 call.respond(HttpStatusCode.TooManyRequests,
