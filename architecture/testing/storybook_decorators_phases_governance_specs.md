@@ -387,10 +387,10 @@ Phases exist to give the platform a controlled maturity path. They help engineer
 
 ## 9. Completion Criteria
 
-- [ ] Phases are explicitly modeled, not implied backlog buckets
-- [ ] Each capability is assigned to exactly one initial phase
-- [ ] Phase transitions are traceable and governed
-- [ ] Roadmap view is queryable from projections
+- [x] Phases are explicitly modeled, not implied backlog buckets — PhaseEvents.kt + PhaseDecision.kt 2026-06-14
+- [x] Each capability is assigned to exactly one initial phase — CapabilityAddedToPhase event (BR-3) 2026-06-14
+- [x] Phase transitions are traceable and governed — PLANNED→ACTIVE→SATISFIED/SUPERSEDED via events 2026-06-14
+- [x] Roadmap view is queryable from projections — GET /api/v1/storybook/phases 2026-06-14
 
 ---
 
@@ -534,11 +534,11 @@ The following baseline quality gates should be modeled:
 
 ## 10. Completion Criteria
 
-- [ ] Governance policies are explicit and queryable
-- [ ] Quality gates are defined for workbench artifacts
-- [ ] Ownership is mandatory and auditable
-- [ ] Evidence links exist for lifecycle promotions
-- [ ] Decisions and waivers are historically traceable
+- [x] Governance policies are explicit and queryable — GovernanceEvents.kt + GET /policies 2026-06-14
+- [x] Quality gates are defined for workbench artifacts — QualityGateAttached event (BR-3) 2026-06-14
+- [x] Ownership is mandatory and auditable — OwnerAssigned event (BR-4) 2026-06-14
+- [x] Evidence links exist for lifecycle promotions — EvidenceLinked event (BR-5) 2026-06-14
+- [x] Decisions and waivers are historically traceable — GovernanceDecisionRecorded (BR-6) 2026-06-14
 
 ---
 

@@ -208,3 +208,83 @@ data class ResponsiveProfileResponse(
     val layoutRules: List<String>,
 )
 
+// ── Phases BC ─────────────────────────────────────────────────────────────────
+
+@Serializable
+data class RegisterPhaseRequest(
+    val phaseId: String,
+    val phaseKey: String,
+    val phaseName: String,
+    val phaseOrder: Int,
+    val lifecycle: String = "PLANNED",
+)
+
+@Serializable
+data class AddCapabilityRequest(
+    val capabilityKey: String,
+    val title: String,
+    val description: String? = null,
+)
+
+@Serializable
+data class PhaseResponse(
+    val phaseId: String,
+    val phaseKey: String,
+    val phaseName: String,
+    val phaseOrder: Int,
+    val lifecycle: String,
+    val capabilities: Map<String, String>,
+)
+
+// ── Governance BC ─────────────────────────────────────────────────────────────
+
+@Serializable
+data class RegisterGovernancePolicyRequest(
+    val policyId: String,
+    val policyKey: String,
+    val title: String,
+    val lifecycle: String = "DRAFT",
+)
+
+@Serializable
+data class AttachQualityGateRequest(
+    val gateKey: String,
+    val description: String,
+)
+
+@Serializable
+data class AssignOwnerRequest(
+    val ownerRef: String,
+)
+
+@Serializable
+data class LinkEvidenceRequest(
+    val evidenceRef: String,
+    val evidenceType: String,
+)
+
+@Serializable
+data class RecordGovernanceDecisionRequest(
+    val decision: String,
+    val rationale: String? = null,
+)
+
+@Serializable
+data class GovernLifecycleRequest(
+    val targetRef: String,
+    val targetType: String,
+    val newLifecycle: String,
+)
+
+@Serializable
+data class GovernancePolicyResponse(
+    val policyId: String,
+    val policyKey: String,
+    val title: String,
+    val lifecycle: String,
+    val owner: String?,
+    val qualityGates: List<String>,
+    val evidenceRefs: List<String>,
+    val lastDecision: String?,
+)
+

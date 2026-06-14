@@ -37,6 +37,16 @@ import nl.incedo.paywall.api.SetDensityProfileRequest
 import nl.incedo.paywall.api.LinkExpectationRequest
 import nl.incedo.paywall.api.AddLayoutRuleRequest
 import nl.incedo.paywall.api.ResponsiveProfileResponse
+import nl.incedo.paywall.api.RegisterPhaseRequest
+import nl.incedo.paywall.api.AddCapabilityRequest
+import nl.incedo.paywall.api.PhaseResponse
+import nl.incedo.paywall.api.RegisterGovernancePolicyRequest
+import nl.incedo.paywall.api.AttachQualityGateRequest
+import nl.incedo.paywall.api.AssignOwnerRequest
+import nl.incedo.paywall.api.LinkEvidenceRequest
+import nl.incedo.paywall.api.RecordGovernanceDecisionRequest
+import nl.incedo.paywall.api.GovernLifecycleRequest
+import nl.incedo.paywall.api.GovernancePolicyResponse
 import nl.incedo.paywall.backend.AccessService
 import nl.incedo.paywall.backend.defaultExperiment
 import nl.incedo.paywall.backend.module
@@ -685,5 +695,245 @@ class StorybookContractTest {
     @Test fun `GET unknown responsive profile returns 404`() = contractTest { client ->
         val resp = client.get("/api/v1/storybook/responsive/unknown-id")
         assertEquals(HttpStatusCode.NotFound, resp.status)
+    }
+
+    // ── Phases BC ─────────────────────────────────────────────────────────────
+
+    private suspend fun setupPhase(
+        client: io.ktor.client.HttpClient,
+        id: String = "ph1",
+        key: String = "alpha",
+    ): String {
+        client.post("/api/v1/storybook/phases") {
+            contentType(ContentType.Application.Json)
+            setBody(RegisterPhaseRequest(phaseId = id, phaseKey = key, phaseName = "Alpha Phase", phaseOrder = 1))
+        }
+        return id
+    }
+
+    @Test fun `POST phases creates phase and returns 201`() = contractTest { client ->
+        val resp = client.post("/api/v1/storybook/phases") {
+            contentType(ContentType.Application.Json)
+            setBody(RegisterPhaseRequest(phaseId = "ph1", phaseKey = "alpha", phaseName = "Alpha Phase", phaseOrder = 1))
+        }
+        assertEquals(HttpStatusCode.Created, resp.status)
+        val phase = resp.body<PhaseResponse>()
+        assertEquals("ph1", phase.phaseId)
+        assertEquals("alpha", phase.phaseKey)
+        assertEquals("PLANNED", phase.lifecycle)
+    }
+
+    @Test fun `POST phases returns 409 on duplicate id`() = contractTest { client ->
+        setupPhase(client)
+        val resp = client.post("/api/v1/storybook/phases") {
+            contentType(ContentType.Application.Json)
+            setBody(RegisterPhaseRequest(phaseId = "ph1", phaseKey = "beta", phaseName = "Beta", phaseOrder = 2))
+        }
+        assertEquals(HttpStatusCode.Conflict, resp.status)
+    }
+
+    @Test fun `POST phases returns 409 on duplicate key`() = contractTest { client ->
+        setupPhase(client, id = "ph1", key = "alpha")
+        val resp = client.post("/api/v1/storybook/phases") {
+            contentType(ContentType.Application.Json)
+            setBody(RegisterPhaseRequest(phaseId = "ph2", phaseKey = "alpha", phaseName = "Alpha 2", phaseOrder = 2))
+        }
+        assertEquals(HttpStatusCode.Conflict, resp.status)
+    }
+
+    @Test fun `POST phases returns 400 for blank fields`() = contractTest { client ->
+        val resp = client.post("/api/v1/storybook/phases") {
+            contentType(ContentType.Application.Json)
+            setBody(RegisterPhaseRequest(phaseId = "", phaseKey = "key", phaseName = "Name", phaseOrder = 1))
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status)
+    }
+
+    @Test fun `POST phase capabilities adds capability (BR-3)`() = contractTest { client ->
+        val pid = setupPhase(client)
+        val resp = client.post("/api/v1/storybook/phases/$pid/capabilities") {
+            contentType(ContentType.Application.Json)
+            setBody(AddCapabilityRequest(capabilityKey = "auth", title = "Auth flow"))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        val phase = client.get("/api/v1/storybook/phases/$pid").body<PhaseResponse>()
+        assertTrue("auth" in phase.capabilities)
+    }
+
+    @Test fun `POST activate transitions PLANNED to ACTIVE (BR-4)`() = contractTest { client ->
+        val pid = setupPhase(client)
+        val resp = client.post("/api/v1/storybook/phases/$pid/activate") {
+            contentType(ContentType.Application.Json); setBody("{}")
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        val phase = client.get("/api/v1/storybook/phases/$pid").body<PhaseResponse>()
+        assertEquals("ACTIVE", phase.lifecycle)
+    }
+
+    @Test fun `POST activate on non-PLANNED phase returns 409 (BR-4)`() = contractTest { client ->
+        val pid = setupPhase(client)
+        client.post("/api/v1/storybook/phases/$pid/activate") {
+            contentType(ContentType.Application.Json); setBody("{}")
+        }
+        val resp = client.post("/api/v1/storybook/phases/$pid/activate") {
+            contentType(ContentType.Application.Json); setBody("{}")
+        }
+        assertEquals(HttpStatusCode.Conflict, resp.status)
+    }
+
+    @Test fun `POST satisfy marks phase SATISFIED (BR-5)`() = contractTest { client ->
+        val pid = setupPhase(client)
+        client.post("/api/v1/storybook/phases/$pid/activate") { contentType(ContentType.Application.Json); setBody("{}") }
+        val resp = client.post("/api/v1/storybook/phases/$pid/satisfy") { contentType(ContentType.Application.Json); setBody("{}") }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        assertEquals("SATISFIED", client.get("/api/v1/storybook/phases/$pid").body<PhaseResponse>().lifecycle)
+    }
+
+    @Test fun `POST supersede marks phase SUPERSEDED (BR-6)`() = contractTest { client ->
+        val pid = setupPhase(client)
+        val resp = client.post("/api/v1/storybook/phases/$pid/supersede") { contentType(ContentType.Application.Json); setBody("{}") }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        assertEquals("SUPERSEDED", client.get("/api/v1/storybook/phases/$pid").body<PhaseResponse>().lifecycle)
+    }
+
+    @Test fun `GET phases returns all phases`() = contractTest { client ->
+        setupPhase(client, id = "ph1", key = "alpha")
+        setupPhase(client, id = "ph2", key = "beta")
+        val phases = client.get("/api/v1/storybook/phases").body<List<PhaseResponse>>()
+        assertEquals(2, phases.size)
+    }
+
+    @Test fun `GET phase by id returns phase`() = contractTest { client ->
+        val pid = setupPhase(client)
+        val phase = client.get("/api/v1/storybook/phases/$pid").body<PhaseResponse>()
+        assertEquals("alpha", phase.phaseKey)
+        assertEquals("Alpha Phase", phase.phaseName)
+    }
+
+    @Test fun `GET unknown phase returns 404`() = contractTest { client ->
+        assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/storybook/phases/unknown").status)
+    }
+
+    // ── Governance BC ─────────────────────────────────────────────────────────
+
+    private suspend fun setupPolicy(
+        client: io.ktor.client.HttpClient,
+        id: String = "gov1",
+        key: String = "access-policy",
+    ): String {
+        client.post("/api/v1/storybook/governance/policies") {
+            contentType(ContentType.Application.Json)
+            setBody(RegisterGovernancePolicyRequest(policyId = id, policyKey = key, title = "Access Policy"))
+        }
+        return id
+    }
+
+    @Test fun `POST governance policies creates policy and returns 201`() = contractTest { client ->
+        val resp = client.post("/api/v1/storybook/governance/policies") {
+            contentType(ContentType.Application.Json)
+            setBody(RegisterGovernancePolicyRequest(policyId = "gov1", policyKey = "access-policy", title = "Access Policy"))
+        }
+        assertEquals(HttpStatusCode.Created, resp.status)
+        val policy = resp.body<GovernancePolicyResponse>()
+        assertEquals("gov1", policy.policyId)
+        assertEquals("DRAFT", policy.lifecycle)
+    }
+
+    @Test fun `POST governance policies returns 409 on duplicate id`() = contractTest { client ->
+        setupPolicy(client)
+        val resp = client.post("/api/v1/storybook/governance/policies") {
+            contentType(ContentType.Application.Json)
+            setBody(RegisterGovernancePolicyRequest(policyId = "gov1", policyKey = "content-policy", title = "Content Policy"))
+        }
+        assertEquals(HttpStatusCode.Conflict, resp.status)
+    }
+
+    @Test fun `POST governance policies returns 409 on duplicate key`() = contractTest { client ->
+        setupPolicy(client)
+        val resp = client.post("/api/v1/storybook/governance/policies") {
+            contentType(ContentType.Application.Json)
+            setBody(RegisterGovernancePolicyRequest(policyId = "gov2", policyKey = "access-policy", title = "Access 2"))
+        }
+        assertEquals(HttpStatusCode.Conflict, resp.status)
+    }
+
+    @Test fun `POST quality-gate attaches gate (BR-3)`() = contractTest { client ->
+        val id = setupPolicy(client)
+        val resp = client.post("/api/v1/storybook/governance/policies/$id/quality-gates") {
+            contentType(ContentType.Application.Json)
+            setBody(AttachQualityGateRequest(gateKey = "ux-review", description = "UX sign-off"))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        val policy = client.get("/api/v1/storybook/governance/policies/$id").body<GovernancePolicyResponse>()
+        assertTrue("ux-review" in policy.qualityGates)
+    }
+
+    @Test fun `POST owners assigns owner (BR-4)`() = contractTest { client ->
+        val id = setupPolicy(client)
+        val resp = client.post("/api/v1/storybook/governance/policies/$id/owners") {
+            contentType(ContentType.Application.Json)
+            setBody(AssignOwnerRequest(ownerRef = "team-platform"))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        val policy = client.get("/api/v1/storybook/governance/policies/$id").body<GovernancePolicyResponse>()
+        assertEquals("team-platform", policy.owner)
+    }
+
+    @Test fun `POST evidence links evidence (BR-5)`() = contractTest { client ->
+        val id = setupPolicy(client)
+        val resp = client.post("/api/v1/storybook/governance/policies/$id/evidence") {
+            contentType(ContentType.Application.Json)
+            setBody(LinkEvidenceRequest(evidenceRef = "report-42", evidenceType = "test-report"))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        val policy = client.get("/api/v1/storybook/governance/policies/$id").body<GovernancePolicyResponse>()
+        assertTrue("report-42" in policy.evidenceRefs)
+    }
+
+    @Test fun `POST decisions records APPROVED decision (BR-6)`() = contractTest { client ->
+        val id = setupPolicy(client)
+        val resp = client.post("/api/v1/storybook/governance/policies/$id/decisions") {
+            contentType(ContentType.Application.Json)
+            setBody(RecordGovernanceDecisionRequest(decision = "APPROVED"))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        val policy = client.get("/api/v1/storybook/governance/policies/$id").body<GovernancePolicyResponse>()
+        assertEquals("APPROVED", policy.lastDecision)
+    }
+
+    @Test fun `POST decisions REJECTED without rationale returns 400 (BR-6)`() = contractTest { client ->
+        val id = setupPolicy(client)
+        val resp = client.post("/api/v1/storybook/governance/policies/$id/decisions") {
+            contentType(ContentType.Application.Json)
+            setBody(RecordGovernanceDecisionRequest(decision = "REJECTED"))
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status)
+    }
+
+    @Test fun `POST lifecycle records lifecycle governance (BR-7)`() = contractTest { client ->
+        val id = setupPolicy(client)
+        val resp = client.post("/api/v1/storybook/governance/policies/$id/lifecycle") {
+            contentType(ContentType.Application.Json)
+            setBody(GovernLifecycleRequest(targetRef = "story:sb-001", targetType = "story", newLifecycle = "ACTIVE"))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+    }
+
+    @Test fun `GET governance policies returns list`() = contractTest { client ->
+        setupPolicy(client, id = "gov1", key = "access-policy")
+        setupPolicy(client, id = "gov2", key = "content-policy")
+        val policies = client.get("/api/v1/storybook/governance/policies").body<List<GovernancePolicyResponse>>()
+        assertEquals(2, policies.size)
+    }
+
+    @Test fun `GET governance policy by id returns policy`() = contractTest { client ->
+        val id = setupPolicy(client)
+        val policy = client.get("/api/v1/storybook/governance/policies/$id").body<GovernancePolicyResponse>()
+        assertEquals("access-policy", policy.policyKey)
+        assertEquals("Access Policy", policy.title)
+    }
+
+    @Test fun `GET unknown governance policy returns 404`() = contractTest { client ->
+        assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/storybook/governance/policies/unknown").status)
     }
 }

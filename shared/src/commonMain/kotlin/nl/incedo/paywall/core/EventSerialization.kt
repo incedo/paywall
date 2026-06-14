@@ -66,6 +66,17 @@ import nl.incedo.paywall.storybook.ResponsiveDensityProfileSet
 import nl.incedo.paywall.storybook.ResponsiveExpectationLinked
 import nl.incedo.paywall.storybook.ResponsiveLayoutRuleAdded
 import nl.incedo.paywall.storybook.ResponsiveProfileArchived
+import nl.incedo.paywall.storybook.PhaseRegistered
+import nl.incedo.paywall.storybook.CapabilityAddedToPhase
+import nl.incedo.paywall.storybook.PhaseActivated
+import nl.incedo.paywall.storybook.PhaseSatisfied
+import nl.incedo.paywall.storybook.PhaseSuperseded
+import nl.incedo.paywall.storybook.GovernancePolicyRegistered
+import nl.incedo.paywall.storybook.QualityGateAttached
+import nl.incedo.paywall.storybook.OwnerAssigned
+import nl.incedo.paywall.storybook.EvidenceLinked
+import nl.incedo.paywall.storybook.GovernanceDecisionRecorded
+import nl.incedo.paywall.storybook.LifecycleGoverned
 
 /**
  * Polymorphic registration of every domain event, shared by all event-store
@@ -137,6 +148,17 @@ val paywallSerializersModule = SerializersModule {
         subclass(ResponsiveExpectationLinked::class)
         subclass(ResponsiveLayoutRuleAdded::class)
         subclass(ResponsiveProfileArchived::class)
+        subclass(PhaseRegistered::class)
+        subclass(CapabilityAddedToPhase::class)
+        subclass(PhaseActivated::class)
+        subclass(PhaseSatisfied::class)
+        subclass(PhaseSuperseded::class)
+        subclass(GovernancePolicyRegistered::class)
+        subclass(QualityGateAttached::class)
+        subclass(OwnerAssigned::class)
+        subclass(EvidenceLinked::class)
+        subclass(GovernanceDecisionRecorded::class)
+        subclass(LifecycleGoverned::class)
     }
 }
 

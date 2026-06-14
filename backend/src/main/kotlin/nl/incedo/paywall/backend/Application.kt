@@ -160,6 +160,16 @@ import nl.incedo.paywall.api.SetDensityProfileRequest
 import nl.incedo.paywall.api.LinkExpectationRequest
 import nl.incedo.paywall.api.AddLayoutRuleRequest
 import nl.incedo.paywall.api.ResponsiveProfileResponse
+import nl.incedo.paywall.api.RegisterPhaseRequest
+import nl.incedo.paywall.api.AddCapabilityRequest
+import nl.incedo.paywall.api.PhaseResponse
+import nl.incedo.paywall.api.RegisterGovernancePolicyRequest
+import nl.incedo.paywall.api.AttachQualityGateRequest
+import nl.incedo.paywall.api.AssignOwnerRequest
+import nl.incedo.paywall.api.LinkEvidenceRequest
+import nl.incedo.paywall.api.RecordGovernanceDecisionRequest
+import nl.incedo.paywall.api.GovernLifecycleRequest
+import nl.incedo.paywall.api.GovernancePolicyResponse
 import nl.incedo.paywall.storybook.ControlAdded
 import nl.incedo.paywall.storybook.ControlDefaultChanged
 import nl.incedo.paywall.storybook.ControlId
@@ -224,6 +234,38 @@ import nl.incedo.paywall.storybook.NavigationPattern
 import nl.incedo.paywall.storybook.DensityProfile
 import nl.incedo.paywall.storybook.ResponsiveLifecycle
 import nl.incedo.paywall.storybook.responsiveTag
+import nl.incedo.paywall.storybook.PhaseRegistered
+import nl.incedo.paywall.storybook.CapabilityAddedToPhase
+import nl.incedo.paywall.storybook.PhaseActivated
+import nl.incedo.paywall.storybook.PhaseSatisfied
+import nl.incedo.paywall.storybook.PhaseSuperseded
+import nl.incedo.paywall.storybook.PhaseDecisionModel
+import nl.incedo.paywall.storybook.PhaseKeyUniquenessDecision
+import nl.incedo.paywall.storybook.PhaseId
+import nl.incedo.paywall.storybook.PhaseKey
+import nl.incedo.paywall.storybook.PhaseName
+import nl.incedo.paywall.storybook.CapabilityKey
+import nl.incedo.paywall.storybook.PhaseLifecycle
+import nl.incedo.paywall.storybook.phaseTag
+import nl.incedo.paywall.storybook.phaseKeyTag
+import nl.incedo.paywall.storybook.GovernancePolicyRegistered
+import nl.incedo.paywall.storybook.QualityGateAttached
+import nl.incedo.paywall.storybook.OwnerAssigned
+import nl.incedo.paywall.storybook.EvidenceLinked
+import nl.incedo.paywall.storybook.GovernanceDecisionRecorded
+import nl.incedo.paywall.storybook.LifecycleGoverned
+import nl.incedo.paywall.storybook.GovernanceDecisionModel
+import nl.incedo.paywall.storybook.PolicyKeyUniquenessDecision
+import nl.incedo.paywall.storybook.GovernancePolicyId
+import nl.incedo.paywall.storybook.GovernancePolicyKey
+import nl.incedo.paywall.storybook.QualityGateKey
+import nl.incedo.paywall.storybook.OwnerRef
+import nl.incedo.paywall.storybook.EvidenceRef
+import nl.incedo.paywall.storybook.LifecycleState
+import nl.incedo.paywall.storybook.GovernanceDecisionOutcome
+import nl.incedo.paywall.storybook.policyTag
+import nl.incedo.paywall.storybook.policyKeyTag
+import nl.incedo.paywall.storybook.toResponse
 
 /**
  * Default experiment (EX-02): the four strategies of Doc 1 at equal weight.
@@ -3030,6 +3072,201 @@ fun Application.module(
                 expectationRefs = d.expectationRefs.toList(),
                 layoutRules = d.layoutRules.toList(),
             ))
+        }
+
+        // ── Phases BC ─────────────────────────────────────────────────────────
+
+        post("/api/v1/storybook/phases") {
+            val req = call.receive<RegisterPhaseRequest>()
+            if (req.phaseId.isBlank() || req.phaseKey.isBlank() || req.phaseName.isBlank())
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "phaseId, phaseKey, phaseName required"))
+            val phaseId = PhaseId(req.phaseId)
+            val phaseKey = PhaseKey(req.phaseKey)
+            val existing = PhaseDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseTag(phaseId)))).events) }
+            if (existing.exists) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "phase already registered"))
+            val keyTaken = PhaseKeyUniquenessDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseKeyTag(phaseKey)))).events) }
+            if (keyTaken.isTaken(phaseKey.value)) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "phaseKey already in use"))
+            val lifecycle = runCatching { PhaseLifecycle.valueOf(req.lifecycle.uppercase()) }.getOrElse {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid lifecycle"))
+            }
+            eventStore.append(listOf(PhaseRegistered(phaseId, phaseKey, PhaseName(req.phaseName), req.phaseOrder, lifecycle, System.currentTimeMillis())), condition = null)
+            val d = PhaseDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseTag(phaseId)))).events) }
+            call.respond(HttpStatusCode.Created, PhaseResponse(phaseId.value, d.phaseKey, d.phaseName, d.phaseOrder, d.lifecycle.name, d.capabilities.toMap()))
+        }
+
+        post("/api/v1/storybook/phases/{phaseId}/capabilities") {
+            val pid = call.parameters["phaseId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "phaseId required"))
+            val phaseId = PhaseId(pid)
+            val d = PhaseDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseTag(phaseId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "phase not found"))
+            val req = call.receive<AddCapabilityRequest>()
+            if (req.capabilityKey.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "capabilityKey required"))
+            val capKey = CapabilityKey(req.capabilityKey)
+            if (d.capabilities.containsKey(capKey.value)) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "capability already added (BR-3)"))
+            eventStore.append(listOf(CapabilityAddedToPhase(phaseId, capKey, req.title, req.description, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "CapabilityAddedToPhase"))
+        }
+
+        post("/api/v1/storybook/phases/{phaseId}/activate") {
+            val pid = call.parameters["phaseId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "phaseId required"))
+            val phaseId = PhaseId(pid)
+            val d = PhaseDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseTag(phaseId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "phase not found"))
+            if (d.lifecycle != PhaseLifecycle.PLANNED) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "phase must be PLANNED to activate (BR-4)"))
+            eventStore.append(listOf(PhaseActivated(phaseId, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "PhaseActivated"))
+        }
+
+        post("/api/v1/storybook/phases/{phaseId}/satisfy") {
+            val pid = call.parameters["phaseId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "phaseId required"))
+            val phaseId = PhaseId(pid)
+            val d = PhaseDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseTag(phaseId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "phase not found"))
+            if (d.lifecycle == PhaseLifecycle.SATISFIED) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "phase already satisfied (BR-5)"))
+            if (d.lifecycle == PhaseLifecycle.SUPERSEDED) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "phase is superseded"))
+            eventStore.append(listOf(PhaseSatisfied(phaseId, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "PhaseSatisfied"))
+        }
+
+        post("/api/v1/storybook/phases/{phaseId}/supersede") {
+            val pid = call.parameters["phaseId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "phaseId required"))
+            val phaseId = PhaseId(pid)
+            val d = PhaseDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseTag(phaseId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "phase not found"))
+            if (d.lifecycle == PhaseLifecycle.SUPERSEDED) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "phase already superseded (BR-6)"))
+            eventStore.append(listOf(PhaseSuperseded(phaseId, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "PhaseSuperseded"))
+        }
+
+        get("/api/v1/storybook/phases") {
+            val allEvents = eventStore.query(EventQuery(setOf("phases"))).events
+            val phaseIds = allEvents.filterIsInstance<PhaseRegistered>().map { it.phaseId }.distinct()
+            val phases = phaseIds.map { phaseId ->
+                val pEvents = allEvents.filter { phaseTag(phaseId) in it.tags }
+                val d = PhaseDecisionModel().also { it.applyAll(pEvents) }
+                PhaseResponse(phaseId.value, d.phaseKey, d.phaseName, d.phaseOrder, d.lifecycle.name, d.capabilities.toMap())
+            }
+            call.respond(phases)
+        }
+
+        get("/api/v1/storybook/phases/{phaseId}") {
+            val pid = call.parameters["phaseId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "phaseId required"))
+            val phaseId = PhaseId(pid)
+            val d = PhaseDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseTag(phaseId)))).events) }
+            if (!d.exists) return@get call.respond(HttpStatusCode.NotFound, mapOf("error" to "phase not found"))
+            call.respond(PhaseResponse(pid, d.phaseKey, d.phaseName, d.phaseOrder, d.lifecycle.name, d.capabilities.toMap()))
+        }
+
+        // ── Governance BC ──────────────────────────────────────────────────────
+
+        post("/api/v1/storybook/governance/policies") {
+            val req = call.receive<RegisterGovernancePolicyRequest>()
+            if (req.policyId.isBlank() || req.policyKey.isBlank() || req.title.isBlank())
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "policyId, policyKey, title required"))
+            val policyId = GovernancePolicyId(req.policyId)
+            val policyKey = GovernancePolicyKey(req.policyKey)
+            val existing = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            if (existing.exists) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "policy already registered"))
+            val keyTaken = PolicyKeyUniquenessDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(policyKeyTag(policyKey)))).events) }
+            if (keyTaken.isTaken(policyKey.value)) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "policyKey already in use"))
+            val lifecycle = runCatching { LifecycleState.valueOf(req.lifecycle.uppercase()) }.getOrElse {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid lifecycle"))
+            }
+            eventStore.append(listOf(GovernancePolicyRegistered(policyId, policyKey, req.title, lifecycle, System.currentTimeMillis())), condition = null)
+            val d = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            call.respond(HttpStatusCode.Created, d.toResponse(req.policyId))
+        }
+
+        post("/api/v1/storybook/governance/policies/{id}/quality-gates") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "id required"))
+            val policyId = GovernancePolicyId(id)
+            val d = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "policy not found"))
+            val req = call.receive<AttachQualityGateRequest>()
+            if (req.gateKey.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "gateKey required"))
+            eventStore.append(listOf(QualityGateAttached(policyId, QualityGateKey(req.gateKey), req.description, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "QualityGateAttached"))
+        }
+
+        post("/api/v1/storybook/governance/policies/{id}/owners") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "id required"))
+            val policyId = GovernancePolicyId(id)
+            val d = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "policy not found"))
+            val req = call.receive<AssignOwnerRequest>()
+            if (req.ownerRef.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "ownerRef required"))
+            eventStore.append(listOf(OwnerAssigned(policyId, OwnerRef(req.ownerRef), System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "OwnerAssigned"))
+        }
+
+        post("/api/v1/storybook/governance/policies/{id}/evidence") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "id required"))
+            val policyId = GovernancePolicyId(id)
+            val d = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "policy not found"))
+            val req = call.receive<LinkEvidenceRequest>()
+            if (req.evidenceRef.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "evidenceRef required"))
+            eventStore.append(listOf(EvidenceLinked(policyId, EvidenceRef(req.evidenceRef), req.evidenceType, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "EvidenceLinked"))
+        }
+
+        post("/api/v1/storybook/governance/policies/{id}/decisions") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "id required"))
+            val policyId = GovernancePolicyId(id)
+            val d = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "policy not found"))
+            val req = call.receive<RecordGovernanceDecisionRequest>()
+            val outcome = runCatching { GovernanceDecisionOutcome.valueOf(req.decision.uppercase()) }.getOrElse {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid decision"))
+            }
+            if ((outcome == GovernanceDecisionOutcome.REJECTED || outcome == GovernanceDecisionOutcome.WAIVED) && req.rationale.isNullOrBlank())
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "rationale required for REJECTED or WAIVED (BR-6)"))
+            eventStore.append(listOf(GovernanceDecisionRecorded(policyId, outcome, req.rationale, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "GovernanceDecisionRecorded"))
+        }
+
+        post("/api/v1/storybook/governance/policies/{id}/lifecycle") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "id required"))
+            val policyId = GovernancePolicyId(id)
+            val d = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "policy not found"))
+            val req = call.receive<GovernLifecycleRequest>()
+            if (req.targetRef.isBlank() || req.targetType.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "targetRef and targetType required"))
+            val newLifecycle = runCatching { LifecycleState.valueOf(req.newLifecycle.uppercase()) }.getOrElse {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid newLifecycle"))
+            }
+            eventStore.append(listOf(LifecycleGoverned(policyId, req.targetRef, req.targetType, newLifecycle, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "LifecycleGoverned"))
+        }
+
+        get("/api/v1/storybook/governance/policies") {
+            val allEvents = eventStore.query(EventQuery(setOf("governance-policies"))).events
+            val policyIds = allEvents.filterIsInstance<GovernancePolicyRegistered>().map { it.policyId }.distinct()
+            val policies = policyIds.map { policyId ->
+                val pEvents = allEvents.filter { policyTag(policyId) in it.tags }
+                val d = GovernanceDecisionModel().also { it.applyAll(pEvents) }
+                d.toResponse(policyId.value)
+            }
+            call.respond(policies)
+        }
+
+        get("/api/v1/storybook/governance/policies/{id}") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "id required"))
+            val policyId = GovernancePolicyId(id)
+            val d = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            if (!d.exists) return@get call.respond(HttpStatusCode.NotFound, mapOf("error" to "policy not found"))
+            call.respond(d.toResponse(id))
         }
 
         // PA-01: get partner summary (for admin console).

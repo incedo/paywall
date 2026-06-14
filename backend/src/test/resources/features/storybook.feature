@@ -118,3 +118,35 @@ Feature: Storybook story, scenario, and control-schema management
     Given a responsive profile "mobile/phone-first" exists for story "s1"
     When staff archives the responsive profile
     Then the story has no active responsive profiles
+
+  # ── Phases BC ────────────────────────────────────────────────────────────────
+
+  Scenario: Registering a phase
+    When staff registers phase "alpha" with key "alpha-phase"
+    Then the phase exists with lifecycle "PLANNED"
+
+  Scenario: Activating a phase transitions it from PLANNED to ACTIVE
+    Given a phase "alpha" with key "alpha-phase" in state "PLANNED" exists
+    When staff activates phase "alpha"
+    Then the phase lifecycle is "ACTIVE"
+
+  Scenario: Superseding a phase marks it SUPERSEDED
+    Given a phase "alpha" with key "alpha-phase" in state "PLANNED" exists
+    When staff supersedes phase "alpha"
+    Then the phase lifecycle is "SUPERSEDED"
+
+  # ── Governance BC ─────────────────────────────────────────────────────────────
+
+  Scenario: Registering a governance policy
+    When staff registers governance policy "gov1" with key "access-policy" and title "Access Policy"
+    Then the governance policy exists with lifecycle "DRAFT"
+
+  Scenario: Attaching a quality gate to a governance policy
+    Given a governance policy "gov1" with key "access-policy" exists
+    When staff attaches quality gate "ux-review" to policy "gov1"
+    Then the governance policy "gov1" has quality gate "ux-review"
+
+  Scenario: Recording an approved governance decision
+    Given a governance policy "gov1" with key "access-policy" exists
+    When staff records decision "APPROVED" for policy "gov1"
+    Then the governance policy "gov1" last decision is "APPROVED"

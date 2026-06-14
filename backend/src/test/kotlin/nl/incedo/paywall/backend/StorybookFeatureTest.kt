@@ -28,6 +28,12 @@ import nl.incedo.paywall.api.StoryResponse
 import nl.incedo.paywall.api.RegisterResponsiveProfileRequest
 import nl.incedo.paywall.api.AddFormFactorRequest
 import nl.incedo.paywall.api.ResponsiveProfileResponse
+import nl.incedo.paywall.api.RegisterPhaseRequest
+import nl.incedo.paywall.api.PhaseResponse
+import nl.incedo.paywall.api.RegisterGovernancePolicyRequest
+import nl.incedo.paywall.api.AttachQualityGateRequest
+import nl.incedo.paywall.api.RecordGovernanceDecisionRequest
+import nl.incedo.paywall.api.GovernancePolicyResponse
 import nl.incedo.paywall.core.adapter.InMemoryEventStore
 import nl.incedo.paywall.metering.MeterPeriod
 
@@ -260,5 +266,77 @@ class StorybookFeatureTest {
         val list = client.get("/api/v1/storybook/stories/s1/responsive").body<List<ResponsiveProfileResponse>>()
         assertEquals(1, list.size)
         assertEquals(pid, list.first().profileId)
+    }
+
+    // ── Phases BC ─────────────────────────────────────────────────────────────
+
+    private suspend fun io.ktor.client.HttpClient.registerPhase(
+        id: String = "ph1",
+        key: String = "alpha-phase",
+        name: String = "Alpha Phase",
+    ): String {
+        post("/api/v1/storybook/phases") {
+            contentType(ContentType.Application.Json)
+            setBody(RegisterPhaseRequest(phaseId = id, phaseKey = key, phaseName = name, phaseOrder = 1))
+        }
+        return id
+    }
+
+    @Test fun `Registering a phase`() = scenario { client ->
+        val pid = client.registerPhase(id = "alpha", key = "alpha-phase")
+        val phase = client.get("/api/v1/storybook/phases/$pid").body<PhaseResponse>()
+        assertEquals("PLANNED", phase.lifecycle)
+    }
+
+    @Test fun `Activating a phase transitions it from PLANNED to ACTIVE`() = scenario { client ->
+        val pid = client.registerPhase(id = "alpha")
+        client.post("/api/v1/storybook/phases/$pid/activate") { contentType(ContentType.Application.Json); setBody("{}") }
+        assertEquals("ACTIVE", client.get("/api/v1/storybook/phases/$pid").body<PhaseResponse>().lifecycle)
+    }
+
+    @Test fun `Superseding a phase marks it SUPERSEDED`() = scenario { client ->
+        val pid = client.registerPhase(id = "alpha")
+        client.post("/api/v1/storybook/phases/$pid/supersede") { contentType(ContentType.Application.Json); setBody("{}") }
+        assertEquals("SUPERSEDED", client.get("/api/v1/storybook/phases/$pid").body<PhaseResponse>().lifecycle)
+    }
+
+    // ── Governance BC ─────────────────────────────────────────────────────────
+
+    private suspend fun io.ktor.client.HttpClient.registerPolicy(
+        id: String = "gov1",
+        key: String = "access-policy",
+        title: String = "Access Policy",
+    ): String {
+        post("/api/v1/storybook/governance/policies") {
+            contentType(ContentType.Application.Json)
+            setBody(RegisterGovernancePolicyRequest(policyId = id, policyKey = key, title = title))
+        }
+        return id
+    }
+
+    @Test fun `Registering a governance policy`() = scenario { client ->
+        val id = client.registerPolicy(id = "gov1", key = "access-policy")
+        val policy = client.get("/api/v1/storybook/governance/policies/$id").body<GovernancePolicyResponse>()
+        assertEquals("DRAFT", policy.lifecycle)
+    }
+
+    @Test fun `Attaching a quality gate to a governance policy`() = scenario { client ->
+        val id = client.registerPolicy()
+        client.post("/api/v1/storybook/governance/policies/$id/quality-gates") {
+            contentType(ContentType.Application.Json)
+            setBody(AttachQualityGateRequest(gateKey = "ux-review", description = "UX sign-off"))
+        }
+        val policy = client.get("/api/v1/storybook/governance/policies/$id").body<GovernancePolicyResponse>()
+        assertTrue("ux-review" in policy.qualityGates)
+    }
+
+    @Test fun `Recording an approved governance decision`() = scenario { client ->
+        val id = client.registerPolicy()
+        client.post("/api/v1/storybook/governance/policies/$id/decisions") {
+            contentType(ContentType.Application.Json)
+            setBody(RecordGovernanceDecisionRequest(decision = "APPROVED"))
+        }
+        val policy = client.get("/api/v1/storybook/governance/policies/$id").body<GovernancePolicyResponse>()
+        assertEquals("APPROVED", policy.lastDecision)
     }
 }
