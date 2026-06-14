@@ -106,6 +106,18 @@ data class WallConfigChanged(
     override val tags: Set<String> = setOf("wall:${wallId.value}", "walls"),
 ) : DomainEvent
 
+/**
+ * VWE-03: block-level composition edit — carries the new ordered layout for the wall.
+ * Versioning / rollback / audit apply unchanged (ADM-13).
+ */
+@Serializable
+data class WallLayoutChanged(
+    val wallId: WallId,
+    val layout: WallLayout,
+    val actor: String,
+    override val tags: Set<String> = setOf("wall:${wallId.value}", "walls"),
+) : DomainEvent
+
 /** Draft → published (ADM-06: every change is a new version; rollback = re-apply an old config). */
 @Serializable
 data class WallPublished(
