@@ -83,6 +83,7 @@ import nl.incedo.paywall.brands.BrandDecision
 import nl.incedo.paywall.brands.BrandThemeUpdated
 import nl.incedo.paywall.brands.brandTag
 import nl.incedo.paywall.grants.DataGateConsentGiven
+import nl.incedo.paywall.grants.DataGateConsentWithdrawn
 import nl.incedo.paywall.offers.OFFER_EVENT_TAG
 import nl.incedo.paywall.offers.OfferAccepted
 import nl.incedo.paywall.offers.OfferDeclined
@@ -1887,6 +1888,15 @@ fun Application.module(
             }
             val subjectId = SubjectId(req.subjectId)
             val now = System.currentTimeMillis()
+            // DG-03: reject new grants for subjects who have withdrawn consent for this purpose.
+            val consentTag = "data_gate_consent:${req.subjectId}:${req.purposeId}"
+            val consentEvents = eventStore.query(EventQuery(setOf(consentTag))).events
+            val lastWithdrawn = consentEvents.filterIsInstance<DataGateConsentWithdrawn>().maxByOrNull { it.withdrawnAtEpochMs }
+            val lastGiven = consentEvents.filterIsInstance<DataGateConsentGiven>().maxByOrNull { it.consentAtEpochMs }
+            if (lastWithdrawn != null && (lastGiven == null || lastWithdrawn.withdrawnAtEpochMs >= lastGiven.consentAtEpochMs)) {
+                call.respond(HttpStatusCode.Forbidden, mapOf("error" to "consent has been withdrawn for purpose ${req.purposeId} (DG-03)"))
+                return@post
+            }
             // Idempotency: use completionId as the grantId so replays don't double-grant.
             val grantId = GrantId("dg-${req.completionId}")
             val grantTtlMs = 7L * 24 * 60 * 60 * 1000 // DG-02: 7-day TTL
@@ -1909,6 +1919,34 @@ fun Application.module(
             if (req.articleId != null) service.invalidateGrantCache(req.subjectId, req.articleId)
             call.respond(HttpStatusCode.Created,
                 mapOf("grantId" to grantId.value, "expiresAtEpochMs" to (now + grantTtlMs).toString()))
+        }
+        // DG-03: consent withdrawal webhook — subject revokes permission for a purpose.
+        // After this event, the data-gate-completion endpoint blocks new grants for the
+        // same subject+purpose. Non-retroactive: active grants run until their TTL.
+        post("/api/v1/integration/data-gate-consent-withdrawal") {
+            val rawBody = call.receive<ByteArray>()
+            if (!webhookVerifier.verify(rawBody, call.request.headers[WebhookVerifier.SIGNATURE_HEADER])) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "invalid webhook signature (NFR-03)"))
+                return@post
+            }
+            val req = try {
+                kotlinx.serialization.json.Json.decodeFromString<DataGateConsentWithdrawalRequest>(rawBody.decodeToString())
+            } catch (_: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid request body (DG-03)"))
+                return@post
+            }
+            if (req.subjectId.isBlank() || req.purposeId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId and purposeId are required (DG-03)"))
+                return@post
+            }
+            val now = System.currentTimeMillis()
+            val event = DataGateConsentWithdrawn(
+                subjectId = SubjectId(req.subjectId),
+                purposeId = req.purposeId,
+                withdrawnAtEpochMs = now,
+            )
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "DataGateConsentWithdrawn"))
         }
         // UP-01/01a: outbound CEP offer request via OfferService (guardrails + logging).
         // The mock CEP returns a fixed configurable offer; replace with a real HTTP client in prod.
