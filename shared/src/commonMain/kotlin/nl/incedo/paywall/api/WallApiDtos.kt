@@ -2,6 +2,7 @@ package nl.incedo.paywall.api
 
 import kotlinx.serialization.Serializable
 import nl.incedo.paywall.walls.WallCopy
+import nl.incedo.paywall.walls.WallLayout
 
 /**
  * Wall designer API contract (ADM-01: everything the console does is also
@@ -39,6 +40,12 @@ data class SaveWallRequest(
      * Only the fields that differ from the default copy need to be provided.
      */
     val translations: Map<String, WallCopy> = emptyMap(),
+    /**
+     * VWE-03: optional block layout from the visual editor. When present, the server
+     * validates structural rules (VWE-02) and stores a WallLayoutChanged event.
+     * When absent, the flat WallConfig fields are used as before (back-compat).
+     */
+    val layout: WallLayout? = null,
 )
 
 @Serializable
@@ -66,6 +73,8 @@ data class WallResponse(
     val legalText: String = "",
     /** ADM-15: per-locale copy overrides stored with this wall design. */
     val translations: Map<String, WallCopy> = emptyMap(),
+    /** VWE-03: block layout if the wall was saved via the visual block editor; null for flat-config walls. */
+    val layout: WallLayout? = null,
 )
 
 /**

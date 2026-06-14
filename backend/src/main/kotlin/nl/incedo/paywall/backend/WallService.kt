@@ -10,6 +10,9 @@ import nl.incedo.paywall.core.port.EventStore
 import nl.incedo.paywall.walls.WallConfig
 import nl.incedo.paywall.walls.WallConfigChanged
 import nl.incedo.paywall.walls.WallCreated
+import nl.incedo.paywall.walls.WallLayout
+import nl.incedo.paywall.walls.WallLayoutChanged
+import nl.incedo.paywall.walls.WallLayoutValidator
 import nl.incedo.paywall.walls.WallProjection
 import nl.incedo.paywall.walls.WallPublished
 import nl.incedo.paywall.walls.WallView
@@ -27,6 +30,8 @@ class WallService(private val eventStore: EventStore) {
         data class VersionConflict(val current: Int) : SaveResult
         /** ADM-13: rollback target version does not exist in history. */
         data object VersionNotFound : SaveResult
+        /** VWE-02: layout has structural violations (returned by [saveLayout]). */
+        data class LayoutInvalid(val violations: List<String>) : SaveResult
     }
 
     suspend fun list(): List<WallView> {
@@ -64,6 +69,26 @@ class WallService(private val eventStore: EventStore) {
         if (projection.byId(id) == null) return SaveResult.NotFound
         eventStore.append(
             listOf(WallPublished(id, actor)),
+            AppendCondition(wallQuery(id), position),
+        )
+        return SaveResult.Saved(get(id)!!)
+    }
+
+    /**
+     * VWE-03: save a [WallLayout] from the block editor, appending a [WallLayoutChanged] event.
+     * Enforces VWE-02 structural rules server-side (ADM-01); returns [SaveResult.LayoutInvalid]
+     * when violations exist so callers can surface them before appending to the stream.
+     */
+    suspend fun saveLayout(id: WallId, layout: WallLayout, actor: String, expectedVersion: Int?): SaveResult {
+        val violations = WallLayoutValidator.validate(layout)
+        if (violations.isNotEmpty()) return SaveResult.LayoutInvalid(violations)
+        val (projection, position) = projectionFor(id)
+        val current = projection.byId(id) ?: return SaveResult.NotFound
+        if (expectedVersion != null && expectedVersion != current.version) {
+            return SaveResult.VersionConflict(current.version)
+        }
+        eventStore.append(
+            listOf(WallLayoutChanged(id, layout, actor)),
             AppendCondition(wallQuery(id), position),
         )
         return SaveResult.Saved(get(id)!!)
