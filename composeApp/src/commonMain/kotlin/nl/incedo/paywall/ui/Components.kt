@@ -229,6 +229,71 @@ fun CrmTextField(
     }
 }
 
+/** Single-line or multi-line labelled input field. Alias of CrmTextField matching forms-pattern §3. */
+@Composable
+fun CrmInputField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    error: String? = null,
+    helperText: String? = null,
+    singleLine: Boolean = true,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
+        CrmText(label, style = CrmTheme.typography.label, color = CrmTheme.colors.onSurfaceVariant)
+        val borderColor = if (error != null) CrmTheme.colors.error else CrmTheme.colors.divider
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = singleLine,
+            textStyle = CrmTheme.typography.body.copy(color = CrmTheme.colors.onSurface),
+            cursorBrush = SolidColor(CrmTheme.colors.primary),
+            decorationBox = { inner ->
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(CrmTheme.shapes.md)
+                        .background(CrmTheme.colors.surface)
+                        .border(CrmBorder.default, borderColor, CrmTheme.shapes.md)
+                        .padding(horizontal = CrmTheme.spacing.md, vertical = CrmTheme.spacing.sm),
+                ) {
+                    if (value.isEmpty() && placeholder.isNotEmpty())
+                        CrmText(placeholder, style = CrmTheme.typography.body, color = CrmTheme.colors.onSurfaceVariant)
+                    inner()
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        when {
+            error != null -> CrmText(error, style = CrmTheme.typography.caption, color = CrmTheme.colors.error)
+            helperText != null -> CrmText(helperText, style = CrmTheme.typography.caption, color = CrmTheme.colors.onSurfaceVariant)
+        }
+    }
+}
+
+/** Groups related form fields under a section heading (forms-pattern §7). */
+@Composable
+fun CrmFormSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    description: String? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
+            CrmText(title, style = CrmTheme.typography.h3, color = CrmTheme.colors.onSurface)
+            if (description != null)
+                CrmText(description, style = CrmTheme.typography.body, color = CrmTheme.colors.onSurfaceVariant)
+        }
+        content()
+    }
+}
+
 @Composable
 fun CrmAvatar(initials: String) {
     Box(
