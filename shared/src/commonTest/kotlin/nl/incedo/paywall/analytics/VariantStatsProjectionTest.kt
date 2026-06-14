@@ -149,4 +149,42 @@ class VariantStatsProjectionTest {
         assertTrue(allConvert.conversionRateLow >= 0.0 && allConvert.conversionRateLow <= 1.0)
         assertTrue(allConvert.conversionRateHigh <= 1.0)
     }
+
+    @Test
+    fun gateCtrIsZeroWhenNoWallsShown() {
+        // Q-5: zero-denominator guard — variant has page views but no walls shown yet
+        val projection = VariantStatsProjection()
+        projection.apply(event(WallEventType.PAGE_VIEW, "v-1"))
+        projection.apply(event(WallEventType.ARTICLE_READ, "v-1"))
+        val stats = projection.stats().getValue("metered")
+        assertEquals(0, stats.wallsShown)
+        assertEquals(0.0, stats.gateCtr)
+    }
+
+    @Test
+    fun conversionRateIsZeroWhenNoWallShownUniques() {
+        // Q-5: zero-denominator guard — checkouts recorded but no wall-shown events
+        val projection = VariantStatsProjection()
+        projection.apply(event(WallEventType.CHECKOUT_COMPLETE, "v-1"))
+        val stats = projection.stats().getValue("metered")
+        assertEquals(0, stats.wallShownUniques)
+        assertEquals(0.0, stats.conversionRate)
+        assertEquals(0.0, stats.conversionRateLow)
+        assertEquals(0.0, stats.conversionRateHigh)
+    }
+
+    @Test
+    fun singleSampleRatesAreValid() {
+        // Q-5: single-sample boundary — one wall shown, one conversion
+        val projection = VariantStatsProjection()
+        projection.apply(event(WallEventType.WALL_SHOWN, "v-1"))
+        projection.apply(event(WallEventType.GATE_CTA_CLICK, "v-1"))
+        projection.apply(event(WallEventType.CHECKOUT_COMPLETE, "v-1"))
+        val stats = projection.stats().getValue("metered")
+        assertEquals(1.0, stats.gateCtr)
+        assertEquals(1.0, stats.conversionRate)
+        assertTrue(stats.sampleSizeTooSmall)
+        assertTrue(stats.conversionRateLow in 0.0..1.0)
+        assertTrue(stats.conversionRateHigh in 0.0..1.0)
+    }
 }
