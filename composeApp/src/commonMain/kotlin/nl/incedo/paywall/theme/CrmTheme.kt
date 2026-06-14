@@ -138,10 +138,101 @@ object CrmBorder {
     val thick: Dp = 2.dp
 }
 
+@Immutable
+data class CrmElevation(
+    val none: Dp = 0.dp,
+    val xs: Dp = 1.dp,
+    val sm: Dp = 2.dp,
+    val md: Dp = 4.dp,
+    val lg: Dp = 8.dp,
+    val xl: Dp = 16.dp,
+)
+
+@Immutable
+data class CrmAnimation(
+    val fast: Int = 150,
+    val normal: Int = 300,
+    val slow: Int = 500,
+)
+
+@Immutable
+data class CrmOpacity(
+    val hover: Float = 0.08f,
+    val focus: Float = 0.12f,
+    val pressed: Float = 0.16f,
+    val dragged: Float = 0.24f,
+    val disabled: Float = 0.38f,
+    val overlay: Float = 0.50f,
+    val container: Float = 0.15f,
+)
+
+@Immutable
+data class CrmIconSize(
+    val xs: Dp = 12.dp,
+    val sm: Dp = 16.dp,
+    val md: Dp = 20.dp,
+    val lg: Dp = 24.dp,
+    val xl: Dp = 32.dp,
+    val xxl: Dp = 48.dp,
+)
+
+@Immutable
+data class CrmFocus(
+    val ringWidth: Dp = 2.dp,
+    val ringOffset: Dp = 2.dp,
+    val minTouchTarget: Dp = 48.dp,
+)
+
+enum class WindowSizeClass { COMPACT, MEDIUM, EXPANDED, LARGE }
+
 val LocalCrmColors = staticCompositionLocalOf { LightCrmColors }
 val LocalCrmTypography = staticCompositionLocalOf { CrmTypography() }
 val LocalCrmSpacing = staticCompositionLocalOf { CrmSpacing() }
 val LocalCrmShapes = staticCompositionLocalOf { CrmShapes() }
+val LocalCrmElevation = staticCompositionLocalOf { CrmElevation() }
+val LocalCrmAnimation = staticCompositionLocalOf { CrmAnimation() }
+val LocalCrmOpacity = staticCompositionLocalOf { CrmOpacity() }
+val LocalCrmIconSize = staticCompositionLocalOf { CrmIconSize() }
+val LocalCrmFocus = staticCompositionLocalOf { CrmFocus() }
+val LocalWindowSizeClass = staticCompositionLocalOf { WindowSizeClass.EXPANDED }
+
+/** Bundles all design token groups into a single theme snapshot — pass to [CrmTheme] or [CrmThemeLoader]. */
+@Immutable
+data class CrmDesignTheme(
+    val colors: CrmColors,
+    val typography: CrmTypography,
+    val spacing: CrmSpacing,
+    val shapes: CrmShapes,
+    val elevation: CrmElevation,
+    val animation: CrmAnimation,
+    val opacity: CrmOpacity,
+    val iconSize: CrmIconSize,
+    val focus: CrmFocus,
+)
+
+val LightCrmTheme = CrmDesignTheme(
+    colors = LightCrmColors,
+    typography = CrmTypography(),
+    spacing = CrmSpacing(),
+    shapes = CrmShapes(),
+    elevation = CrmElevation(),
+    animation = CrmAnimation(),
+    opacity = CrmOpacity(),
+    iconSize = CrmIconSize(),
+    focus = CrmFocus(),
+)
+
+val DarkCrmTheme = CrmDesignTheme(
+    colors = DarkCrmColors,
+    typography = CrmTypography(),
+    spacing = CrmSpacing(),
+    shapes = CrmShapes(),
+    elevation = CrmElevation(),
+    animation = CrmAnimation(),
+    opacity = CrmOpacity(),
+    iconSize = CrmIconSize(),
+    focus = CrmFocus(),
+)
 
 object CrmTheme {
     val colors: CrmColors
@@ -152,15 +243,38 @@ object CrmTheme {
         @Composable get() = LocalCrmSpacing.current
     val shapes: CrmShapes
         @Composable get() = LocalCrmShapes.current
+    val elevation: CrmElevation
+        @Composable get() = LocalCrmElevation.current
+    val animation: CrmAnimation
+        @Composable get() = LocalCrmAnimation.current
+    val opacity: CrmOpacity
+        @Composable get() = LocalCrmOpacity.current
+    val iconSize: CrmIconSize
+        @Composable get() = LocalCrmIconSize.current
+    val focus: CrmFocus
+        @Composable get() = LocalCrmFocus.current
+    val windowSizeClass: WindowSizeClass
+        @Composable get() = LocalWindowSizeClass.current
 }
 
+/** Primary theme composable — accepts a [CrmDesignTheme] for full JSON-driven theming. */
 @Composable
-fun CrmTheme(darkTheme: Boolean = false, content: @Composable () -> Unit) {
+fun CrmTheme(theme: CrmDesignTheme, content: @Composable () -> Unit) {
     CompositionLocalProvider(
-        LocalCrmColors provides if (darkTheme) DarkCrmColors else LightCrmColors,
-        LocalCrmTypography provides CrmTypography(),
-        LocalCrmSpacing provides CrmSpacing(),
-        LocalCrmShapes provides CrmShapes(),
+        LocalCrmColors provides theme.colors,
+        LocalCrmTypography provides theme.typography,
+        LocalCrmSpacing provides theme.spacing,
+        LocalCrmShapes provides theme.shapes,
+        LocalCrmElevation provides theme.elevation,
+        LocalCrmAnimation provides theme.animation,
+        LocalCrmOpacity provides theme.opacity,
+        LocalCrmIconSize provides theme.iconSize,
+        LocalCrmFocus provides theme.focus,
         content = content,
     )
 }
+
+/** Convenience overload — selects light or dark base theme. */
+@Composable
+fun CrmTheme(darkTheme: Boolean = false, content: @Composable () -> Unit) =
+    CrmTheme(theme = if (darkTheme) DarkCrmTheme else LightCrmTheme, content = content)

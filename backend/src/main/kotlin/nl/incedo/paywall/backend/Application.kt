@@ -16,8 +16,10 @@ import io.ktor.server.request.path
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.ktor.server.routing.put
 import io.ktor.server.routing.routing
 import java.time.YearMonth
 import java.time.ZoneId
@@ -48,6 +50,8 @@ import nl.incedo.paywall.api.PublishExperimentConfigRequest
 import nl.incedo.paywall.api.SaveWallRequest
 import nl.incedo.paywall.api.SubjectInspectorResponse
 import nl.incedo.paywall.api.UpdateBrandThemeRequest
+import nl.incedo.paywall.api.UpdateScenarioRequest
+import nl.incedo.paywall.api.UpdateStoryRequest
 import nl.incedo.paywall.api.VariantStatsResponse
 import nl.incedo.paywall.api.WallResponse
 import nl.incedo.paywall.api.WallTemplateRequest
@@ -136,6 +140,132 @@ import nl.incedo.paywall.experiments.KILL_SWITCH_TAG
 import nl.incedo.paywall.experiments.VariantKilled
 import nl.incedo.paywall.experiments.VariantRestored
 import nl.incedo.paywall.notifications.MailSent
+import nl.incedo.paywall.api.AddControlRequest
+import nl.incedo.paywall.api.ChangeControlDefaultRequest
+import nl.incedo.paywall.api.ControlSchemaResponse
+import nl.incedo.paywall.api.DecoratorResponse
+import nl.incedo.paywall.api.RegisterControlSchemaRequest
+import nl.incedo.paywall.api.RegisterDecoratorRequest
+import nl.incedo.paywall.api.RegisterScenarioRequest
+import nl.incedo.paywall.api.RegisterStoryRequest
+import nl.incedo.paywall.api.ScenarioResponse
+import nl.incedo.paywall.api.StoryResponse
+import nl.incedo.paywall.api.toResponse
+import nl.incedo.paywall.api.UpdateDecoratorPriorityRequest
+import nl.incedo.paywall.api.RegisterResponsiveProfileRequest
+import nl.incedo.paywall.api.AddFormFactorRequest
+import nl.incedo.paywall.api.DefineWidthClassesRequest
+import nl.incedo.paywall.api.SetNavigationPatternRequest
+import nl.incedo.paywall.api.SetDensityProfileRequest
+import nl.incedo.paywall.api.LinkExpectationRequest
+import nl.incedo.paywall.api.AddLayoutRuleRequest
+import nl.incedo.paywall.api.ResponsiveProfileResponse
+import nl.incedo.paywall.api.RegisterPhaseRequest
+import nl.incedo.paywall.api.AddCapabilityRequest
+import nl.incedo.paywall.api.PhaseResponse
+import nl.incedo.paywall.api.RegisterGovernancePolicyRequest
+import nl.incedo.paywall.api.AttachQualityGateRequest
+import nl.incedo.paywall.api.AssignOwnerRequest
+import nl.incedo.paywall.api.LinkEvidenceRequest
+import nl.incedo.paywall.api.RecordGovernanceDecisionRequest
+import nl.incedo.paywall.api.GovernLifecycleRequest
+import nl.incedo.paywall.api.GovernancePolicyResponse
+import nl.incedo.paywall.storybook.ControlAdded
+import nl.incedo.paywall.storybook.ControlDefaultChanged
+import nl.incedo.paywall.storybook.ControlId
+import nl.incedo.paywall.storybook.ControlKey
+import nl.incedo.paywall.storybook.ControlRemoved
+import nl.incedo.paywall.storybook.ControlSchemaDecisionModel
+import nl.incedo.paywall.storybook.ControlSchemaId
+import nl.incedo.paywall.storybook.ControlSchemaRegistered
+import nl.incedo.paywall.storybook.ControlType
+import nl.incedo.paywall.storybook.ScenarioArchived
+import nl.incedo.paywall.storybook.ScenarioDecision
+import nl.incedo.paywall.storybook.ScenarioMetadataUpdated
+import nl.incedo.paywall.storybook.ScenarioId
+import nl.incedo.paywall.storybook.ScenarioKey
+import nl.incedo.paywall.storybook.ScenarioLifecycle
+import nl.incedo.paywall.storybook.ScenarioRegistered
+import nl.incedo.paywall.storybook.ScenarioType
+import nl.incedo.paywall.storybook.StoryArchived
+import nl.incedo.paywall.storybook.StoryDecision
+import nl.incedo.paywall.storybook.StoryMetadataUpdated
+import nl.incedo.paywall.storybook.StoryId
+import nl.incedo.paywall.storybook.StoryKey
+import nl.incedo.paywall.storybook.StoryKeyUniquenessDecision
+import nl.incedo.paywall.storybook.StoryLifecycle
+import nl.incedo.paywall.storybook.StoryRegistered
+import nl.incedo.paywall.storybook.StoryType
+import nl.incedo.paywall.storybook.controlSchemaTag
+import nl.incedo.paywall.storybook.controlTag
+import nl.incedo.paywall.storybook.scenarioKeyTag
+import nl.incedo.paywall.storybook.scenarioTag
+import nl.incedo.paywall.storybook.storyKeyTag
+import nl.incedo.paywall.storybook.storyTag
+import nl.incedo.paywall.storybook.DecoratorArchived
+import nl.incedo.paywall.storybook.DecoratorDecision
+import nl.incedo.paywall.storybook.DecoratorId
+import nl.incedo.paywall.storybook.DecoratorKey
+import nl.incedo.paywall.storybook.DecoratorKeyUniquenessDecision
+import nl.incedo.paywall.storybook.DecoratorLifecycle
+import nl.incedo.paywall.storybook.DecoratorLinkedToScenario
+import nl.incedo.paywall.storybook.DecoratorLinkedToStory
+import nl.incedo.paywall.storybook.DecoratorMetadataUpdated
+import nl.incedo.paywall.storybook.DecoratorPriorityChanged
+import nl.incedo.paywall.storybook.DecoratorRegistered
+import nl.incedo.paywall.storybook.DecoratorScope
+import nl.incedo.paywall.storybook.DecoratorType
+import nl.incedo.paywall.storybook.decoratorKeyTag
+import nl.incedo.paywall.storybook.decoratorTag
+import nl.incedo.paywall.storybook.ResponsiveProfileRegistered
+import nl.incedo.paywall.storybook.ResponsiveFormFactorSupported
+import nl.incedo.paywall.storybook.ResponsiveWidthClassesDefined
+import nl.incedo.paywall.storybook.ResponsiveNavigationPatternSet
+import nl.incedo.paywall.storybook.ResponsiveDensityProfileSet
+import nl.incedo.paywall.storybook.ResponsiveExpectationLinked
+import nl.incedo.paywall.storybook.ResponsiveLayoutRuleAdded
+import nl.incedo.paywall.storybook.ResponsiveProfileArchived
+import nl.incedo.paywall.storybook.ResponsiveDecisionModel
+import nl.incedo.paywall.storybook.ResponsiveProfileId
+import nl.incedo.paywall.storybook.ResponsiveProfileKey
+import nl.incedo.paywall.storybook.FormFactor
+import nl.incedo.paywall.storybook.WidthClass
+import nl.incedo.paywall.storybook.NavigationPattern
+import nl.incedo.paywall.storybook.DensityProfile
+import nl.incedo.paywall.storybook.ResponsiveLifecycle
+import nl.incedo.paywall.storybook.responsiveTag
+import nl.incedo.paywall.storybook.PhaseRegistered
+import nl.incedo.paywall.storybook.CapabilityAddedToPhase
+import nl.incedo.paywall.storybook.PhaseActivated
+import nl.incedo.paywall.storybook.PhaseSatisfied
+import nl.incedo.paywall.storybook.PhaseSuperseded
+import nl.incedo.paywall.storybook.PhaseDecisionModel
+import nl.incedo.paywall.storybook.PhaseKeyUniquenessDecision
+import nl.incedo.paywall.storybook.PhaseId
+import nl.incedo.paywall.storybook.PhaseKey
+import nl.incedo.paywall.storybook.PhaseName
+import nl.incedo.paywall.storybook.CapabilityKey
+import nl.incedo.paywall.storybook.PhaseLifecycle
+import nl.incedo.paywall.storybook.phaseTag
+import nl.incedo.paywall.storybook.phaseKeyTag
+import nl.incedo.paywall.storybook.GovernancePolicyRegistered
+import nl.incedo.paywall.storybook.QualityGateAttached
+import nl.incedo.paywall.storybook.OwnerAssigned
+import nl.incedo.paywall.storybook.EvidenceLinked
+import nl.incedo.paywall.storybook.GovernanceDecisionRecorded
+import nl.incedo.paywall.storybook.LifecycleGoverned
+import nl.incedo.paywall.storybook.GovernanceDecisionModel
+import nl.incedo.paywall.storybook.PolicyKeyUniquenessDecision
+import nl.incedo.paywall.storybook.GovernancePolicyId
+import nl.incedo.paywall.storybook.GovernancePolicyKey
+import nl.incedo.paywall.storybook.QualityGateKey
+import nl.incedo.paywall.storybook.OwnerRef
+import nl.incedo.paywall.storybook.EvidenceRef
+import nl.incedo.paywall.storybook.LifecycleState
+import nl.incedo.paywall.storybook.GovernanceDecisionOutcome
+import nl.incedo.paywall.storybook.policyTag
+import nl.incedo.paywall.storybook.policyKeyTag
+import nl.incedo.paywall.storybook.toResponse
 
 /**
  * Default experiment (EX-02): the four strategies of Doc 1 at equal weight.
@@ -2267,6 +2397,878 @@ fun Application.module(
             val response = byPartner.map { (partnerId, cidrs) -> IpAllowlistEntry(partnerId, cidrs.sorted()) }
             call.respond(response)
         }
+        // ── Storybook API (SB-01 – SB-15) ─────────────────────────────────────────
+        // Story → Scenario → ControlSchema — the three BCs of the interactive docs layer.
+
+        post("/api/v1/storybook/stories") {
+            val req = call.receive<RegisterStoryRequest>()
+            if (req.storyId.isBlank() || req.storyKey.isBlank() || req.title.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId, storyKey, and title are required"))
+                return@post
+            }
+            val storyType = runCatching { StoryType.valueOf(req.type.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "type must be one of ${StoryType.entries.joinToString()}"))
+                return@post
+            }
+            val lifecycle = runCatching { StoryLifecycle.valueOf(req.lifecycle.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "lifecycle must be one of ${StoryLifecycle.entries.joinToString()}"))
+                return@post
+            }
+            // BR-3: storyKey must be globally unique
+            val keyEvents = eventStore.query(EventQuery(setOf(storyKeyTag(StoryKey(req.storyKey))))).events
+            if (StoryKeyUniquenessDecision().also { it.applyAll(keyEvents) }.isTaken(req.storyKey)) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "storyKey '${req.storyKey}' is already in use (BR-3)"))
+                return@post
+            }
+            val storyId = StoryId(req.storyId)
+            if (StoryDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(storyTag(storyId)))).events) }.exists) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "story '${req.storyId}' already exists"))
+                return@post
+            }
+            eventStore.append(listOf(StoryRegistered(
+                storyId = storyId, storyKey = StoryKey(req.storyKey), title = req.title,
+                type = storyType, groupId = req.groupId, owner = req.owner,
+                renderContractRef = req.renderContractRef, lifecycle = lifecycle,
+                coverageScope = req.coverageScope, registeredAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Created, StoryResponse(req.storyId, req.storyKey, req.title, storyType.name, req.groupId, lifecycle.name))
+        }
+
+        get("/api/v1/storybook/stories") {
+            val events = eventStore.query(EventQuery(setOf("stories"))).events
+            val byId = mutableMapOf<String, StoryRegistered>()
+            val archived = mutableSetOf<String>()
+            events.forEach { when (it) {
+                is StoryRegistered -> byId[it.storyId.value] = it
+                is StoryArchived -> archived += it.storyId.value
+                else -> Unit
+            } }
+            call.respond(byId.values.filter { it.storyId.value !in archived }.sortedBy { it.storyId.value }
+                .map { StoryResponse(it.storyId.value, it.storyKey.value, it.title, it.type.name, it.groupId, it.lifecycle.name) })
+        }
+
+        get("/api/v1/storybook/stories/{storyId}") {
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val decision = StoryDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(storyTag(StoryId(sid))))).events) }
+            if (!decision.exists || decision.archived) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "story not found")); return@get
+            }
+            call.respond(StoryResponse(sid, decision.storyKey, decision.title, decision.storyType, decision.groupId, decision.lifecycle.name))
+        }
+
+        post("/api/v1/storybook/stories/{storyId}/scenarios") {
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val storyId = StoryId(sid)
+            val story = StoryDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(storyTag(storyId)))).events) }
+            if (!story.exists || story.archived) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "story not found")); return@post
+            }
+            val req = call.receive<RegisterScenarioRequest>()
+            if (req.scenarioId.isBlank() || req.scenarioKey.isBlank() || req.title.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scenarioId, scenarioKey, and title are required"))
+                return@post
+            }
+            val scenarioType = runCatching { ScenarioType.valueOf(req.type.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "type must be one of ${ScenarioType.entries.joinToString()}"))
+                return@post
+            }
+            val scenarioLifecycle = runCatching { ScenarioLifecycle.valueOf(req.lifecycle.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "lifecycle must be one of ${ScenarioLifecycle.entries.joinToString()}"))
+                return@post
+            }
+            // BR-4: scenarioKey unique within story
+            val keyTag = scenarioKeyTag(storyId, ScenarioKey(req.scenarioKey))
+            if (eventStore.query(EventQuery(setOf(keyTag))).events.filterIsInstance<ScenarioRegistered>().isNotEmpty()) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "scenarioKey '${req.scenarioKey}' already in use for this story (BR-4)"))
+                return@post
+            }
+            val scenarioId = ScenarioId(req.scenarioId)
+            if (eventStore.query(EventQuery(setOf(scenarioTag(scenarioId)))).events.filterIsInstance<ScenarioRegistered>().isNotEmpty()) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "scenario '${req.scenarioId}' already exists"))
+                return@post
+            }
+            eventStore.append(listOf(ScenarioRegistered(
+                scenarioId = scenarioId, storyId = storyId, scenarioKey = ScenarioKey(req.scenarioKey),
+                title = req.title, type = scenarioType, lifecycle = scenarioLifecycle,
+                registeredAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Created, ScenarioResponse(req.scenarioId, sid, req.scenarioKey, req.title, scenarioType.name, scenarioLifecycle.name))
+        }
+
+        get("/api/v1/storybook/stories/{storyId}/scenarios") {
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val storyId = StoryId(sid)
+            val events = eventStore.query(EventQuery(setOf(storyTag(storyId)))).events
+            val byId = mutableMapOf<String, ScenarioRegistered>()
+            val archived = mutableSetOf<String>()
+            events.forEach { when (it) {
+                is ScenarioRegistered -> byId[it.scenarioId.value] = it
+                is ScenarioArchived -> archived += it.scenarioId.value
+                else -> Unit
+            } }
+            call.respond(byId.values.filter { it.scenarioId.value !in archived }.sortedBy { it.scenarioId.value }
+                .map { ScenarioResponse(it.scenarioId.value, sid, it.scenarioKey.value, it.title, it.type.name, it.lifecycle.name) })
+        }
+
+        post("/api/v1/storybook/scenarios/{scenarioId}/control-schema") {
+            val scenId = call.parameters["scenarioId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scenarioId required"))
+            val scenarioId = ScenarioId(scenId)
+            // BR-2: scenario must exist and not be archived
+            val scenario = ScenarioDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(scenarioTag(scenarioId)))).events) }
+            if (!scenario.exists || scenario.archived) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "scenario not found or archived (BR-2)")); return@post
+            }
+            val req = call.receive<RegisterControlSchemaRequest>()
+            if (req.schemaId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "schemaId is required")); return@post
+            }
+            val schemaId = ControlSchemaId(req.schemaId)
+            if (eventStore.query(EventQuery(setOf(controlSchemaTag(schemaId)))).events.filterIsInstance<ControlSchemaRegistered>().isNotEmpty()) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "control schema '${req.schemaId}' already exists")); return@post
+            }
+            eventStore.append(listOf(ControlSchemaRegistered(
+                schemaId = schemaId, scenarioId = scenarioId, lifecycle = req.lifecycle,
+                registeredAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Created, ControlSchemaResponse(req.schemaId, scenId, req.lifecycle, emptyList()))
+        }
+
+        get("/api/v1/storybook/scenarios/{scenarioId}/controls") {
+            val scenId = call.parameters["scenarioId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scenarioId required"))
+            val scenarioId = ScenarioId(scenId)
+            val scenEvents = eventStore.query(EventQuery(setOf(scenarioTag(scenarioId)))).events
+            val schema = scenEvents.filterIsInstance<ControlSchemaRegistered>().firstOrNull()
+                ?: return@get call.respond(HttpStatusCode.NotFound, mapOf("error" to "no control schema for this scenario"))
+            val controlEvents = eventStore.query(EventQuery(setOf(controlSchemaTag(schema.schemaId)))).events
+            val decision = ControlSchemaDecisionModel().also { it.applyAll(controlEvents) }
+            call.respond(ControlSchemaResponse(
+                schemaId = schema.schemaId.value, scenarioId = scenId,
+                lifecycle = if (decision.archived) "ARCHIVED" else "ACTIVE",
+                controls = decision.activeControls().map { it.toResponse() },
+            ))
+        }
+
+        post("/api/v1/storybook/control-schemas/{schemaId}/controls") {
+            val schId = call.parameters["schemaId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "schemaId required"))
+            val schemaId = ControlSchemaId(schId)
+            val schemaEvents = eventStore.query(EventQuery(setOf(controlSchemaTag(schemaId)))).events
+            val schema = ControlSchemaDecisionModel().also { it.applyAll(schemaEvents) }
+            if (!schema.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "control schema not found (BR-1)")); return@post
+            }
+            if (schema.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "control schema is archived (BR-11)")); return@post
+            }
+            val req = call.receive<AddControlRequest>()
+            if (req.controlId.isBlank() || req.key.isBlank() || req.label.isBlank() || req.bindingRef.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "controlId, key, label, and bindingRef are required"))
+                return@post
+            }
+            val controlType = runCatching { ControlType.valueOf(req.type.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "type must be one of ${ControlType.entries.joinToString()}"))
+                return@post
+            }
+            if (schema.isKeyTaken(req.key)) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "control key '${req.key}' already in use (BR-4)")); return@post
+            }
+            val controlId = ControlId(req.controlId)
+            if (schema.isActive(req.controlId)) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "control '${req.controlId}' already exists")); return@post
+            }
+            eventStore.append(listOf(ControlAdded(
+                schemaId = schemaId, controlId = controlId, key = ControlKey(req.key),
+                label = req.label, type = controlType, defaultValue = req.defaultValue,
+                bindingRef = req.bindingRef, optionsRef = req.optionsRef,
+                validationRules = req.validationRules, addedAtEpochMs = System.currentTimeMillis(),
+                tags = setOf(controlSchemaTag(schemaId), controlTag(controlId), scenarioTag(ScenarioId(schema.scenarioId))),
+            )), condition = null)
+            call.respond(HttpStatusCode.Created, mapOf("controlId" to req.controlId, "key" to req.key))
+        }
+
+        put("/api/v1/storybook/control-schemas/{schemaId}/controls/{controlId}/default") {
+            val schId = call.parameters["schemaId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "schemaId required"))
+            val ctrlId = call.parameters["controlId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "controlId required"))
+            val schemaId = ControlSchemaId(schId)
+            val schemaEvents = eventStore.query(EventQuery(setOf(controlSchemaTag(schemaId)))).events
+            val schema = ControlSchemaDecisionModel().also { it.applyAll(schemaEvents) }
+            if (!schema.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "control schema not found")); return@put
+            }
+            if (schema.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "control schema is archived (BR-11)")); return@put
+            }
+            if (!schema.isActive(ctrlId)) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "control not found or removed")); return@put
+            }
+            val req = call.receive<ChangeControlDefaultRequest>()
+            eventStore.append(listOf(ControlDefaultChanged(
+                schemaId = schemaId, controlId = ControlId(ctrlId),
+                newDefaultValue = req.defaultValue, changedAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ControlDefaultChanged"))
+        }
+
+        // Story metadata update and archive
+        put("/api/v1/storybook/stories/{storyId}") {
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val storyId = StoryId(sid)
+            val decision = StoryDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(storyTag(storyId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "story not found")); return@put
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "story is archived")); return@put
+            }
+            val req = call.receive<UpdateStoryRequest>()
+            eventStore.append(listOf(StoryMetadataUpdated(
+                storyId = storyId, title = req.title, description = req.description,
+                owner = req.owner, updatedAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "StoryMetadataUpdated"))
+        }
+
+        delete("/api/v1/storybook/stories/{storyId}") {
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@delete call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val storyId = StoryId(sid)
+            val decision = StoryDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(storyTag(storyId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "story not found")); return@delete
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "story already archived")); return@delete
+            }
+            eventStore.append(listOf(StoryArchived(storyId, archivedAtEpochMs = System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "StoryArchived"))
+        }
+
+        // Single-scenario GET, metadata update, and archive
+        get("/api/v1/storybook/scenarios/{scenarioId}") {
+            val scenId = call.parameters["scenarioId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scenarioId required"))
+            val scenarioId = ScenarioId(scenId)
+            val decision = ScenarioDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(scenarioTag(scenarioId)))).events) }
+            if (!decision.exists || decision.archived) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "scenario not found")); return@get
+            }
+            call.respond(ScenarioResponse(scenId, decision.storyId, "", decision.title, decision.scenarioType, "ACTIVE"))
+        }
+
+        put("/api/v1/storybook/scenarios/{scenarioId}") {
+            val scenId = call.parameters["scenarioId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scenarioId required"))
+            val scenarioId = ScenarioId(scenId)
+            val decision = ScenarioDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(scenarioTag(scenarioId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "scenario not found")); return@put
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "scenario is archived")); return@put
+            }
+            val req = call.receive<UpdateScenarioRequest>()
+            val newType = req.type?.let { t ->
+                runCatching { ScenarioType.valueOf(t.uppercase()) }.getOrElse {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "type must be one of ${ScenarioType.entries.joinToString()}"))
+                    return@put
+                }
+            }
+            eventStore.append(listOf(ScenarioMetadataUpdated(
+                scenarioId = scenarioId, title = req.title, description = req.description,
+                type = newType, updatedAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ScenarioMetadataUpdated"))
+        }
+
+        delete("/api/v1/storybook/scenarios/{scenarioId}") {
+            val scenId = call.parameters["scenarioId"]?.takeIf { it.isNotBlank() }
+                ?: return@delete call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scenarioId required"))
+            val scenarioId = ScenarioId(scenId)
+            val decision = ScenarioDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(scenarioTag(scenarioId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "scenario not found")); return@delete
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "scenario already archived")); return@delete
+            }
+            eventStore.append(listOf(ScenarioArchived(
+                scenarioId = scenarioId,
+                archivedAtEpochMs = System.currentTimeMillis(),
+                tags = setOf(scenarioTag(scenarioId), storyTag(StoryId(decision.storyId)), "scenarios"),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ScenarioArchived"))
+        }
+
+        delete("/api/v1/storybook/control-schemas/{schemaId}/controls/{controlId}") {
+            val schId = call.parameters["schemaId"]?.takeIf { it.isNotBlank() }
+                ?: return@delete call.respond(HttpStatusCode.BadRequest, mapOf("error" to "schemaId required"))
+            val ctrlId = call.parameters["controlId"]?.takeIf { it.isNotBlank() }
+                ?: return@delete call.respond(HttpStatusCode.BadRequest, mapOf("error" to "controlId required"))
+            val schemaId = ControlSchemaId(schId)
+            val schemaEvents = eventStore.query(EventQuery(setOf(controlSchemaTag(schemaId)))).events
+            val schema = ControlSchemaDecisionModel().also { it.applyAll(schemaEvents) }
+            if (!schema.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "control schema not found")); return@delete
+            }
+            if (schema.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "control schema is archived (BR-11)")); return@delete
+            }
+            if (!schema.isActive(ctrlId)) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "control not found or already removed")); return@delete
+            }
+            eventStore.append(listOf(ControlRemoved(
+                schemaId = schemaId, controlId = ControlId(ctrlId),
+                removedAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ControlRemoved"))
+        }
+
+        // ── Decorator API ──────────────────────────────────────────────────────────
+
+        post("/api/v1/storybook/decorators") {
+            val req = call.receive<RegisterDecoratorRequest>()
+            if (req.decoratorId.isBlank() || req.decoratorKey.isBlank() || req.title.isBlank() || req.renderRef.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "decoratorId, decoratorKey, title, and renderRef are required"))
+                return@post
+            }
+            if (req.priority <= 0) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "priority must be positive (BR-5)"))
+                return@post
+            }
+            val decType = runCatching { DecoratorType.valueOf(req.type.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "type must be one of ${DecoratorType.entries.joinToString()}"))
+                return@post
+            }
+            val scope = runCatching { DecoratorScope.valueOf(req.scope.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scope must be one of ${DecoratorScope.entries.joinToString()}"))
+                return@post
+            }
+            val lifecycle = runCatching { DecoratorLifecycle.valueOf(req.lifecycle.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "lifecycle must be one of ${DecoratorLifecycle.entries.joinToString()}"))
+                return@post
+            }
+            val decoratorId = DecoratorId(req.decoratorId)
+            val decoratorKey = DecoratorKey(req.decoratorKey)
+            // BR-3: key must be globally unique
+            val keyEvents = eventStore.query(EventQuery(setOf(decoratorKeyTag(decoratorKey)))).events
+            if (DecoratorKeyUniquenessDecision().also { it.applyAll(keyEvents) }.isTaken(req.decoratorKey)) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "decoratorKey '${req.decoratorKey}' already in use (BR-3)"))
+                return@post
+            }
+            if (DecoratorDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(decoratorTag(decoratorId)))).events) }.exists) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "decorator '${req.decoratorId}' already exists"))
+                return@post
+            }
+            eventStore.append(listOf(DecoratorRegistered(
+                decoratorId = decoratorId, decoratorKey = decoratorKey, title = req.title,
+                type = decType, renderRef = req.renderRef, priority = req.priority,
+                scope = scope, lifecycle = lifecycle, configurationRef = req.configurationRef,
+                registeredAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Created, DecoratorResponse(
+                decoratorId = req.decoratorId, decoratorKey = req.decoratorKey, title = req.title,
+                type = decType.name, scope = scope.name, priority = req.priority,
+                lifecycle = lifecycle.name, configurationRef = req.configurationRef,
+            ))
+        }
+
+        get("/api/v1/storybook/decorators") {
+            val events = eventStore.query(EventQuery(setOf("decorators"))).events
+            val byId = mutableMapOf<String, DecoratorDecision>()
+            events.forEach { ev ->
+                when (ev) {
+                    is DecoratorRegistered -> byId.getOrPut(ev.decoratorId.value) { DecoratorDecision() }.apply(ev)
+                    is DecoratorMetadataUpdated -> byId[ev.decoratorId.value]?.apply(ev)
+                    is DecoratorPriorityChanged -> byId[ev.decoratorId.value]?.apply(ev)
+                    is DecoratorArchived -> byId[ev.decoratorId.value]?.apply(ev)
+                    else -> Unit
+                }
+            }
+            call.respond(byId.values.filter { !it.archived }.sortedWith(compareBy({ it.priority }, { it.decoratorKey }))
+                .map { DecoratorResponse(it.decoratorKey, it.decoratorKey, it.title, it.type.name, it.scope.name, it.priority, it.lifecycle.name) })
+        }
+
+        get("/api/v1/storybook/decorators/{decoratorId}") {
+            val did = call.parameters["decoratorId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "decoratorId required"))
+            val decision = DecoratorDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(decoratorTag(DecoratorId(did))))).events) }
+            if (!decision.exists || decision.archived) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "decorator not found")); return@get
+            }
+            call.respond(DecoratorResponse(did, decision.decoratorKey, decision.title, decision.type.name, decision.scope.name, decision.priority, decision.lifecycle.name))
+        }
+
+        put("/api/v1/storybook/decorators/{decoratorId}/priority") {
+            val did = call.parameters["decoratorId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "decoratorId required"))
+            val decoratorId = DecoratorId(did)
+            val decision = DecoratorDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(decoratorTag(decoratorId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "decorator not found")); return@put
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "decorator is archived")); return@put
+            }
+            val req = call.receive<UpdateDecoratorPriorityRequest>()
+            if (req.priority <= 0) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "priority must be positive (BR-5)")); return@put
+            }
+            eventStore.append(listOf(DecoratorPriorityChanged(decoratorId, req.priority, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "DecoratorPriorityChanged", "newPriority" to req.priority.toString()))
+        }
+
+        post("/api/v1/storybook/decorators/{decoratorId}/stories/{storyId}") {
+            val did = call.parameters["decoratorId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "decoratorId required"))
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val decoratorId = DecoratorId(did)
+            val storyId = StoryId(sid)
+            val decision = DecoratorDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(decoratorTag(decoratorId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "decorator not found")); return@post
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "decorator is archived")); return@post
+            }
+            // BR-7: GLOBAL scope decorator may not be bound per-story
+            if (decision.scope == DecoratorScope.GLOBAL) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "GLOBAL-scope decorators cannot be story-linked (BR-7)")); return@post
+            }
+            val story = StoryDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(storyTag(storyId)))).events) }
+            if (!story.exists || story.archived) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "story not found")); return@post
+            }
+            eventStore.append(listOf(DecoratorLinkedToStory(decoratorId, storyId, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Created, mapOf("recorded" to "DecoratorLinkedToStory"))
+        }
+
+        post("/api/v1/storybook/decorators/{decoratorId}/scenarios/{scenarioId}") {
+            val did = call.parameters["decoratorId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "decoratorId required"))
+            val scenId = call.parameters["scenarioId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scenarioId required"))
+            val decoratorId = DecoratorId(did)
+            val scenarioId = ScenarioId(scenId)
+            val decision = DecoratorDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(decoratorTag(decoratorId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "decorator not found")); return@post
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "decorator is archived")); return@post
+            }
+            // BR-8: scenario must exist
+            val scenario = ScenarioDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(scenarioTag(scenarioId)))).events) }
+            if (!scenario.exists || scenario.archived) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "scenario not found (BR-8)")); return@post
+            }
+            eventStore.append(listOf(DecoratorLinkedToScenario(decoratorId, scenarioId, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Created, mapOf("recorded" to "DecoratorLinkedToScenario"))
+        }
+
+        delete("/api/v1/storybook/decorators/{decoratorId}") {
+            val did = call.parameters["decoratorId"]?.takeIf { it.isNotBlank() }
+                ?: return@delete call.respond(HttpStatusCode.BadRequest, mapOf("error" to "decoratorId required"))
+            val decoratorId = DecoratorId(did)
+            val decision = DecoratorDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(decoratorTag(decoratorId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "decorator not found")); return@delete
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "decorator already archived")); return@delete
+            }
+            eventStore.append(listOf(DecoratorArchived(decoratorId, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "DecoratorArchived"))
+        }
+
+        // ── Responsive BC ─────────────────────────────────────────────────────
+
+        post("/api/v1/storybook/stories/{storyId}/responsive") {
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val storyId = StoryId(sid)
+            val storyDecision = StoryDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(storyTag(storyId)))).events) }
+            if (!storyDecision.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "story not found"))
+            if (storyDecision.archived) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "story is archived"))
+            val req = call.receive<RegisterResponsiveProfileRequest>()
+            val profileId = ResponsiveProfileId(java.util.UUID.randomUUID().toString())
+            val lifecycle = runCatching { ResponsiveLifecycle.valueOf(req.lifecycle.uppercase()) }.getOrElse {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid lifecycle"))
+            }
+            eventStore.append(listOf(ResponsiveProfileRegistered(
+                profileId = profileId,
+                profileKey = ResponsiveProfileKey(req.profileKey),
+                storyId = storyId,
+                lifecycle = lifecycle,
+                registeredAtEpochMs = System.currentTimeMillis(),
+                tags = setOf(responsiveTag(profileId), storyTag(storyId), "responsive-profiles"),
+            )), condition = null)
+            call.respond(HttpStatusCode.Created, mapOf("profileId" to profileId.value))
+        }
+
+        post("/api/v1/storybook/responsive/{profileId}/form-factors") {
+            val pid = call.parameters["profileId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "profileId required"))
+            val profileId = ResponsiveProfileId(pid)
+            val decision = ResponsiveDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(responsiveTag(profileId)))).events) }
+            if (!decision.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "profile not found"))
+            if (decision.archived) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "profile is archived"))
+            val req = call.receive<AddFormFactorRequest>()
+            val formFactor = runCatching { FormFactor.valueOf(req.formFactor.uppercase()) }.getOrElse {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid formFactor"))
+            }
+            eventStore.append(listOf(ResponsiveFormFactorSupported(
+                profileId = profileId,
+                formFactor = formFactor,
+                addedAtEpochMs = System.currentTimeMillis(),
+                tags = setOf(responsiveTag(profileId), "form-factor:${formFactor.name}", "responsive-profiles"),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ResponsiveFormFactorSupported"))
+        }
+
+        put("/api/v1/storybook/responsive/{profileId}/width-classes") {
+            val pid = call.parameters["profileId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "profileId required"))
+            val profileId = ResponsiveProfileId(pid)
+            val decision = ResponsiveDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(responsiveTag(profileId)))).events) }
+            if (!decision.exists) return@put call.respond(HttpStatusCode.NotFound, mapOf("error" to "profile not found"))
+            if (decision.archived) return@put call.respond(HttpStatusCode.Conflict, mapOf("error" to "profile is archived"))
+            val req = call.receive<DefineWidthClassesRequest>()
+            val classes = req.widthClasses.mapNotNull { runCatching { WidthClass.valueOf(it.uppercase()) }.getOrNull() }.toSet()
+            if (classes.isEmpty()) return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "at least one valid widthClass required"))
+            eventStore.append(listOf(ResponsiveWidthClassesDefined(
+                profileId = profileId,
+                widthClasses = classes,
+                definedAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ResponsiveWidthClassesDefined"))
+        }
+
+        put("/api/v1/storybook/responsive/{profileId}/navigation") {
+            val pid = call.parameters["profileId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "profileId required"))
+            val profileId = ResponsiveProfileId(pid)
+            val decision = ResponsiveDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(responsiveTag(profileId)))).events) }
+            if (!decision.exists) return@put call.respond(HttpStatusCode.NotFound, mapOf("error" to "profile not found"))
+            if (decision.archived) return@put call.respond(HttpStatusCode.Conflict, mapOf("error" to "profile is archived"))
+            val req = call.receive<SetNavigationPatternRequest>()
+            val pattern = runCatching { NavigationPattern.valueOf(req.navigationPattern.uppercase()) }.getOrElse {
+                return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid navigationPattern"))
+            }
+            eventStore.append(listOf(ResponsiveNavigationPatternSet(
+                profileId = profileId,
+                context = req.context,
+                navigationPattern = pattern,
+                setAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ResponsiveNavigationPatternSet"))
+        }
+
+        put("/api/v1/storybook/responsive/{profileId}/density") {
+            val pid = call.parameters["profileId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "profileId required"))
+            val profileId = ResponsiveProfileId(pid)
+            val decision = ResponsiveDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(responsiveTag(profileId)))).events) }
+            if (!decision.exists) return@put call.respond(HttpStatusCode.NotFound, mapOf("error" to "profile not found"))
+            if (decision.archived) return@put call.respond(HttpStatusCode.Conflict, mapOf("error" to "profile is archived"))
+            val req = call.receive<SetDensityProfileRequest>()
+            val density = runCatching { DensityProfile.valueOf(req.densityProfile.uppercase()) }.getOrElse {
+                return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid densityProfile"))
+            }
+            eventStore.append(listOf(ResponsiveDensityProfileSet(
+                profileId = profileId,
+                context = req.context,
+                densityProfile = density,
+                setAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ResponsiveDensityProfileSet"))
+        }
+
+        put("/api/v1/storybook/responsive/{profileId}/expectation") {
+            val pid = call.parameters["profileId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "profileId required"))
+            val profileId = ResponsiveProfileId(pid)
+            val decision = ResponsiveDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(responsiveTag(profileId)))).events) }
+            if (!decision.exists) return@put call.respond(HttpStatusCode.NotFound, mapOf("error" to "profile not found"))
+            if (decision.archived) return@put call.respond(HttpStatusCode.Conflict, mapOf("error" to "profile is archived"))
+            val req = call.receive<LinkExpectationRequest>()
+            if (req.expectationRef.isBlank()) return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "expectationRef required"))
+            val scenarioId = req.scenarioId?.let { ScenarioId(it) }
+            eventStore.append(listOf(ResponsiveExpectationLinked(
+                profileId = profileId,
+                scenarioId = scenarioId,
+                expectationRef = req.expectationRef,
+                linkedAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ResponsiveExpectationLinked"))
+        }
+
+        post("/api/v1/storybook/responsive/{profileId}/layout-rules") {
+            val pid = call.parameters["profileId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "profileId required"))
+            val profileId = ResponsiveProfileId(pid)
+            val decision = ResponsiveDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(responsiveTag(profileId)))).events) }
+            if (!decision.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "profile not found"))
+            if (decision.archived) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "profile is archived"))
+            val req = call.receive<AddLayoutRuleRequest>()
+            if (req.ruleRef.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "ruleRef required"))
+            eventStore.append(listOf(ResponsiveLayoutRuleAdded(
+                profileId = profileId,
+                ruleRef = req.ruleRef,
+                addedAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ResponsiveLayoutRuleAdded"))
+        }
+
+        get("/api/v1/storybook/stories/{storyId}/responsive") {
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val storyId = StoryId(sid)
+            val allEvents = eventStore.query(EventQuery(setOf(storyTag(storyId), "responsive-profiles"))).events
+            val profileIds = allEvents.filterIsInstance<ResponsiveProfileRegistered>().map { it.profileId }.distinct()
+            val profiles = profileIds.map { profileId ->
+                val profileEvents = allEvents.filter { responsiveTag(profileId) in it.tags }
+                val d = ResponsiveDecisionModel().also { it.applyAll(profileEvents) }
+                ResponsiveProfileResponse(
+                    profileId = profileId.value,
+                    profileKey = d.profileKey,
+                    storyId = sid,
+                    lifecycle = d.lifecycle.name,
+                    formFactors = d.formFactors.map { it.name },
+                    widthClasses = d.widthClasses.map { it.name },
+                    navigationPatterns = d.navigationPatterns.mapValues { it.value.name },
+                    densityProfiles = d.densityProfiles.mapValues { it.value.name },
+                    expectationRefs = d.expectationRefs.toList(),
+                    layoutRules = d.layoutRules.toList(),
+                )
+            }.filter { !it.lifecycle.equals("ARCHIVED", ignoreCase = true) }
+            call.respond(profiles)
+        }
+
+        get("/api/v1/storybook/responsive/{profileId}") {
+            val pid = call.parameters["profileId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "profileId required"))
+            val profileId = ResponsiveProfileId(pid)
+            val events = eventStore.query(EventQuery(setOf(responsiveTag(profileId)))).events
+            val d = ResponsiveDecisionModel().also { it.applyAll(events) }
+            if (!d.exists) return@get call.respond(HttpStatusCode.NotFound, mapOf("error" to "profile not found"))
+            call.respond(ResponsiveProfileResponse(
+                profileId = pid,
+                profileKey = d.profileKey,
+                storyId = d.storyId,
+                lifecycle = d.lifecycle.name,
+                formFactors = d.formFactors.map { it.name },
+                widthClasses = d.widthClasses.map { it.name },
+                navigationPatterns = d.navigationPatterns.mapValues { it.value.name },
+                densityProfiles = d.densityProfiles.mapValues { it.value.name },
+                expectationRefs = d.expectationRefs.toList(),
+                layoutRules = d.layoutRules.toList(),
+            ))
+        }
+
+        // ── Phases BC ─────────────────────────────────────────────────────────
+
+        post("/api/v1/storybook/phases") {
+            val req = call.receive<RegisterPhaseRequest>()
+            if (req.phaseId.isBlank() || req.phaseKey.isBlank() || req.phaseName.isBlank())
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "phaseId, phaseKey, phaseName required"))
+            val phaseId = PhaseId(req.phaseId)
+            val phaseKey = PhaseKey(req.phaseKey)
+            val existing = PhaseDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseTag(phaseId)))).events) }
+            if (existing.exists) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "phase already registered"))
+            val keyTaken = PhaseKeyUniquenessDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseKeyTag(phaseKey)))).events) }
+            if (keyTaken.isTaken(phaseKey.value)) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "phaseKey already in use"))
+            val lifecycle = runCatching { PhaseLifecycle.valueOf(req.lifecycle.uppercase()) }.getOrElse {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid lifecycle"))
+            }
+            eventStore.append(listOf(PhaseRegistered(phaseId, phaseKey, PhaseName(req.phaseName), req.phaseOrder, lifecycle, System.currentTimeMillis())), condition = null)
+            val d = PhaseDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseTag(phaseId)))).events) }
+            call.respond(HttpStatusCode.Created, PhaseResponse(phaseId.value, d.phaseKey, d.phaseName, d.phaseOrder, d.lifecycle.name, d.capabilities.toMap()))
+        }
+
+        post("/api/v1/storybook/phases/{phaseId}/capabilities") {
+            val pid = call.parameters["phaseId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "phaseId required"))
+            val phaseId = PhaseId(pid)
+            val d = PhaseDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseTag(phaseId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "phase not found"))
+            val req = call.receive<AddCapabilityRequest>()
+            if (req.capabilityKey.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "capabilityKey required"))
+            val capKey = CapabilityKey(req.capabilityKey)
+            if (d.capabilities.containsKey(capKey.value)) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "capability already added (BR-3)"))
+            eventStore.append(listOf(CapabilityAddedToPhase(phaseId, capKey, req.title, req.description, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "CapabilityAddedToPhase"))
+        }
+
+        post("/api/v1/storybook/phases/{phaseId}/activate") {
+            val pid = call.parameters["phaseId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "phaseId required"))
+            val phaseId = PhaseId(pid)
+            val d = PhaseDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseTag(phaseId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "phase not found"))
+            if (d.lifecycle != PhaseLifecycle.PLANNED) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "phase must be PLANNED to activate (BR-4)"))
+            eventStore.append(listOf(PhaseActivated(phaseId, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "PhaseActivated"))
+        }
+
+        post("/api/v1/storybook/phases/{phaseId}/satisfy") {
+            val pid = call.parameters["phaseId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "phaseId required"))
+            val phaseId = PhaseId(pid)
+            val d = PhaseDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseTag(phaseId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "phase not found"))
+            if (d.lifecycle == PhaseLifecycle.SATISFIED) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "phase already satisfied (BR-5)"))
+            if (d.lifecycle == PhaseLifecycle.SUPERSEDED) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "phase is superseded"))
+            eventStore.append(listOf(PhaseSatisfied(phaseId, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "PhaseSatisfied"))
+        }
+
+        post("/api/v1/storybook/phases/{phaseId}/supersede") {
+            val pid = call.parameters["phaseId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "phaseId required"))
+            val phaseId = PhaseId(pid)
+            val d = PhaseDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseTag(phaseId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "phase not found"))
+            if (d.lifecycle == PhaseLifecycle.SUPERSEDED) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "phase already superseded (BR-6)"))
+            eventStore.append(listOf(PhaseSuperseded(phaseId, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "PhaseSuperseded"))
+        }
+
+        get("/api/v1/storybook/phases") {
+            val allEvents = eventStore.query(EventQuery(setOf("phases"))).events
+            val phaseIds = allEvents.filterIsInstance<PhaseRegistered>().map { it.phaseId }.distinct()
+            val phases = phaseIds.map { phaseId ->
+                val pEvents = allEvents.filter { phaseTag(phaseId) in it.tags }
+                val d = PhaseDecisionModel().also { it.applyAll(pEvents) }
+                PhaseResponse(phaseId.value, d.phaseKey, d.phaseName, d.phaseOrder, d.lifecycle.name, d.capabilities.toMap())
+            }
+            call.respond(phases)
+        }
+
+        get("/api/v1/storybook/phases/{phaseId}") {
+            val pid = call.parameters["phaseId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "phaseId required"))
+            val phaseId = PhaseId(pid)
+            val d = PhaseDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(phaseTag(phaseId)))).events) }
+            if (!d.exists) return@get call.respond(HttpStatusCode.NotFound, mapOf("error" to "phase not found"))
+            call.respond(PhaseResponse(pid, d.phaseKey, d.phaseName, d.phaseOrder, d.lifecycle.name, d.capabilities.toMap()))
+        }
+
+        // ── Governance BC ──────────────────────────────────────────────────────
+
+        post("/api/v1/storybook/governance/policies") {
+            val req = call.receive<RegisterGovernancePolicyRequest>()
+            if (req.policyId.isBlank() || req.policyKey.isBlank() || req.title.isBlank())
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "policyId, policyKey, title required"))
+            val policyId = GovernancePolicyId(req.policyId)
+            val policyKey = GovernancePolicyKey(req.policyKey)
+            val existing = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            if (existing.exists) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "policy already registered"))
+            val keyTaken = PolicyKeyUniquenessDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(policyKeyTag(policyKey)))).events) }
+            if (keyTaken.isTaken(policyKey.value)) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "policyKey already in use"))
+            val lifecycle = runCatching { LifecycleState.valueOf(req.lifecycle.uppercase()) }.getOrElse {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid lifecycle"))
+            }
+            eventStore.append(listOf(GovernancePolicyRegistered(policyId, policyKey, req.title, lifecycle, System.currentTimeMillis())), condition = null)
+            val d = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            call.respond(HttpStatusCode.Created, d.toResponse(req.policyId))
+        }
+
+        post("/api/v1/storybook/governance/policies/{id}/quality-gates") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "id required"))
+            val policyId = GovernancePolicyId(id)
+            val d = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "policy not found"))
+            val req = call.receive<AttachQualityGateRequest>()
+            if (req.gateKey.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "gateKey required"))
+            eventStore.append(listOf(QualityGateAttached(policyId, QualityGateKey(req.gateKey), req.description, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "QualityGateAttached"))
+        }
+
+        post("/api/v1/storybook/governance/policies/{id}/owners") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "id required"))
+            val policyId = GovernancePolicyId(id)
+            val d = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "policy not found"))
+            val req = call.receive<AssignOwnerRequest>()
+            if (req.ownerRef.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "ownerRef required"))
+            eventStore.append(listOf(OwnerAssigned(policyId, OwnerRef(req.ownerRef), System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "OwnerAssigned"))
+        }
+
+        post("/api/v1/storybook/governance/policies/{id}/evidence") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "id required"))
+            val policyId = GovernancePolicyId(id)
+            val d = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "policy not found"))
+            val req = call.receive<LinkEvidenceRequest>()
+            if (req.evidenceRef.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "evidenceRef required"))
+            eventStore.append(listOf(EvidenceLinked(policyId, EvidenceRef(req.evidenceRef), req.evidenceType, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "EvidenceLinked"))
+        }
+
+        post("/api/v1/storybook/governance/policies/{id}/decisions") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "id required"))
+            val policyId = GovernancePolicyId(id)
+            val d = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "policy not found"))
+            val req = call.receive<RecordGovernanceDecisionRequest>()
+            val outcome = runCatching { GovernanceDecisionOutcome.valueOf(req.decision.uppercase()) }.getOrElse {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid decision"))
+            }
+            if ((outcome == GovernanceDecisionOutcome.REJECTED || outcome == GovernanceDecisionOutcome.WAIVED) && req.rationale.isNullOrBlank())
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "rationale required for REJECTED or WAIVED (BR-6)"))
+            eventStore.append(listOf(GovernanceDecisionRecorded(policyId, outcome, req.rationale, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "GovernanceDecisionRecorded"))
+        }
+
+        post("/api/v1/storybook/governance/policies/{id}/lifecycle") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "id required"))
+            val policyId = GovernancePolicyId(id)
+            val d = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            if (!d.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "policy not found"))
+            val req = call.receive<GovernLifecycleRequest>()
+            if (req.targetRef.isBlank() || req.targetType.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "targetRef and targetType required"))
+            val newLifecycle = runCatching { LifecycleState.valueOf(req.newLifecycle.uppercase()) }.getOrElse {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid newLifecycle"))
+            }
+            eventStore.append(listOf(LifecycleGoverned(policyId, req.targetRef, req.targetType, newLifecycle, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "LifecycleGoverned"))
+        }
+
+        get("/api/v1/storybook/governance/policies") {
+            val allEvents = eventStore.query(EventQuery(setOf("governance-policies"))).events
+            val policyIds = allEvents.filterIsInstance<GovernancePolicyRegistered>().map { it.policyId }.distinct()
+            val policies = policyIds.map { policyId ->
+                val pEvents = allEvents.filter { policyTag(policyId) in it.tags }
+                val d = GovernanceDecisionModel().also { it.applyAll(pEvents) }
+                d.toResponse(policyId.value)
+            }
+            call.respond(policies)
+        }
+
+        get("/api/v1/storybook/governance/policies/{id}") {
+            val id = call.parameters["id"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "id required"))
+            val policyId = GovernancePolicyId(id)
+            val d = GovernanceDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(policyTag(policyId)))).events) }
+            if (!d.exists) return@get call.respond(HttpStatusCode.NotFound, mapOf("error" to "policy not found"))
+            call.respond(d.toResponse(id))
+        }
+
         // PA-01: get partner summary (for admin console).
         get("/api/v1/admin/partners/{partnerId}") {
             call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get

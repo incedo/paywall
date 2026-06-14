@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: paywall-dev
+data:
+  init.sql: |
+    -- Create databases for Kratos and Hydra
+    CREATE DATABASE kratos;
+    CREATE DATABASE hydra;
+
+    -- Grant access to paywall user
+    GRANT ALL PRIVILEGES ON DATABASE kratos TO paywall;
+    GRANT ALL PRIVILEGES ON DATABASE hydra TO paywall;
+
+    -- Connect to paywall database and create event store schema
+    \connect paywall
+
+    CREATE TABLE IF NOT EXISTS events (
+        position    BIGINT GENERATED ALWAYS AS IDENTITY,
+        event_type  VARCHAR(255) NOT NULL,
+        data        JSONB NOT NULL,
+        timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (position, timestamp)
+    ) PARTITION BY RANGE (timestamp);
+
+    CREATE TABLE IF NOT EXISTS events_default PARTITION OF events DEFAULT;
+
+    CREATE TABLE IF NOT EXISTS event_tags (
+        event_position  BIGINT NOT NULL,
+        tag             VARCHAR(255) NOT NULL,
+        PRIMARY KEY (event_position, tag)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_event_tags_tag ON event_tags(tag);

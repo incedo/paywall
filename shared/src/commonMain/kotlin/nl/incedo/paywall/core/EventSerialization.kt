@@ -41,6 +41,42 @@ import nl.incedo.paywall.walls.WallConfigChanged
 import nl.incedo.paywall.walls.WallCreated
 import nl.incedo.paywall.walls.WallPublished
 import nl.incedo.paywall.walls.WallTemplateCreated
+import nl.incedo.paywall.storybook.StoryRegistered
+import nl.incedo.paywall.storybook.StoryArchived
+import nl.incedo.paywall.storybook.StoryMetadataUpdated
+import nl.incedo.paywall.storybook.ScenarioRegistered
+import nl.incedo.paywall.storybook.ScenarioMetadataUpdated
+import nl.incedo.paywall.storybook.ScenarioArchived
+import nl.incedo.paywall.storybook.DecoratorRegistered
+import nl.incedo.paywall.storybook.DecoratorMetadataUpdated
+import nl.incedo.paywall.storybook.DecoratorPriorityChanged
+import nl.incedo.paywall.storybook.DecoratorLinkedToStory
+import nl.incedo.paywall.storybook.DecoratorLinkedToScenario
+import nl.incedo.paywall.storybook.DecoratorArchived
+import nl.incedo.paywall.storybook.ControlSchemaRegistered
+import nl.incedo.paywall.storybook.ControlAdded
+import nl.incedo.paywall.storybook.ControlRemoved
+import nl.incedo.paywall.storybook.ControlDefaultChanged
+import nl.incedo.paywall.storybook.ControlSchemaArchived
+import nl.incedo.paywall.storybook.ResponsiveProfileRegistered
+import nl.incedo.paywall.storybook.ResponsiveFormFactorSupported
+import nl.incedo.paywall.storybook.ResponsiveWidthClassesDefined
+import nl.incedo.paywall.storybook.ResponsiveNavigationPatternSet
+import nl.incedo.paywall.storybook.ResponsiveDensityProfileSet
+import nl.incedo.paywall.storybook.ResponsiveExpectationLinked
+import nl.incedo.paywall.storybook.ResponsiveLayoutRuleAdded
+import nl.incedo.paywall.storybook.ResponsiveProfileArchived
+import nl.incedo.paywall.storybook.PhaseRegistered
+import nl.incedo.paywall.storybook.CapabilityAddedToPhase
+import nl.incedo.paywall.storybook.PhaseActivated
+import nl.incedo.paywall.storybook.PhaseSatisfied
+import nl.incedo.paywall.storybook.PhaseSuperseded
+import nl.incedo.paywall.storybook.GovernancePolicyRegistered
+import nl.incedo.paywall.storybook.QualityGateAttached
+import nl.incedo.paywall.storybook.OwnerAssigned
+import nl.incedo.paywall.storybook.EvidenceLinked
+import nl.incedo.paywall.storybook.GovernanceDecisionRecorded
+import nl.incedo.paywall.storybook.LifecycleGoverned
 
 /**
  * Polymorphic registration of every domain event, shared by all event-store
@@ -87,6 +123,42 @@ val paywallSerializersModule = SerializersModule {
         subclass(WallPublished::class)
         subclass(WallTemplateCreated::class)
         subclass(MailSent::class)
+        subclass(StoryRegistered::class)
+        subclass(StoryArchived::class)
+        subclass(StoryMetadataUpdated::class)
+        subclass(ScenarioRegistered::class)
+        subclass(ScenarioMetadataUpdated::class)
+        subclass(ScenarioArchived::class)
+        subclass(ControlSchemaRegistered::class)
+        subclass(ControlAdded::class)
+        subclass(ControlRemoved::class)
+        subclass(ControlDefaultChanged::class)
+        subclass(ControlSchemaArchived::class)
+        subclass(DecoratorRegistered::class)
+        subclass(DecoratorMetadataUpdated::class)
+        subclass(DecoratorPriorityChanged::class)
+        subclass(DecoratorLinkedToStory::class)
+        subclass(DecoratorLinkedToScenario::class)
+        subclass(DecoratorArchived::class)
+        subclass(ResponsiveProfileRegistered::class)
+        subclass(ResponsiveFormFactorSupported::class)
+        subclass(ResponsiveWidthClassesDefined::class)
+        subclass(ResponsiveNavigationPatternSet::class)
+        subclass(ResponsiveDensityProfileSet::class)
+        subclass(ResponsiveExpectationLinked::class)
+        subclass(ResponsiveLayoutRuleAdded::class)
+        subclass(ResponsiveProfileArchived::class)
+        subclass(PhaseRegistered::class)
+        subclass(CapabilityAddedToPhase::class)
+        subclass(PhaseActivated::class)
+        subclass(PhaseSatisfied::class)
+        subclass(PhaseSuperseded::class)
+        subclass(GovernancePolicyRegistered::class)
+        subclass(QualityGateAttached::class)
+        subclass(OwnerAssigned::class)
+        subclass(EvidenceLinked::class)
+        subclass(GovernanceDecisionRecorded::class)
+        subclass(LifecycleGoverned::class)
     }
 }
 

@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kratos
+  namespace: paywall-dev
+  labels:
+    app: kratos
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kratos
+  template:
+    metadata:
+      labels:
+        app: kratos
+    spec:
+      initContainers:
+        - name: kratos-migrate
+          image: oryd/kratos:v1.3.1
+          command:
+            - kratos
+            - migrate
+            - sql
+            - --yes
+            - --config
+            - /etc/config/kratos.yaml
+          volumeMounts:
+            - name: kratos-config
+              mountPath: /etc/config
+              readOnly: true
+            - name: kratos-identity-schema
+              mountPath: /etc/kratos
+              readOnly: true
+      containers:
+        - name: kratos
+          image: oryd/kratos:v1.3.1
+          command:
+            - kratos
+            - serve
+            - --config
+            - /etc/config/kratos.yaml
+            - --dev
+            - --watch-courier
+          ports:
+            - name: public
+              containerPort: 4433
+            - name: admin
+              containerPort: 4434
+          volumeMounts:
+            - name: kratos-config
+              mountPath: /etc/config
+              readOnly: true
+            - name: kratos-identity-schema
+              mountPath: /etc/kratos
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 4433
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health/alive
+              port: 4433
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: kratos-config
+          configMap:
+            name: kratos-config
+        - name: kratos-identity-schema
+          configMap:
+            name: kratos-identity-schema

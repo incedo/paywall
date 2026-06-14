@@ -1,0 +1,66 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: oidc-client-init
+  namespace: paywall-dev
+  labels:
+    app: oidc-client-init
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 4
+  template:
+    metadata:
+      labels:
+        app: oidc-client-init
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-hydra
+          image: curlimages/curl:8.10.1
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for Hydra admin to be ready..."
+              until curl -sf http://hydra:4445/health/ready; do
+                echo "Hydra not ready yet, retrying in 5s..."
+                sleep 5
+              done
+              echo "Hydra is ready."
+      containers:
+        - name: oidc-client-init
+          image: curlimages/curl:8.10.1
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Registering paywall-admin OIDC client..."
+
+              # Check if client already exists
+              HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                http://hydra:4445/admin/clients/paywall-admin)
+
+              if [ "$HTTP_STATUS" = "200" ]; then
+                echo "Client paywall-admin already exists, skipping registration."
+                exit 0
+              fi
+
+              # Register the OIDC client
+              curl -sf --retry 10 --retry-connrefused \
+                -X POST http://hydra:4445/admin/clients \
+                -H "Content-Type: application/json" \
+                -d '{
+                  "client_id": "paywall-admin",
+                  "client_secret": "admin-secret",
+                  "client_name": "Paywall Admin Console",
+                  "grant_types": ["authorization_code", "refresh_token"],
+                  "response_types": ["code"],
+                  "scope": "openid offline_access profile email",
+                  "redirect_uris": ["http://paywall.local/auth/callback"],
+                  "post_logout_redirect_uris": ["http://paywall.local/"],
+                  "token_endpoint_auth_method": "client_secret_basic",
+                  "subject_type": "public"
+                }'
+
+              echo "OIDC client registered successfully."

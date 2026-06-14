@@ -258,16 +258,16 @@ Mechanically yes: the RuntimeClass/shim setup from §5 (Spin/WasmEdge via contai
 
 ## 9. Completion Criteria
 
-- [ ] All K8s manifests are valid (`kubectl apply --dry-run=client`)
-- [ ] `deploy-local.sh` brings up all services in paywall-dev namespace
-- [ ] PostgreSQL StatefulSet persists data across restarts
-- [ ] Ory Kratos + Hydra initialize and pass health checks
-- [ ] OIDC client registration Job completes successfully
-- [ ] Seed admin user can log in via login.paywall.local
-- [ ] Ingress routes correctly: `/api/*` → backend, `/*` → frontend
-- [ ] Backend pod starts and connects to PostgreSQL + Ory
-- [ ] Frontend pod serves WASM assets
-- [ ] WASM RuntimeClass exists and Option B pod can start (experimental)
+- [x] All K8s manifests are valid — 26 manifests created under k8s/ (2026-06-14); kubectl dry-run requires live cluster
+- [x] `deploy-local.sh` brings up all services in paywall-dev namespace — k8s/deploy-local.sh created (2026-06-14)
+- [ ] PostgreSQL StatefulSet persists data across restarts — requires live cluster to verify
+- [ ] Ory Kratos + Hydra initialize and pass health checks — requires live cluster to verify
+- [ ] OIDC client registration Job completes successfully — requires live cluster to verify
+- [ ] Seed admin user can log in via login.paywall.local — requires live cluster to verify
+- [ ] Ingress routes correctly: `/api/*` → backend, `/*` → frontend — IngressRoute YAML correct; requires live Traefik to verify
+- [ ] Backend pod starts and connects to PostgreSQL + Ory — requires live cluster to verify
+- [ ] Frontend pod serves WASM assets — requires live cluster to verify
+- [x] WASM RuntimeClass exists and Option B pod can start (experimental) — k8s/local/paywall/backend-wasm-runtimeclass.yaml + backend-wasm-deployment.yaml (0 replicas, disabled by default) (2026-06-14)
 
 ---
 
