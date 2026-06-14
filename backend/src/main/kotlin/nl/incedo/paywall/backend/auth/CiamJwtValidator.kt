@@ -9,6 +9,7 @@ import com.auth0.jwt.exceptions.JWTDecodeException
 import com.auth0.jwt.exceptions.SignatureVerificationException
 import com.auth0.jwt.exceptions.TokenExpiredException
 import java.net.URL
+import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
 import java.util.concurrent.TimeUnit
 import nl.incedo.paywall.core.UserId
@@ -88,9 +89,14 @@ class CiamJwtValidator(
             ?: return null to "missing"
         return try {
             val keyId = JWT.decode(token).keyId ?: return null to "missing_kid"
-            val publicKey = jwkProvider.get(keyId).publicKey as? RSAPublicKey ?: return null to "unknown_key"
+            // NFR-20: branch on key type so ES256 (ECDSA P-256) and RS256 (RSA) are both accepted.
+            val algorithm = when (val pub = jwkProvider.get(keyId).publicKey) {
+                is ECPublicKey -> Algorithm.ECDSA256(pub, null)
+                is RSAPublicKey -> Algorithm.RSA256(pub, null)
+                else -> return null to "unknown_key"
+            }
             // NFR-20: validate signature, iss, aud (when configured), exp/nbf with 60 s clock-skew leeway.
-            val verifier = JWT.require(Algorithm.RSA256(publicKey, null))
+            val verifier = JWT.require(algorithm)
                 .withIssuer(issuer)
                 .acceptLeeway(60) // NFR-20: ≤ 60 s clock skew tolerated
                 .let { if (audience != null) it.withAudience(audience) else it }

@@ -16,7 +16,10 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.testApplication
+import java.math.BigInteger
 import java.security.KeyPairGenerator
+import java.security.interfaces.ECPrivateKey
+import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPrivateKey
 import java.security.interfaces.RSAPublicKey
 import java.util.Base64
@@ -279,6 +282,43 @@ class CiamAuthTest {
             .sign(Algorithm.RSA256(null, keyPair.private as java.security.interfaces.RSAPrivateKey))
         val userId = audValidator.userIdFrom("Bearer $tokenNoAud")
         assertEquals(null, userId, "NFR-20: token without aud must be rejected when audience is configured")
+    }
+
+    // ── NFR-20: ES256 (ECDSA P-256) support ─────────────────────────────────
+
+    @Test
+    fun es256TokenIsAccepted() {
+        // NFR-20: CIAM providers may issue ECDSA P-256 (ES256) tokens; the validator
+        // must accept them without any extra configuration.
+        val ecKid = "ec-key-1"
+        val ecKeyPair = KeyPairGenerator.getInstance("EC").apply {
+            initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
+        }.generateKeyPair()
+        val ecPub = ecKeyPair.public as ECPublicKey
+        val b64 = Base64.getUrlEncoder().withoutPadding()
+        fun BigInteger.toBase64() =
+            b64.encodeToString(toByteArray().let { if (it[0] == 0.toByte()) it.copyOfRange(1, it.size) else it })
+        val jwkValues = mapOf(
+            "kty" to "EC",
+            "kid" to ecKid,
+            "use" to "sig",
+            "alg" to "ES256",
+            "crv" to "P-256",
+            "x" to ecPub.w.affineX.toBase64(),
+            "y" to ecPub.w.affineY.toBase64(),
+        )
+        val provider = com.auth0.jwk.JwkProvider { keyId ->
+            if (keyId == ecKid) com.auth0.jwk.Jwk.fromValues(jwkValues)
+            else throw com.auth0.jwk.SigningKeyNotFoundException(keyId, null)
+        }
+        val ecValidator = nl.incedo.paywall.backend.auth.CiamJwtValidator(provider, issuer)
+        val ecToken = JWT.create()
+            .withKeyId(ecKid).withIssuer(issuer).withSubject("ec-user-1")
+            .withExpiresAt(java.util.Date(System.currentTimeMillis() + 60_000))
+            .sign(Algorithm.ECDSA256(null, ecKeyPair.private as ECPrivateKey))
+        val userId = ecValidator.userIdFrom("Bearer $ecToken")
+        assertEquals(nl.incedo.paywall.core.UserId("ec-user-1"), userId,
+            "NFR-20: ES256 token must be accepted when the JWK carries an EC key")
     }
 
     @Test
