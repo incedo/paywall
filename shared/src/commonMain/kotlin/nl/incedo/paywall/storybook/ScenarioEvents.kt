@@ -37,6 +37,17 @@ data class ScenarioRegistered(
     ),
 ) : DomainEvent
 
+/** Title, type, or other metadata changed. */
+@Serializable
+data class ScenarioMetadataUpdated(
+    val scenarioId: ScenarioId,
+    val title: String? = null,
+    val description: String? = null,
+    val type: ScenarioType? = null,
+    val updatedAtEpochMs: Long,
+    override val tags: Set<String> = setOf(scenarioTag(scenarioId), "scenarios"),
+) : DomainEvent
+
 /** Scenario archived; its control schemas become read-only. */
 @Serializable
 data class ScenarioArchived(

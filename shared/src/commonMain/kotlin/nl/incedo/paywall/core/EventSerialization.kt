@@ -45,6 +45,7 @@ import nl.incedo.paywall.storybook.StoryRegistered
 import nl.incedo.paywall.storybook.StoryArchived
 import nl.incedo.paywall.storybook.StoryMetadataUpdated
 import nl.incedo.paywall.storybook.ScenarioRegistered
+import nl.incedo.paywall.storybook.ScenarioMetadataUpdated
 import nl.incedo.paywall.storybook.ScenarioArchived
 import nl.incedo.paywall.storybook.ControlSchemaRegistered
 import nl.incedo.paywall.storybook.ControlAdded
@@ -101,6 +102,7 @@ val paywallSerializersModule = SerializersModule {
         subclass(StoryArchived::class)
         subclass(StoryMetadataUpdated::class)
         subclass(ScenarioRegistered::class)
+        subclass(ScenarioMetadataUpdated::class)
         subclass(ScenarioArchived::class)
         subclass(ControlSchemaRegistered::class)
         subclass(ControlAdded::class)

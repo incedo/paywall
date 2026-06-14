@@ -16,6 +16,8 @@ class ScenarioDecision {
         private set
     var title: String = ""
         private set
+    var scenarioType: String = ""
+        private set
 
     fun apply(event: DomainEvent) {
         when (event) {
@@ -23,6 +25,11 @@ class ScenarioDecision {
                 exists = true
                 storyId = event.storyId.value
                 title = event.title
+                scenarioType = event.type.name
+            }
+            is ScenarioMetadataUpdated -> {
+                event.title?.let { title = it }
+                event.type?.let { scenarioType = it.name }
             }
             is ScenarioArchived -> archived = true
         }

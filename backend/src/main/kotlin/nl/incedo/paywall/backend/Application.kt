@@ -50,6 +50,8 @@ import nl.incedo.paywall.api.PublishExperimentConfigRequest
 import nl.incedo.paywall.api.SaveWallRequest
 import nl.incedo.paywall.api.SubjectInspectorResponse
 import nl.incedo.paywall.api.UpdateBrandThemeRequest
+import nl.incedo.paywall.api.UpdateScenarioRequest
+import nl.incedo.paywall.api.UpdateStoryRequest
 import nl.incedo.paywall.api.VariantStatsResponse
 import nl.incedo.paywall.api.WallResponse
 import nl.incedo.paywall.api.WallTemplateRequest
@@ -158,6 +160,7 @@ import nl.incedo.paywall.storybook.ControlSchemaRegistered
 import nl.incedo.paywall.storybook.ControlType
 import nl.incedo.paywall.storybook.ScenarioArchived
 import nl.incedo.paywall.storybook.ScenarioDecision
+import nl.incedo.paywall.storybook.ScenarioMetadataUpdated
 import nl.incedo.paywall.storybook.ScenarioId
 import nl.incedo.paywall.storybook.ScenarioKey
 import nl.incedo.paywall.storybook.ScenarioLifecycle
@@ -165,6 +168,7 @@ import nl.incedo.paywall.storybook.ScenarioRegistered
 import nl.incedo.paywall.storybook.ScenarioType
 import nl.incedo.paywall.storybook.StoryArchived
 import nl.incedo.paywall.storybook.StoryDecision
+import nl.incedo.paywall.storybook.StoryMetadataUpdated
 import nl.incedo.paywall.storybook.StoryId
 import nl.incedo.paywall.storybook.StoryKey
 import nl.incedo.paywall.storybook.StoryKeyUniquenessDecision
@@ -2525,6 +2529,97 @@ fun Application.module(
                 newDefaultValue = req.defaultValue, changedAtEpochMs = System.currentTimeMillis(),
             )), condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ControlDefaultChanged"))
+        }
+
+        // Story metadata update and archive
+        put("/api/v1/storybook/stories/{storyId}") {
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val storyId = StoryId(sid)
+            val decision = StoryDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(storyTag(storyId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "story not found")); return@put
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "story is archived")); return@put
+            }
+            val req = call.receive<UpdateStoryRequest>()
+            eventStore.append(listOf(StoryMetadataUpdated(
+                storyId = storyId, title = req.title, description = req.description,
+                owner = req.owner, updatedAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "StoryMetadataUpdated"))
+        }
+
+        delete("/api/v1/storybook/stories/{storyId}") {
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@delete call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val storyId = StoryId(sid)
+            val decision = StoryDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(storyTag(storyId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "story not found")); return@delete
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "story already archived")); return@delete
+            }
+            eventStore.append(listOf(StoryArchived(storyId, archivedAtEpochMs = System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "StoryArchived"))
+        }
+
+        // Single-scenario GET, metadata update, and archive
+        get("/api/v1/storybook/scenarios/{scenarioId}") {
+            val scenId = call.parameters["scenarioId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scenarioId required"))
+            val scenarioId = ScenarioId(scenId)
+            val decision = ScenarioDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(scenarioTag(scenarioId)))).events) }
+            if (!decision.exists || decision.archived) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "scenario not found")); return@get
+            }
+            call.respond(ScenarioResponse(scenId, decision.storyId, "", decision.title, decision.scenarioType, "ACTIVE"))
+        }
+
+        put("/api/v1/storybook/scenarios/{scenarioId}") {
+            val scenId = call.parameters["scenarioId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scenarioId required"))
+            val scenarioId = ScenarioId(scenId)
+            val decision = ScenarioDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(scenarioTag(scenarioId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "scenario not found")); return@put
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "scenario is archived")); return@put
+            }
+            val req = call.receive<UpdateScenarioRequest>()
+            val newType = req.type?.let { t ->
+                runCatching { ScenarioType.valueOf(t.uppercase()) }.getOrElse {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "type must be one of ${ScenarioType.entries.joinToString()}"))
+                    return@put
+                }
+            }
+            eventStore.append(listOf(ScenarioMetadataUpdated(
+                scenarioId = scenarioId, title = req.title, description = req.description,
+                type = newType, updatedAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ScenarioMetadataUpdated"))
+        }
+
+        delete("/api/v1/storybook/scenarios/{scenarioId}") {
+            val scenId = call.parameters["scenarioId"]?.takeIf { it.isNotBlank() }
+                ?: return@delete call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scenarioId required"))
+            val scenarioId = ScenarioId(scenId)
+            val decision = ScenarioDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(scenarioTag(scenarioId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "scenario not found")); return@delete
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "scenario already archived")); return@delete
+            }
+            eventStore.append(listOf(ScenarioArchived(
+                scenarioId = scenarioId,
+                archivedAtEpochMs = System.currentTimeMillis(),
+                tags = setOf(scenarioTag(scenarioId), storyTag(StoryId(decision.storyId)), "scenarios"),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ScenarioArchived"))
         }
 
         delete("/api/v1/storybook/control-schemas/{schemaId}/controls/{controlId}") {

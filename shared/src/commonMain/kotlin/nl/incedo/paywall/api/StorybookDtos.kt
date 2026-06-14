@@ -30,6 +30,15 @@ data class StoryResponse(
     val lifecycle: String,
 )
 
+// ── Story update DTOs ─────────────────────────────────────────────────────────
+
+@Serializable
+data class UpdateStoryRequest(
+    val title: String? = null,
+    val description: String? = null,
+    val owner: String? = null,
+)
+
 // ── Scenario DTOs ─────────────────────────────────────────────────────────────
 
 @Serializable
@@ -49,6 +58,13 @@ data class ScenarioResponse(
     val title: String,
     val type: String,
     val lifecycle: String,
+)
+
+@Serializable
+data class UpdateScenarioRequest(
+    val title: String? = null,
+    val description: String? = null,
+    val type: String? = null,
 )
 
 // ── ControlSchema DTOs ────────────────────────────────────────────────────────

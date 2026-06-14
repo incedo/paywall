@@ -17,6 +17,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import nl.incedo.paywall.api.AddControlRequest
+import nl.incedo.paywall.api.UpdateScenarioRequest
+import nl.incedo.paywall.api.UpdateStoryRequest
 import nl.incedo.paywall.api.ChangeControlDefaultRequest
 import nl.incedo.paywall.api.ControlSchemaResponse
 import nl.incedo.paywall.api.RegisterControlSchemaRequest
@@ -291,6 +293,87 @@ class StorybookContractTest {
         assertEquals(HttpStatusCode.Accepted, resp.status)
         val controls = client.get("/api/v1/storybook/scenarios/sc1/controls").body<ControlSchemaResponse>()
         assertTrue(controls.controls.isEmpty())
+    }
+
+    // ── Story update/archive ──────────────────────────────────────────────────
+
+    @Test fun `PUT story updates metadata`() = contractTest { client ->
+        client.post("/api/v1/storybook/stories") {
+            contentType(ContentType.Application.Json); setBody(storyReq())
+        }
+        val resp = client.put("/api/v1/storybook/stories/s1") {
+            contentType(ContentType.Application.Json)
+            setBody(UpdateStoryRequest(title = "Button v2"))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        assertEquals("Button v2", client.get("/api/v1/storybook/stories/s1").body<StoryResponse>().title)
+    }
+
+    @Test fun `PUT story on unknown story returns 404`() = contractTest { client ->
+        val resp = client.put("/api/v1/storybook/stories/unknown") {
+            contentType(ContentType.Application.Json); setBody(UpdateStoryRequest(title = "X"))
+        }
+        assertEquals(HttpStatusCode.NotFound, resp.status)
+    }
+
+    @Test fun `DELETE story archives it`() = contractTest { client ->
+        client.post("/api/v1/storybook/stories") {
+            contentType(ContentType.Application.Json); setBody(storyReq())
+        }
+        assertEquals(HttpStatusCode.Accepted, client.delete("/api/v1/storybook/stories/s1").status)
+        assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/storybook/stories/s1").status)
+    }
+
+    @Test fun `DELETE already archived story returns 409`() = contractTest { client ->
+        client.post("/api/v1/storybook/stories") {
+            contentType(ContentType.Application.Json); setBody(storyReq())
+        }
+        client.delete("/api/v1/storybook/stories/s1")
+        assertEquals(HttpStatusCode.Conflict, client.delete("/api/v1/storybook/stories/s1").status)
+    }
+
+    // ── Scenario GET, update, archive ─────────────────────────────────────────
+
+    @Test fun `GET scenario by id returns scenario`() = contractTest { client ->
+        client.post("/api/v1/storybook/stories") {
+            contentType(ContentType.Application.Json); setBody(storyReq())
+        }
+        client.post("/api/v1/storybook/stories/s1/scenarios") {
+            contentType(ContentType.Application.Json); setBody(scenarioReq())
+        }
+        val resp = client.get("/api/v1/storybook/scenarios/sc1")
+        assertEquals(HttpStatusCode.OK, resp.status)
+        assertEquals("sc1", resp.body<ScenarioResponse>().scenarioId)
+    }
+
+    @Test fun `GET scenario with unknown id returns 404`() = contractTest { client ->
+        assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/storybook/scenarios/unknown").status)
+    }
+
+    @Test fun `PUT scenario updates metadata`() = contractTest { client ->
+        client.post("/api/v1/storybook/stories") {
+            contentType(ContentType.Application.Json); setBody(storyReq())
+        }
+        client.post("/api/v1/storybook/stories/s1/scenarios") {
+            contentType(ContentType.Application.Json); setBody(scenarioReq())
+        }
+        val resp = client.put("/api/v1/storybook/scenarios/sc1") {
+            contentType(ContentType.Application.Json)
+            setBody(UpdateScenarioRequest(title = "Default state v2"))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        assertEquals("Default state v2", client.get("/api/v1/storybook/scenarios/sc1").body<ScenarioResponse>().title)
+    }
+
+    @Test fun `DELETE scenario archives it`() = contractTest { client ->
+        client.post("/api/v1/storybook/stories") {
+            contentType(ContentType.Application.Json); setBody(storyReq())
+        }
+        client.post("/api/v1/storybook/stories/s1/scenarios") {
+            contentType(ContentType.Application.Json); setBody(scenarioReq())
+        }
+        assertEquals(HttpStatusCode.Accepted, client.delete("/api/v1/storybook/scenarios/sc1").status)
+        assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/storybook/scenarios/sc1").status)
     }
 
     @Test fun `PUT default on removed control returns 404`() = contractTest { client ->

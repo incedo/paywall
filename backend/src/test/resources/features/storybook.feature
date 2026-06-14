@@ -72,3 +72,32 @@ Feature: Storybook story, scenario, and control-schema management
   Scenario: Schema from unknown scenario returns 404 (BR-2)
     When staff tries to create control schema for scenario "unknown"
     Then the response is 404 Not Found
+
+  # ── Story update and archive ──────────────────────────────────────────────────
+
+  Scenario: Updating story metadata
+    Given story "s1" with key "button" is registered
+    When staff updates story "s1" with title "Button v2"
+    Then the story title is "Button v2"
+
+  Scenario: Archiving a story removes it from the list
+    Given story "s1" with key "button" is registered
+    When staff archives story "s1"
+    Then the story is no longer visible
+
+  # ── Scenario update and archive ───────────────────────────────────────────────
+
+  Scenario: Getting a scenario by id
+    Given story "s1", scenario "sc1" are registered
+    When staff fetches scenario "sc1"
+    Then the scenario is returned with scenarioId "sc1"
+
+  Scenario: Updating scenario metadata
+    Given story "s1", scenario "sc1" are registered
+    When staff updates scenario "sc1" with title "Default state v2"
+    Then the scenario title is "Default state v2"
+
+  Scenario: Archiving a scenario removes it from the scenario list
+    Given story "s1", scenario "sc1" are registered
+    When staff archives scenario "sc1"
+    Then the scenario is no longer visible

@@ -16,6 +16,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import nl.incedo.paywall.api.AddControlRequest
+import nl.incedo.paywall.api.UpdateScenarioRequest
+import nl.incedo.paywall.api.UpdateStoryRequest
 import nl.incedo.paywall.api.ChangeControlDefaultRequest
 import nl.incedo.paywall.api.ControlSchemaResponse
 import nl.incedo.paywall.api.RegisterControlSchemaRequest
@@ -167,6 +169,50 @@ class StorybookFeatureTest {
         assertEquals(HttpStatusCode.Accepted, resp.status)
         val controls = client.get("/api/v1/storybook/scenarios/sc1/controls").body<ControlSchemaResponse>()
         assertEquals("secondary", controls.controls.first().defaultValue)
+    }
+
+    // ── Story update and archive ──────────────────────────────────────────────
+
+    @Test fun `Updating story metadata`() = scenario { client ->
+        client.registerStory()
+        val resp = client.put("/api/v1/storybook/stories/s1") {
+            contentType(ContentType.Application.Json)
+            setBody(UpdateStoryRequest(title = "Button v2"))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        assertEquals("Button v2", client.get("/api/v1/storybook/stories/s1").body<StoryResponse>().title)
+    }
+
+    @Test fun `Archiving a story removes it from the list`() = scenario { client ->
+        client.registerStory()
+        client.delete("/api/v1/storybook/stories/s1")
+        val list = client.get("/api/v1/storybook/stories").body<List<StoryResponse>>()
+        assertTrue(list.isEmpty())
+    }
+
+    // ── Scenario update and archive ───────────────────────────────────────────
+
+    @Test fun `Getting a scenario by id`() = scenario { client ->
+        client.registerStory(); client.registerScenario()
+        val resp = client.get("/api/v1/storybook/scenarios/sc1")
+        assertEquals(HttpStatusCode.OK, resp.status)
+        assertEquals("sc1", resp.body<ScenarioResponse>().scenarioId)
+    }
+
+    @Test fun `Updating scenario metadata`() = scenario { client ->
+        client.registerStory(); client.registerScenario()
+        client.put("/api/v1/storybook/scenarios/sc1") {
+            contentType(ContentType.Application.Json)
+            setBody(UpdateScenarioRequest(title = "Default state v2"))
+        }
+        assertEquals("Default state v2", client.get("/api/v1/storybook/scenarios/sc1").body<ScenarioResponse>().title)
+    }
+
+    @Test fun `Archiving a scenario removes it from the scenario list`() = scenario { client ->
+        client.registerStory(); client.registerScenario()
+        client.delete("/api/v1/storybook/scenarios/sc1")
+        val list = client.get("/api/v1/storybook/stories/s1/scenarios").body<List<ScenarioResponse>>()
+        assertTrue(list.isEmpty())
     }
 
     @Test fun `Schema from unknown scenario returns 404 (BR-2)`() = scenario { client ->
