@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hydra
+  namespace: paywall-dev
+  labels:
+    app: hydra
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hydra
+  template:
+    metadata:
+      labels:
+        app: hydra
+    spec:
+      initContainers:
+        - name: hydra-migrate
+          image: oryd/hydra:v2.3.0
+          command:
+            - hydra
+            - migrate
+            - sql
+            - --yes
+            - --config
+            - /etc/config/hydra.yaml
+          volumeMounts:
+            - name: hydra-config
+              mountPath: /etc/config
+              readOnly: true
+      containers:
+        - name: hydra
+          image: oryd/hydra:v2.3.0
+          command:
+            - hydra
+            - serve
+            - all
+            - --config
+            - /etc/config/hydra.yaml
+            - --dev
+          ports:
+            - name: public
+              containerPort: 4444
+            - name: admin
+              containerPort: 4445
+          volumeMounts:
+            - name: hydra-config
+              mountPath: /etc/config
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 4444
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health/alive
+              port: 4444
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: hydra-config
+          configMap:
+            name: hydra-config

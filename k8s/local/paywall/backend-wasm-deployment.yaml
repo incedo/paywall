@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-wasm
+  namespace: paywall-dev
+  labels:
+    app: backend-wasm
+  annotations:
+    # Disabled by default (0 replicas). Scale up to test WASM runtime:
+    #   kubectl scale deploy/backend-wasm -n paywall-dev --replicas=1
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: backend-wasm
+  template:
+    metadata:
+      labels:
+        app: backend-wasm
+    spec:
+      runtimeClassName: wasmtime-spin-v2
+      containers:
+        - name: backend-wasm
+          image: paywall-backend:wasm
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: DATABASE_URL
+              value: jdbc:postgresql://postgres:5432/paywall
+            - name: DB_USER
+              value: paywall
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: HYDRA_ADMIN_URL
+              value: http://hydra:4445
+            - name: AUTH_MODE
+              value: ory
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

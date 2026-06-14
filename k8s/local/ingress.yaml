@@ -1,0 +1,109 @@
+---
+# Traefik IngressRoute for paywall local development
+# Requires Traefik v2/v3 with the traefik.io/v1alpha1 CRD installed.
+# All virtual hosts resolve via /etc/hosts or a local DNS (e.g. dnsmasq).
+#
+# Add to /etc/hosts:
+#   127.0.0.1 paywall.local auth.paywall.local id.paywall.local login.paywall.local mail.paywall.local
+
+# ── paywall.local — frontend (catch-all) ─────────────────────────────────────
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: frontend
+  namespace: paywall-dev
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`paywall.local`)
+      kind: Rule
+      priority: 1
+      services:
+        - name: frontend-svc
+          port: 80
+---
+# ── paywall.local/api — backend API (higher priority than frontend) ───────────
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: backend-api
+  namespace: paywall-dev
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`paywall.local`) && PathPrefix(`/api`)
+      kind: Rule
+      priority: 10
+      services:
+        - name: backend-svc
+          port: 8080
+---
+# ── auth.paywall.local — Hydra public OAuth2/OIDC endpoints ──────────────────
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: hydra-public
+  namespace: paywall-dev
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`auth.paywall.local`)
+      kind: Rule
+      priority: 1
+      services:
+        - name: hydra
+          port: 4444
+---
+# ── id.paywall.local — Kratos public self-service endpoints ──────────────────
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: kratos-public
+  namespace: paywall-dev
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`id.paywall.local`)
+      kind: Rule
+      priority: 1
+      services:
+        - name: kratos
+          port: 4433
+---
+# ── login.paywall.local — Kratos self-service UI ─────────────────────────────
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: kratos-ui
+  namespace: paywall-dev
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`login.paywall.local`)
+      kind: Rule
+      priority: 1
+      services:
+        - name: kratos-ui
+          port: 3000
+---
+# ── mail.paywall.local — MailSlurper web UI ──────────────────────────────────
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mailslurper-ui
+  namespace: paywall-dev
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`mail.paywall.local`)
+      kind: Rule
+      priority: 1
+      services:
+        - name: mailslurper
+          port: 4436

@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kratos-ui
+  namespace: paywall-dev
+  labels:
+    app: kratos-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kratos-ui
+  template:
+    metadata:
+      labels:
+        app: kratos-ui
+    spec:
+      containers:
+        - name: kratos-ui
+          image: oryd/kratos-selfservice-ui-node:latest
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: KRATOS_PUBLIC_URL
+              value: http://kratos:4433
+            - name: KRATOS_BROWSER_URL
+              value: http://id.paywall.local
+            - name: HYDRA_ADMIN_URL
+              value: http://hydra:4445
+            - name: PORT
+              value: "3000"
+            - name: SECURITY_MODE
+              value: jwks
+            - name: COOKIE_SECRET
+              value: PLEASE-CHANGE-ME-I-AM-VERY-INSECURE
+            - name: CSRF_COOKIE_NAME
+              value: paywall.csrf
+            - name: CSRF_COOKIE_SECRET
+              value: PLEASE-CHANGE-ME-I-AM-VERY-INSECURE-32
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
