@@ -147,6 +147,11 @@ class AccessService(
          */
         isVerifiedCrawler: Boolean = false,
         /**
+         * MT-04: a prefetch read (Sec-Purpose: prefetch) must not burn a meter credit.
+         * The edge sets this flag; the origin never trusts raw browser prefetch headers.
+         */
+        isPrefetch: Boolean = false,
+        /**
          * EX-05: staff debug override — when set, bypasses VariantAssigner and
          * uses the named variant. Unknown names fall back to normal assignment.
          * Analytics events are suppressed so QA runs do not pollute funnel data.
@@ -283,7 +288,10 @@ class AccessService(
         )
 
         var usedAfter = meter.used
-        if (decision is AccessDecision.Full && decision.countsTowardMeter) {
+        // MT-04/MT-05: bots (non-crawler) and prefetch reads must not consume a
+        // meter credit. isVerifiedCrawler already returned early above; this guard
+        // covers the remaining bot/prefetch signals before writing MeterIncremented.
+        if (decision is AccessDecision.Full && decision.countsTowardMeter && !isBot && !isPrefetch) {
             RecordArticleReadHandler(eventStore)
                 .handle(RecordArticleRead(subject.subjectId, article.id, period))
             usedAfter += 1

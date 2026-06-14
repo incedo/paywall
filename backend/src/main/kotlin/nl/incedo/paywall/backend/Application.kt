@@ -577,6 +577,11 @@ fun Application.module(
             // ignored for regular readers (no 4xx). Analytics suppressed for debug runs.
             val forceVariant = call.request.queryParameters["forceVariant"]
                 ?.takeIf { jwtValidator == null || jwtValidator.staffFrom(call.request.headers[HttpHeaders.Authorization]) != null }
+            // MT-04: prefetch reads must not burn a meter credit. The Sec-Purpose
+            // header is set by browsers; only trust it when it arrives through the
+            // edge (origin secret present), preventing clients from opting out.
+            val isPrefetch = originSecret != null &&
+                call.request.headers["Sec-Purpose"]?.startsWith("prefetch") == true
             val outcome = service.decide(
                 subject = subject,
                 article = Article(ArticleId(request.articleId), tier),
@@ -585,6 +590,7 @@ fun Application.module(
                 isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]) || isBotByCfScore(cfBotScore),
                 isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
                 isVerifiedCrawler = isVerifiedCrawler,
+                isPrefetch = isPrefetch,
                 forceVariant = forceVariant,
                 correlationId = correlationId,
                 externalScore = request.externalScore, // DY-06
@@ -639,12 +645,15 @@ fun Application.module(
             // INF-09: Cloudflare bot management score (trusted when origin secret present).
             val cfBotScoreArticle = if (originSecret != null)
                 parseCfBotScore(call.request.headers["X-CF-Bot-Score"]) else null
+            val isPrefetchArticle = originSecret != null &&
+                call.request.headers["Sec-Purpose"]?.startsWith("prefetch") == true
             val outcome = service.decide(
                 subject = subject,
                 article = Article(stored.id, stored.tier),
                 isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]) || isBotByCfScore(cfBotScoreArticle),
                 isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
                 isVerifiedCrawler = isVerifiedCrawler,
+                isPrefetch = isPrefetchArticle,
             )
             // BP-03: premium pages carry noarchive so archive crawlers only
             // snapshot the teaser and not the full body (also applies to verified
