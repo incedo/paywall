@@ -990,8 +990,7 @@ kotlin {
 - [x] CrmDialog shows/hides with animation
 
 ### 11c. Input Component Tests
-> **Implemented 2026-06-14** (ui/InputComponents.kt). Compose test infra not yet
-> wired (no compose-ui-test dep); component behaviour verified by inspection.
+> **Tested 2026-06-14** (ui/InputComponentsTest.kt — 16 compose-ui-test cases, all passing).
 - [x] CrmCheckbox: checked/unchecked toggle, disabled state, label rendering
 - [x] CrmRadio: selection within group, single-select enforcement
 - [x] CrmSwitch: toggle animation, disabled state, label
@@ -1000,7 +999,7 @@ kotlin {
 - [x] All inputs meet 48dp minimum touch target (CrmTheme.focus.minTouchTarget)
 
 ### 11d. Feedback Component Tests
-> **Implemented 2026-06-14** (ui/FeedbackComponents.kt).
+> **Tested 2026-06-14** (ui/FeedbackComponentsTest.kt — 13 compose-ui-test cases, all passing).
 - [x] CrmSnackbar: shows message, auto-dismisses after duration, action button
 - [x] CrmSpinner: renders at specified size, animates rotation
 - [x] CrmProgressBar: fills proportionally to progress value
@@ -1015,7 +1014,9 @@ kotlin {
 - [x] CrmPopover: Popup wrapper with shadow + border (ui/SelectComponents.kt); arrow decoration deferred
 
 ### 11f. Navigation Component Tests
-> **Implemented 2026-06-14** (ui/NavigationComponents.kt).
+> **Tested 2026-06-14** (ui/NavigationComponentsTest.kt — 11 compose-ui-test cases, all passing).
+> Bugfix: CrmTabs underline indicator changed from `fillMaxWidth()` to `matchParentSize()` — the
+> selected tab was incorrectly expanding to fill the Row's full width, pushing subsequent tabs offscreen.
 - [x] CrmTabs: selected tab indicator, animated color transition
 - [x] CrmBreadcrumb: renders trail, last item non-clickable
 - [x] CrmPagination: page controls, page size selector, 48 dp touch targets
@@ -1048,9 +1049,9 @@ kotlin {
 ### 11j. Platform Compilation
 - [x] `./gradlew :composeApp:compileKotlinJvm` — BUILD SUCCESSFUL (2026-06-14)
 - [x] `./gradlew :composeApp:compileKotlinWasmJs` — BUILD SUCCESSFUL (2026-06-14)
+- [x] Compose UI test library (`compose.desktop.uiTestJUnit4`) — wired in `composeApp/build.gradle.kts` jvmTest source set (2026-06-14); 51 tests passing
 - [ ] Android target compiles — requires android toolchain + frontend/android module (deferred)
 - [ ] iOS target compiles — requires Xcode + frontend/ios module (deferred)
-- [ ] Compose UI test library (compose-ui-test) — add when automated component tests are prioritised
 
 ---
 

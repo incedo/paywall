@@ -39,17 +39,23 @@ fun CrmTabs(
                 targetValue = if (selected) CrmTheme.colors.primary else CrmTheme.colors.onSurfaceVariant,
                 animationSpec = tween(CrmTheme.animation.fast),
             )
-            Box(
-                modifier = Modifier
-                    .clickable { onSelect(index) }
-                    .padding(horizontal = CrmTheme.spacing.lg, vertical = CrmTheme.spacing.md),
-            ) {
-                CrmText(tab, style = CrmTheme.typography.button, color = textColor)
+            // Padding lives on CrmText (not the outer Box) so matchParentSize() on the
+            // indicator fills only the tab's intrinsic width, not the Row's full width.
+            Box(modifier = Modifier.clickable { onSelect(index) }) {
+                CrmText(
+                    tab,
+                    style = CrmTheme.typography.button,
+                    color = textColor,
+                    modifier = Modifier.padding(
+                        horizontal = CrmTheme.spacing.lg,
+                        vertical = CrmTheme.spacing.md,
+                    ),
+                )
                 if (selected) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
+                            .matchParentSize()
                             .height(CrmBorder.thick)
                             .clip(CrmTheme.shapes.pill)
                             .background(CrmTheme.colors.primary),
