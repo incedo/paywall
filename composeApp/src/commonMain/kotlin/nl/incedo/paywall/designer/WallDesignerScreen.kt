@@ -29,6 +29,8 @@ import nl.incedo.paywall.model.WallDefinition
 import nl.incedo.paywall.model.WallType
 import nl.incedo.paywall.model.defaultCopyFor
 import nl.incedo.paywall.walls.WallCopy
+import nl.incedo.paywall.walls.WallLayout
+import nl.incedo.paywall.walls.WallLayoutValidator
 import nl.incedo.paywall.screens.ConsentStepScreen
 import nl.incedo.paywall.screens.ContentGateWall
 import nl.incedo.paywall.screens.MeterNudgeBanner
@@ -69,21 +71,44 @@ fun WallDesignerScreen(
     var visitorContext by remember { mutableStateOf(0) } // 0=anonymous 1=registered 2=subscriber
     var gateContext by remember { mutableStateOf(0) }    // 0=paywall 1=registration 2=consent 3=nudge
     var history by remember { mutableStateOf<List<WallVersionSummary>>(emptyList()) }
+    // VWE-12/14: block editor mode — starts from back-compat projection of the current definition
+    var blockEditorMode by remember { mutableStateOf(false) }
+    var blockLayout by remember(definition) { mutableStateOf(definition.toWallLayout()) }
+    val layoutForPreview: WallLayout = if (blockEditorMode) blockLayout else definition.toWallLayout()
+    val layoutHasViolations = blockEditorMode && WallLayoutValidator.validate(blockLayout).isNotEmpty()
 
     LaunchedEffect(wallName) { history = runCatching { onLoadHistory() }.getOrDefault(emptyList()) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        DesignerToolbar(wallName, wallStatus, onBack, onSaveDraft, onPublish)
+        DesignerToolbar(wallName, wallStatus, onBack, onSaveDraft, onPublish,
+            publishBlocked = layoutHasViolations)
         CrmDivider()
         Row(modifier = Modifier.fillMaxWidth()) {
-            ConfigPanel(
-                definition = definition,
-                onDefinitionChange = onDefinitionChange,
+            // VWE-12/14: left panel toggles between flat form (legacy) and block editor
+            Column(
                 modifier = Modifier
                     .width(320.dp)
                     .verticalScroll(rememberScrollState())
                     .padding(CrmTheme.spacing.xl),
-            )
+                verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
+            ) {
+                CrmSegmentedToggle(
+                    options = listOf("Content form", "Block editor"),
+                    selectedIndex = if (blockEditorMode) 1 else 0,
+                    onSelect = { blockEditorMode = it == 1 },
+                )
+                if (blockEditorMode) {
+                    BlockEditorPanel(
+                        layout = blockLayout,
+                        onLayoutChange = { blockLayout = it },
+                    )
+                } else {
+                    ConfigPanel(
+                        definition = definition,
+                        onDefinitionChange = onDefinitionChange,
+                    )
+                }
+            }
             PreviewPanel(
                 definition = definition,
                 mobilePreview = mobilePreview,
@@ -118,6 +143,7 @@ private fun DesignerToolbar(
     onBack: () -> Unit,
     onSaveDraft: () -> Unit,
     onPublish: () -> Unit,
+    publishBlocked: Boolean = false,
 ) {
     Row(
         modifier = Modifier
@@ -132,7 +158,12 @@ private fun DesignerToolbar(
         CrmTag(wallStatus, CrmTheme.colors.surfaceVariant, CrmTheme.colors.onSurfaceVariant)
         Row(modifier = Modifier.weight(1f)) {}
         CrmSecondaryButton("Save draft", onClick = onSaveDraft)
-        CrmPrimaryButton("Publish", onClick = onPublish)
+        // VWE-13: Publish is disabled when the block editor layout has structural violations
+        if (publishBlocked) {
+            CrmSecondaryButton("Publish (fix layout first)")
+        } else {
+            CrmPrimaryButton("Publish", onClick = onPublish)
+        }
     }
 }
 
@@ -140,11 +171,10 @@ private fun DesignerToolbar(
 private fun ConfigPanel(
     definition: WallDefinition,
     onDefinitionChange: (WallDefinition) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     var newLocale by remember { mutableStateOf("") }
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg)) {
+    Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg)) {
         CrmText("Wall type", style = CrmTheme.typography.label, color = CrmTheme.colors.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
             WallType.entries.forEach { type ->
