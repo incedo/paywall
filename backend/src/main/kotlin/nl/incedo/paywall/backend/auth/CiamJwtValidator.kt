@@ -37,15 +37,20 @@ class CiamJwtValidator(
         /**
          * Production wiring: JWKS fetched from the CIAM endpoint, keys cached for 24 h
          * with automatic refresh on unknown kid so key rotation needs no deploy (NFR-21/NFR-23).
+         *
+         * NFR-20: [audience] is required — omitting it would disable the aud check and accept
+         * tokens minted for any other client on the same Hydra instance. Supply CIAM_AUDIENCE.
          */
-        fun fromJwksUrl(jwksUrl: String, issuer: String, audience: String? = null) = CiamJwtValidator(
-            jwkProvider = JwkProviderBuilder(URL(jwksUrl))
-                .cached(10, 24, TimeUnit.HOURS)   // NFR-21: cache ≥ 1 h; unknown kid triggers fresh fetch
-                .rateLimited(10, 1, TimeUnit.MINUTES)
-                .build(),
-            issuer = issuer,
-            audience = audience,
-        )
+        fun fromJwksUrl(jwksUrl: String, issuer: String, audience: String): CiamJwtValidator {
+            return CiamJwtValidator(
+                jwkProvider = JwkProviderBuilder(URL(jwksUrl))
+                    .cached(10, 24, TimeUnit.HOURS)   // NFR-21: cache ≥ 1 h; unknown kid triggers fresh fetch
+                    .rateLimited(10, 1, TimeUnit.MINUTES)
+                    .build(),
+                issuer = issuer,
+                audience = audience,
+            )
+        }
     }
 
     /** @return the CIAM subject as [UserId], or null for anything not provably authentic. */

@@ -376,12 +376,14 @@ fun main() {
     // TS-04: Ory Hydra issues the tokens; JWKS via its public endpoint, e.g.
     // CIAM_JWKS_URL=http://localhost:4444/.well-known/jwks.json
     // CIAM_ISSUER=http://localhost:4444/
-    // CIAM_AUDIENCE=paywall (NFR-20: aud claim must contain this value when set)
+    // CIAM_AUDIENCE=paywall (NFR-20: required when CIAM_JWKS_URL is set — startup fails without it)
     val jwtValidator = System.getenv("CIAM_JWKS_URL")?.let { jwks ->
+        val audience = System.getenv("CIAM_AUDIENCE")
+            ?: error("NFR-20: CIAM_AUDIENCE must be set when CIAM_JWKS_URL is configured (tokens for any Hydra client would be accepted otherwise)")
         CiamJwtValidator.fromJwksUrl(
             jwksUrl = jwks,
             issuer = System.getenv("CIAM_ISSUER") ?: jwks.substringBefore(".well-known").trimEnd('/') + "/",
-            audience = System.getenv("CIAM_AUDIENCE"), // NFR-20: null = skip aud check (dev/test)
+            audience = audience,
         )
     }
 
