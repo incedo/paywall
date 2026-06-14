@@ -50,7 +50,12 @@ tasks.jacocoTestReport {
         (sourceSets.main.get().output.classesDirs +
          files(project(":shared").layout.buildDirectory.dir("classes/kotlin/jvm/main")))
         .asFileTree.matching {
-            // Postgres adapter — requires a running PG 16 instance (integration-only)
+            // Q-3: PostgresEventStore (persistence/**) is EXCLUDED from this report.
+            // It is covered by the Postgres integration tests gated on PAYWALL_TEST_PG_URL
+            // (see README / CLAUDE.md), but those tests don't feed this exec file.
+            // The headline coverage % intentionally excludes the hardest infra boundary.
+            // To include it: run `PAYWALL_TEST_PG_URL=… ./gradlew :backend:test` in CI
+            // with a PG 16 service container and merge the resulting exec into executionData.
             exclude("nl/incedo/paywall/backend/persistence/**")
             // Real CIAM HTTP client — requires Ory Kratos running
             exclude("nl/incedo/paywall/backend/KratosCiamSessionClient**")
