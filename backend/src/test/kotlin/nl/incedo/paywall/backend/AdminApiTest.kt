@@ -286,6 +286,28 @@ class AdminApiTest {
     }
 
     @Test
+    fun configWithRolling30dPeriodIsRejected() = configApiTest { client ->
+        // MT-06: rolling_30d is not yet implemented; publishing a config that
+        // uses it must return 400 so the operator learns immediately (API-03).
+        val rolling = ExperimentDefinition(
+            id = ExperimentId("rolling-test"),
+            name = "rolling window test",
+            variants = listOf(
+                Variant("metered", StrategyConfig.Metered(limit = 5, periodType = "rolling_30d"), weight = 1),
+            ),
+        )
+        val resp = client.post("/api/v1/admin/config") {
+            contentType(ContentType.Application.Json)
+            setBody(PublishExperimentConfigRequest(rolling))
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status,
+            "MT-06: rolling_30d must be rejected at config-load")
+        val body = resp.body<Map<String, String>>()
+        assertTrue(body["error"]?.contains("rolling_30d") == true,
+            "error message must name the unsupported period type")
+    }
+
+    @Test
     fun publishConfigAffectsDecisions() = configApiTest { client ->
         // Before publish: metered variant (from defaultExperiment) grants access
         val meteredVisitor = visitorIn("metered")

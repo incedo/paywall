@@ -21,8 +21,8 @@ data class GrantIssued(
     val grantedBy: String,
     /** FGA-01: human-readable reason for audit (e.g. "support ticket 4711", "ad completion"). */
     val reason: String = "",
-    /** Null = no expiry. Day/week passes carry TTL = pass duration (PW-08). */
-    val expiresAtEpochMs: Long? = null,
+    /** FGA-02: every grant must be time-bounded; day/week passes use pass duration (PW-08). */
+    val expiresAtEpochMs: Long,
     override val tags: Set<String> = setOf(
         "subject:${subjectId.value}",
         "article:${articleId.value}",

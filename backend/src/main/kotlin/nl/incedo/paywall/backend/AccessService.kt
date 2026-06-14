@@ -147,6 +147,11 @@ class AccessService(
          */
         isVerifiedCrawler: Boolean = false,
         /**
+         * MT-04: a prefetch read (Sec-Purpose: prefetch) must not burn a meter credit.
+         * The edge sets this flag; the origin never trusts raw browser prefetch headers.
+         */
+        isPrefetch: Boolean = false,
+        /**
          * EX-05: staff debug override — when set, bypasses VariantAssigner and
          * uses the named variant. Unknown names fall back to normal assignment.
          * Analytics events are suppressed so QA runs do not pollute funnel data.
@@ -283,7 +288,10 @@ class AccessService(
         )
 
         var usedAfter = meter.used
-        if (decision is AccessDecision.Full && decision.countsTowardMeter) {
+        // MT-04/MT-05: bots (non-crawler) and prefetch reads must not consume a
+        // meter credit. isVerifiedCrawler already returned early above; this guard
+        // covers the remaining bot/prefetch signals before writing MeterIncremented.
+        if (decision is AccessDecision.Full && decision.countsTowardMeter && !isBot && !isPrefetch) {
             RecordArticleReadHandler(eventStore)
                 .handle(RecordArticleRead(subject.subjectId, article.id, period))
             usedAfter += 1
@@ -481,13 +489,13 @@ class AccessService(
 
     /**
      * MT-06: resolve the meter period for the given strategy. Only "calendar_month"
-     * (the default) is active in the experiment phase. "rolling_30d" is recognised
-     * as a future value and falls back to calendar month; a different tag scheme
-     * is required before rolling windows can be enforced.
+     * is implemented; any other periodType is rejected at config-load (API-03).
+     * This error() fires only if a legacy config bypassed that validation.
      */
     internal fun periodFor(strategy: StrategyConfig): MeterPeriod =
         when {
-            strategy is StrategyConfig.Metered && strategy.periodType == "rolling_30d" -> currentPeriod()
+            strategy is StrategyConfig.Metered && strategy.periodType != "calendar_month" ->
+                error("unsupported meterPeriodType '${strategy.periodType}' — rejected at config-load (MT-06)")
             else -> currentPeriod()
         }
 

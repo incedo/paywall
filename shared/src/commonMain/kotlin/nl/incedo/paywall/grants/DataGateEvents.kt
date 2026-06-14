@@ -26,3 +26,20 @@ data class DataGateConsentGiven(
         "data_gate_consent:${subjectId.value}:$purposeId",
     ),
 ) : DomainEvent
+
+/**
+ * DG-03: consent withdrawal — the subject revokes permission for this purpose.
+ * After this event, new data-gate grants for the same subject+purpose are blocked.
+ * Already-issued, TTL-bounded grants remain valid until they expire (non-retroactive).
+ */
+@Serializable
+data class DataGateConsentWithdrawn(
+    val subjectId: SubjectId,
+    /** Must match the purposeId from the original [DataGateConsentGiven]. */
+    val purposeId: String,
+    val withdrawnAtEpochMs: Long,
+    override val tags: Set<String> = setOf(
+        "subject:${subjectId.value}",
+        "data_gate_consent:${subjectId.value}:$purposeId",
+    ),
+) : DomainEvent

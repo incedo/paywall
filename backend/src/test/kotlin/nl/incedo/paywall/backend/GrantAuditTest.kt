@@ -75,7 +75,7 @@ class GrantAuditTest {
 
     @Test
     fun activeGrantAppearsAsLive() = apiTest { client ->
-        // null expiry = no expiration; grant is live as long as it isn't revoked
+        // null expiry → server defaults to 30 days from now (FGA-02); grant is live
         client.issueGrant(
             subjectId = "visitor:fga08-a",
             grantId = "g-fga08-a",

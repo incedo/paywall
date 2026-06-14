@@ -18,7 +18,7 @@ class GrantDecision(
     private val subjectIds: Set<SubjectId> = emptySet(),
 ) {
 
-    private data class GrantEntry(val expiresAtEpochMs: Long?, val grantedBy: String)
+    private data class GrantEntry(val expiresAtEpochMs: Long, val grantedBy: String)
     private val live = mutableMapOf<GrantId, GrantEntry>()
 
     fun apply(event: DomainEvent) {
@@ -44,11 +44,11 @@ class GrantDecision(
     fun applyAll(events: Iterable<DomainEvent>) = events.forEach(::apply)
 
     fun hasLiveGrant(nowEpochMs: Long): Boolean =
-        live.values.any { it.expiresAtEpochMs == null || it.expiresAtEpochMs > nowEpochMs }
+        live.values.any { it.expiresAtEpochMs > nowEpochMs }
 
     /** FGA-04: grantedBy of the first live grant, for analytics logging. */
     fun liveGrantedBy(nowEpochMs: Long): String? =
-        live.values.firstOrNull { it.expiresAtEpochMs == null || it.expiresAtEpochMs > nowEpochMs }?.grantedBy
+        live.values.firstOrNull { it.expiresAtEpochMs > nowEpochMs }?.grantedBy
 
     companion object {
         /**
@@ -58,7 +58,9 @@ class GrantDecision(
         fun ofCached(articleId: ArticleId, hasGrant: Boolean, grantedBy: String?): GrantDecision {
             val d = GrantDecision(articleId)
             if (hasGrant && grantedBy != null) {
-                d.live[GrantId("__cached__")] = GrantEntry(null, grantedBy)
+                // Long.MAX_VALUE sentinel: a cache-derived grant has no independent TTL;
+                // the cache layer enforces its own 60s TTL before this is consulted.
+                d.live[GrantId("__cached__")] = GrantEntry(Long.MAX_VALUE, grantedBy)
             }
             return d
         }

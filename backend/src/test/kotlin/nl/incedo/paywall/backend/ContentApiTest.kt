@@ -263,6 +263,55 @@ class ContentApiTest {
     }
 
     @Test
+    fun botReadDoesNotIncrementMeter() = apiTest(originSecret = "edge-secret") { client ->
+        // MT-04: a bot read must not burn a meter credit.
+        val visitor = visitorIn("metered")
+        val botRead = client.get("/api/v1/articles/prem-1") {
+            header("X-Visitor-Id", visitor)
+            header("X-Origin-Secret", "edge-secret")
+            header("User-Agent", "Mozilla/5.0 (compatible; AhrefsBot/7.0)")
+        }
+        assertEquals(HttpStatusCode.OK, botRead.status)
+        val article: ArticleResponse = botRead.body()
+        assertEquals("full", article.access, "MT-04: bot read should still serve full content")
+        assertEquals(0, article.meterUsed ?: 0, "MT-04: bot read must not increment meter")
+    }
+
+    @Test
+    fun prefetchReadDoesNotIncrementMeter() = apiTest(originSecret = "edge-secret") { client ->
+        // MT-04: a prefetch read must not burn a meter credit.
+        val visitor = visitorIn("metered")
+        val prefetchRead = client.get("/api/v1/articles/prem-1") {
+            header("X-Visitor-Id", visitor)
+            header("X-Origin-Secret", "edge-secret")
+            header("Sec-Purpose", "prefetch")
+        }
+        assertEquals(HttpStatusCode.OK, prefetchRead.status)
+        val article: ArticleResponse = prefetchRead.body()
+        assertEquals(0, article.meterUsed ?: 0, "MT-04: prefetch read must not increment meter")
+
+        // A normal subsequent read still counts.
+        val realRead = client.get("/api/v1/articles/prem-1") {
+            header("X-Visitor-Id", visitor)
+            header("X-Origin-Secret", "edge-secret")
+        }
+        assertEquals(1, realRead.body<ArticleResponse>().meterUsed, "MT-04: real read after prefetch must count")
+    }
+
+    @Test
+    fun prefetchWithoutEdgeSecretIsNotExempted() = apiTest(originSecret = "edge-secret") { client ->
+        // MT-04: the Sec-Purpose header is only trusted when the edge secret is present.
+        val visitor = visitorIn("metered")
+        val untrustedPrefetch = client.get("/api/v1/articles/prem-1") {
+            header("X-Visitor-Id", visitor)
+            // No X-Origin-Secret — should not trust the prefetch header.
+            header("Sec-Purpose", "prefetch")
+        }
+        // Request is rejected by origin trust (no origin secret presented) — returns 401.
+        assertEquals(HttpStatusCode.Unauthorized, untrustedPrefetch.status)
+    }
+
+    @Test
     fun fullPremiumResponseIsNotPubliclyCacheable() = apiTest { client ->
         // BP-07: a metered visitor reading a premium article must get Cache-Control:
         // private so the full body is never stored in a shared cache (CDN/proxy).

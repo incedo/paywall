@@ -293,6 +293,17 @@ data class DataGateCompletionRequest(
     val articleId: String? = null,
 )
 
+/**
+ * DG-03: consent withdrawal webhook from the CIAM or survey platform.
+ * After this, the data-gate-completion endpoint blocks new grants for
+ * the same subject+purpose. Non-retroactive: active grants run until TTL.
+ */
+@Serializable
+data class DataGateConsentWithdrawalRequest(
+    val subjectId: String,
+    val purposeId: String,
+)
+
 // GrantAuditEntry, OfferStatsResponse, OfferChannelStatsResponse, PartnerUsageResponse,
 // BypassRateResponse, CohortStatsResponse defined in shared module and imported above.
 

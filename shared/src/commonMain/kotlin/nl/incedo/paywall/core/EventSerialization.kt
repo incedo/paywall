@@ -26,6 +26,7 @@ import nl.incedo.paywall.offers.OfferDeclined
 import nl.incedo.paywall.offers.OfferSuppressed
 import nl.incedo.paywall.offers.OfferTriggered
 import nl.incedo.paywall.grants.DataGateConsentGiven
+import nl.incedo.paywall.grants.DataGateConsentWithdrawn
 import nl.incedo.paywall.grants.GrantIssued
 import nl.incedo.paywall.grants.GrantRevoked
 import nl.incedo.paywall.grants.ShareTokenIssued
@@ -94,6 +95,7 @@ val paywallSerializersModule = SerializersModule {
         subclass(SubscriptionResumed::class)
         subclass(CancellationSurveySubmitted::class)
         subclass(DataGateConsentGiven::class)
+        subclass(DataGateConsentWithdrawn::class)
         subclass(GrantIssued::class)
         subclass(GrantRevoked::class)
         subclass(ShareTokenIssued::class)

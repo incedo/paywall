@@ -83,6 +83,7 @@ import nl.incedo.paywall.brands.BrandDecision
 import nl.incedo.paywall.brands.BrandThemeUpdated
 import nl.incedo.paywall.brands.brandTag
 import nl.incedo.paywall.grants.DataGateConsentGiven
+import nl.incedo.paywall.grants.DataGateConsentWithdrawn
 import nl.incedo.paywall.offers.OFFER_EVENT_TAG
 import nl.incedo.paywall.offers.OfferAccepted
 import nl.incedo.paywall.offers.OfferDeclined
@@ -266,6 +267,9 @@ import nl.incedo.paywall.storybook.GovernanceDecisionOutcome
 import nl.incedo.paywall.storybook.policyTag
 import nl.incedo.paywall.storybook.policyKeyTag
 import nl.incedo.paywall.storybook.toResponse
+import org.slf4j.LoggerFactory
+
+private val log = LoggerFactory.getLogger("paywall.decide")
 
 /**
  * Default experiment (EX-02): the four strategies of Doc 1 at equal weight.
@@ -376,12 +380,14 @@ fun main() {
     // TS-04: Ory Hydra issues the tokens; JWKS via its public endpoint, e.g.
     // CIAM_JWKS_URL=http://localhost:4444/.well-known/jwks.json
     // CIAM_ISSUER=http://localhost:4444/
-    // CIAM_AUDIENCE=paywall (NFR-20: aud claim must contain this value when set)
+    // CIAM_AUDIENCE=paywall (NFR-20: required when CIAM_JWKS_URL is set — startup fails without it)
     val jwtValidator = System.getenv("CIAM_JWKS_URL")?.let { jwks ->
+        val audience = System.getenv("CIAM_AUDIENCE")
+            ?: error("NFR-20: CIAM_AUDIENCE must be set when CIAM_JWKS_URL is configured (tokens for any Hydra client would be accepted otherwise)")
         CiamJwtValidator.fromJwksUrl(
             jwksUrl = jwks,
             issuer = System.getenv("CIAM_ISSUER") ?: jwks.substringBefore(".well-known").trimEnd('/') + "/",
-            audience = System.getenv("CIAM_AUDIENCE"), // NFR-20: null = skip aud check (dev/test)
+            audience = audience,
         )
     }
 
@@ -577,19 +583,37 @@ fun Application.module(
             // ignored for regular readers (no 4xx). Analytics suppressed for debug runs.
             val forceVariant = call.request.queryParameters["forceVariant"]
                 ?.takeIf { jwtValidator == null || jwtValidator.staffFrom(call.request.headers[HttpHeaders.Authorization]) != null }
-            val outcome = service.decide(
-                subject = subject,
-                article = Article(ArticleId(request.articleId), tier),
-                channel = request.channel,
-                // INF-09: CF bot score supplements UA-based detection (either signal flags as bot).
-                isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]) || isBotByCfScore(cfBotScore),
-                isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
-                isVerifiedCrawler = isVerifiedCrawler,
-                forceVariant = forceVariant,
-                correlationId = correlationId,
-                externalScore = request.externalScore, // DY-06
-                killedVariants = killedVariantsCache.get(), // NFR-15
-            )
+            // MT-04: prefetch reads must not burn a meter credit. The Sec-Purpose
+            // header is set by browsers; only trust it when it arrives through the
+            // edge (origin secret present), preventing clients from opting out.
+            val isPrefetch = originSecret != null &&
+                call.request.headers["Sec-Purpose"]?.startsWith("prefetch") == true
+            val outcome = try {
+                service.decide(
+                    subject = subject,
+                    article = Article(ArticleId(request.articleId), tier),
+                    channel = request.channel,
+                    // INF-09: CF bot score supplements UA-based detection (either signal flags as bot).
+                    isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]) || isBotByCfScore(cfBotScore),
+                    isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
+                    isVerifiedCrawler = isVerifiedCrawler,
+                    isPrefetch = isPrefetch,
+                    forceVariant = forceVariant,
+                    correlationId = correlationId,
+                    externalScore = request.externalScore, // DY-06
+                    killedVariants = killedVariantsCache.get(), // NFR-15
+                )
+            } catch (e: Exception) {
+                // NFR-11/FGA-05: fail open — gate premium on store outage rather than 500,
+                // so readers are not locked out and the edge can cache the safe response.
+                log.error("NFR-11: decide store outage — failing open (gate premium / full free)", e)
+                call.respond(if (tier == ContentTier.FREE) {
+                    DecideResponse(access = "full", reason = "fail_open", variant = "unknown")
+                } else {
+                    DecideResponse(access = "gate", reason = "fail_safe", variant = "unknown", wallType = "hard")
+                })
+                return@post
+            }
             call.respond(DecideResponse.from(outcome))
         }
         // AC-13: soft-gate dismissal — visitor dismisses the soft overlay in the Dynamic
@@ -639,13 +663,31 @@ fun Application.module(
             // INF-09: Cloudflare bot management score (trusted when origin secret present).
             val cfBotScoreArticle = if (originSecret != null)
                 parseCfBotScore(call.request.headers["X-CF-Bot-Score"]) else null
-            val outcome = service.decide(
-                subject = subject,
-                article = Article(stored.id, stored.tier),
-                isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]) || isBotByCfScore(cfBotScoreArticle),
-                isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
-                isVerifiedCrawler = isVerifiedCrawler,
-            )
+            val isPrefetchArticle = originSecret != null &&
+                call.request.headers["Sec-Purpose"]?.startsWith("prefetch") == true
+            val outcome = try {
+                service.decide(
+                    subject = subject,
+                    article = Article(stored.id, stored.tier),
+                    isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]) || isBotByCfScore(cfBotScoreArticle),
+                    isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
+                    isVerifiedCrawler = isVerifiedCrawler,
+                    isPrefetch = isPrefetchArticle,
+                )
+            } catch (e: Exception) {
+                // NFR-11/FGA-05: fail open — teaser/gate for premium, full for free on store outage.
+                log.error("NFR-11: article decide store outage — failing open", e)
+                val failSafe = if (stored.tier == ContentTier.FREE) {
+                    ArticleResponse(id = stored.id.value, title = stored.title,
+                        tier = stored.tier.name.lowercase(), access = "full", body = stored.body)
+                } else {
+                    ArticleResponse(id = stored.id.value, title = stored.title,
+                        tier = stored.tier.name.lowercase(), access = "gate",
+                        teaser = ArticleRepository.teaserOf(stored))
+                }
+                call.respond(failSafe)
+                return@get
+            }
             // BP-03: premium pages carry noarchive so archive crawlers only
             // snapshot the teaser and not the full body (also applies to verified
             // search crawlers — noarchive suppresses Google Cache, not indexing).
@@ -825,6 +867,14 @@ fun Application.module(
             }
             if (experiment.variants.any { it.weight <= 0 }) {
                 return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "all variant weights must be positive"))
+            }
+            // MT-06: rolling_30d is not implemented; reject at config-load so the config cannot silently lie.
+            val unsupportedPeriod = experiment.variants
+                .mapNotNull { (it.strategy as? nl.incedo.paywall.access.StrategyConfig.Metered)?.periodType }
+                .firstOrNull { it != "calendar_month" }
+            if (unsupportedPeriod != null) {
+                return@post call.respond(HttpStatusCode.BadRequest,
+                    mapOf("error" to "unsupported meterPeriodType '$unsupportedPeriod'; only 'calendar_month' is implemented (MT-06)"))
             }
             val now = System.currentTimeMillis()
             val event = ExperimentConfigPublished(
@@ -1046,7 +1096,7 @@ fun Application.module(
             val meter = MeterDecision(period).also { it.applyAll(events) }
             val entitlement = nl.incedo.paywall.entitlements.EntitlementDecision().also { it.applyAll(events) }
             // Live grant ids across the linked subjects (FGA-08 browse)
-            val grantExpiry = mutableMapOf<String, Long?>()
+            val grantExpiry = mutableMapOf<String, Long>()
             events.forEach { event ->
                 when (event) {
                     is GrantIssued -> grantExpiry[event.grantId.value] = event.expiresAtEpochMs
@@ -1054,7 +1104,7 @@ fun Application.module(
                     else -> {}
                 }
             }
-            val liveGrants = grantExpiry.filterValues { it == null || it > now }.keys.sorted()
+            val liveGrants = grantExpiry.filterValues { it > now }.keys.sorted()
             val recent = events.filterIsInstance<WallEventRecorded>().takeLast(20).map {
                 InspectorWallEvent(
                     type = it.eventType.name.lowercase(),
@@ -1114,8 +1164,7 @@ fun Application.module(
                         grantedBy = g.grantedBy,
                         reason = g.reason, // FGA-01
                         expiresAtEpochMs = g.expiresAtEpochMs,
-                        isLive = g.grantId.value !in revoked &&
-                            (g.expiresAtEpochMs?.let { it > now } ?: true),
+                        isLive = g.grantId.value !in revoked && g.expiresAtEpochMs > now,
                     )
                 }
             call.respond(entries)
@@ -1556,53 +1605,51 @@ fun Application.module(
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "grantId, subjectId and articleId are required"))
                 return@post
             }
+            if (!change.active) {
+                val event = GrantRevoked(
+                    grantId = GrantId(change.grantId),
+                    subjectId = SubjectId(change.subjectId),
+                    articleId = ArticleId(change.articleId),
+                )
+                eventStore.append(listOf(event), condition = null)
+                service.invalidateGrantCache(change.subjectId, change.articleId)
+                call.respond(HttpStatusCode.Accepted, mapOf("recorded" to event::class.simpleName))
+                return@post
+            }
             // FGA-02: every grant is time-bound (expires_at required, max TTL configurable,
             // default 30 days). If not supplied, default to 30 days from now.
             val now = System.currentTimeMillis()
             val maxGrantTtlDays = service.currentExperiment().maxGrantTtlDays
             val maxGrantTtlMs = maxGrantTtlDays * 24L * 3600 * 1000
             val defaultGrantTtlMs = 30L * 24 * 3600 * 1000
-            val expiresAt = if (change.active) {
-                val requested = change.expiresAtEpochMs ?: (now + defaultGrantTtlMs)
-                if (requested > now + maxGrantTtlMs) {
-                    call.respond(
-                        HttpStatusCode.BadRequest,
-                        mapOf("error" to "grant TTL exceeds maximum of $maxGrantTtlDays days (FGA-02)"),
-                    )
-                    return@post
-                }
-                requested
-            } else null
+            val expiresAt: Long = change.expiresAtEpochMs ?: (now + defaultGrantTtlMs)
+            if (expiresAt > now + maxGrantTtlMs) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    mapOf("error" to "grant TTL exceeds maximum of $maxGrantTtlDays days (FGA-02)"),
+                )
+                return@post
+            }
             // FGA-03: max 10 active grants per subject per source (grantedBy) — prevent
             // privilege escalation through a compromised CEP/AI integration (FGA-06).
-            if (change.active) {
-                val maxGrantsPerSource = 10
-                val subjectEvents = eventStore.query(EventQuery(setOf("subject:${change.subjectId}"))).events
-                val activeGrantsFromSource = subjectEvents
-                    .filterIsInstance<GrantIssued>()
-                    .count { it.grantedBy == change.grantedBy && (it.expiresAtEpochMs ?: Long.MAX_VALUE) > now }
-                if (activeGrantsFromSource >= maxGrantsPerSource) {
-                    call.respond(HttpStatusCode.TooManyRequests,
-                        mapOf("error" to "max active grants per source ($maxGrantsPerSource) reached (FGA-03)"))
-                    return@post
-                }
+            val maxGrantsPerSource = 10
+            val subjectEvents = eventStore.query(EventQuery(setOf("subject:${change.subjectId}"))).events
+            val activeGrantsFromSource = subjectEvents
+                .filterIsInstance<GrantIssued>()
+                .count { it.grantedBy == change.grantedBy && it.expiresAtEpochMs > now }
+            if (activeGrantsFromSource >= maxGrantsPerSource) {
+                call.respond(HttpStatusCode.TooManyRequests,
+                    mapOf("error" to "max active grants per source ($maxGrantsPerSource) reached (FGA-03)"))
+                return@post
             }
-            val event = if (change.active) {
-                GrantIssued(
-                    grantId = GrantId(change.grantId),
-                    subjectId = SubjectId(change.subjectId),
-                    articleId = ArticleId(change.articleId),
-                    grantedBy = change.grantedBy,
-                    reason = change.reason, // FGA-01
-                    expiresAtEpochMs = expiresAt,
-                )
-            } else {
-                GrantRevoked(
-                    grantId = GrantId(change.grantId),
-                    subjectId = SubjectId(change.subjectId),
-                    articleId = ArticleId(change.articleId),
-                )
-            }
+            val event = GrantIssued(
+                grantId = GrantId(change.grantId),
+                subjectId = SubjectId(change.subjectId),
+                articleId = ArticleId(change.articleId),
+                grantedBy = change.grantedBy,
+                reason = change.reason, // FGA-01
+                expiresAtEpochMs = expiresAt,
+            )
             eventStore.append(listOf(event), condition = null)
             // FGA-05: invalidate the 60s grant result cache so the change takes effect immediately.
             service.invalidateGrantCache(change.subjectId, change.articleId)
@@ -1729,7 +1776,17 @@ fun Application.module(
         // Integration inbound (MT-13): consent-based identity link signals —
         // login (US-04), newsletter tokens, share tokens (BP-05), extra devices.
         post("/api/v1/integration/identity-link") {
-            val request = call.receive<IdentityLinkRequest>()
+            val rawBody = call.receive<ByteArray>()
+            if (!webhookVerifier.verify(rawBody, call.request.headers[WebhookVerifier.SIGNATURE_HEADER])) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "invalid webhook signature (NFR-03)"))
+                return@post
+            }
+            val request = try {
+                kotlinx.serialization.json.Json.decodeFromString<IdentityLinkRequest>(rawBody.decodeToString())
+            } catch (_: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid request body"))
+                return@post
+            }
             if (request.subjectA.isBlank() || request.subjectB.isBlank() || request.cause.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectA, subjectB and cause are required"))
                 return@post
@@ -1797,7 +1854,7 @@ fun Application.module(
             val subjectEvents = eventStore.query(EventQuery(setOf("subject:${subjectId.value}"))).events
             val adGrantsToday = subjectEvents
                 .filterIsInstance<nl.incedo.paywall.grants.GrantIssued>()
-                .count { it.grantedBy == "ad_gated" && (it.expiresAtEpochMs ?: 0) >= todayStart }
+                .count { it.grantedBy == "ad_gated" && it.expiresAtEpochMs >= todayStart }
             val dailyCap = 2
             if (adGrantsToday >= dailyCap) {
                 call.respond(HttpStatusCode.TooManyRequests,
@@ -1841,6 +1898,15 @@ fun Application.module(
             }
             val subjectId = SubjectId(req.subjectId)
             val now = System.currentTimeMillis()
+            // DG-03: reject new grants for subjects who have withdrawn consent for this purpose.
+            val consentTag = "data_gate_consent:${req.subjectId}:${req.purposeId}"
+            val consentEvents = eventStore.query(EventQuery(setOf(consentTag))).events
+            val lastWithdrawn = consentEvents.filterIsInstance<DataGateConsentWithdrawn>().maxByOrNull { it.withdrawnAtEpochMs }
+            val lastGiven = consentEvents.filterIsInstance<DataGateConsentGiven>().maxByOrNull { it.consentAtEpochMs }
+            if (lastWithdrawn != null && (lastGiven == null || lastWithdrawn.withdrawnAtEpochMs >= lastGiven.consentAtEpochMs)) {
+                call.respond(HttpStatusCode.Forbidden, mapOf("error" to "consent has been withdrawn for purpose ${req.purposeId} (DG-03)"))
+                return@post
+            }
             // Idempotency: use completionId as the grantId so replays don't double-grant.
             val grantId = GrantId("dg-${req.completionId}")
             val grantTtlMs = 7L * 24 * 60 * 60 * 1000 // DG-02: 7-day TTL
@@ -1863,6 +1929,34 @@ fun Application.module(
             if (req.articleId != null) service.invalidateGrantCache(req.subjectId, req.articleId)
             call.respond(HttpStatusCode.Created,
                 mapOf("grantId" to grantId.value, "expiresAtEpochMs" to (now + grantTtlMs).toString()))
+        }
+        // DG-03: consent withdrawal webhook — subject revokes permission for a purpose.
+        // After this event, the data-gate-completion endpoint blocks new grants for the
+        // same subject+purpose. Non-retroactive: active grants run until their TTL.
+        post("/api/v1/integration/data-gate-consent-withdrawal") {
+            val rawBody = call.receive<ByteArray>()
+            if (!webhookVerifier.verify(rawBody, call.request.headers[WebhookVerifier.SIGNATURE_HEADER])) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "invalid webhook signature (NFR-03)"))
+                return@post
+            }
+            val req = try {
+                kotlinx.serialization.json.Json.decodeFromString<DataGateConsentWithdrawalRequest>(rawBody.decodeToString())
+            } catch (_: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid request body (DG-03)"))
+                return@post
+            }
+            if (req.subjectId.isBlank() || req.purposeId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectId and purposeId are required (DG-03)"))
+                return@post
+            }
+            val now = System.currentTimeMillis()
+            val event = DataGateConsentWithdrawn(
+                subjectId = SubjectId(req.subjectId),
+                purposeId = req.purposeId,
+                withdrawnAtEpochMs = now,
+            )
+            eventStore.append(listOf(event), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "DataGateConsentWithdrawn"))
         }
         // UP-01/01a: outbound CEP offer request via OfferService (guardrails + logging).
         // The mock CEP returns a fixed configurable offer; replace with a real HTTP client in prod.
