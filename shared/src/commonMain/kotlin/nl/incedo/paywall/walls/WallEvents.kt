@@ -106,6 +106,18 @@ data class WallConfigChanged(
     override val tags: Set<String> = setOf("wall:${wallId.value}", "walls"),
 ) : DomainEvent
 
+/**
+ * VWE-03: block-level composition edit — carries the new ordered layout for the wall.
+ * Versioning / rollback / audit apply unchanged (ADM-13).
+ */
+@Serializable
+data class WallLayoutChanged(
+    val wallId: WallId,
+    val layout: WallLayout,
+    val actor: String,
+    override val tags: Set<String> = setOf("wall:${wallId.value}", "walls"),
+) : DomainEvent
+
 /** Draft → published (ADM-06: every change is a new version; rollback = re-apply an old config). */
 @Serializable
 data class WallPublished(
@@ -128,6 +140,13 @@ data class WallTemplateCreated(
     val name: String,
     /** The layout/copy config, always with brandId = null (templates are brand-neutral). */
     val config: WallConfig,
+    /**
+     * VWE-17: optional block layout saved alongside the flat config. When non-null the
+     * template was authored in the block editor; instantiating it also saves a
+     * [WallLayoutChanged] event on the new wall. Null means flat-config-only template.
+     * Default null preserves backward compatibility with existing serialised events.
+     */
+    val layout: WallLayout? = null,
     val actor: String,
     override val tags: Set<String> = setOf("wall-template:$templateId", "wall-templates"),
 ) : DomainEvent

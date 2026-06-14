@@ -120,6 +120,8 @@ import nl.incedo.paywall.partners.partnerTag
 import nl.incedo.paywall.walls.WallConfig
 import nl.incedo.paywall.walls.WallConfigChanged
 import nl.incedo.paywall.walls.WallCreated
+import nl.incedo.paywall.walls.WallLayout
+import nl.incedo.paywall.walls.WallLayoutChanged
 import nl.incedo.paywall.walls.WallPublished
 import nl.incedo.paywall.walls.WallTemplateCreated
 import nl.incedo.paywall.walls.WallView
@@ -317,6 +319,7 @@ private fun WallView.toResponse() = WallResponse(
     imageAlt = config.imageAlt, // ADM-17
     legalText = config.legalText, // ADM-11
     translations = config.translations, // ADM-15
+    layout = layout, // VWE-03
 )
 
 private suspend fun io.ktor.server.application.ApplicationCall.respondSaveResult(result: WallService.SaveResult) {
@@ -327,6 +330,8 @@ private suspend fun io.ktor.server.application.ApplicationCall.respondSaveResult
             respond(HttpStatusCode.Conflict, mapOf("error" to "version conflict", "currentVersion" to result.current.toString()))
         is WallService.SaveResult.VersionNotFound ->
             respond(HttpStatusCode.NotFound, mapOf("error" to "version not found in history"))
+        is WallService.SaveResult.LayoutInvalid ->
+            respond(HttpStatusCode.UnprocessableEntity, mapOf("error" to "layout is structurally invalid (VWE-02): ${result.violations.joinToString("; ")}"))
     }
 }
 
@@ -820,24 +825,32 @@ fun Application.module(
             if (request.wallType !in setOf("hard", "metered", "freemium", "dynamic")) {
                 return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "wallType must be hard|metered|freemium|dynamic"))
             }
-            val config = WallConfig(
-                name = request.name, wallType = request.wallType, title = request.title,
-                body = request.body, primaryCta = request.primaryCta,
-                secondaryCta = request.secondaryCta, channels = request.channels,
-                brandId = request.brandId, // ADM-10: optional brand association
-                requireConsentStep = request.requireConsentStep, // AC-14: GDPR consent step
-                imageUrl = request.imageUrl, // ADM-11: optional image block
-                imageAlt = request.imageAlt, // ADM-17: alt text for WCAG 2.1 AA
-                legalText = request.legalText, // ADM-11: optional legal text block
-                translations = request.translations, // ADM-15: per-locale copy overrides
-            )
             val wallId = WallId(id)
-            // The actor is the authenticated staff subject, not client-supplied (ADM-03 audit).
             val actor = staff.userId.value
-            val result = if (wallService.get(wallId) == null) {
-                wallService.create(wallId, config, actor)
+            val requestLayout = request.layout
+            val result = if (requestLayout != null) {
+                // VWE-03: block-editor save path — validate layout (VWE-02) then store WallLayoutChanged
+                if (wallService.get(wallId) == null) {
+                    return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "wall must exist before saving a layout"))
+                }
+                wallService.saveLayout(wallId, requestLayout, actor, request.expectedVersion)
             } else {
-                wallService.update(wallId, config, actor, request.expectedVersion)
+                val config = WallConfig(
+                    name = request.name, wallType = request.wallType, title = request.title,
+                    body = request.body, primaryCta = request.primaryCta,
+                    secondaryCta = request.secondaryCta, channels = request.channels,
+                    brandId = request.brandId, // ADM-10: optional brand association
+                    requireConsentStep = request.requireConsentStep, // AC-14: GDPR consent step
+                    imageUrl = request.imageUrl, // ADM-11: optional image block
+                    imageAlt = request.imageAlt, // ADM-17: alt text for WCAG 2.1 AA
+                    legalText = request.legalText, // ADM-11: optional legal text block
+                    translations = request.translations, // ADM-15: per-locale copy overrides
+                )
+                if (wallService.get(wallId) == null) {
+                    wallService.create(wallId, config, actor)
+                } else {
+                    wallService.update(wallId, config, actor, request.expectedVersion)
+                }
             }
             call.respondSaveResult(result)
         }
@@ -965,6 +978,10 @@ fun Application.module(
                         version++; status = "draft"
                         history.add(WallVersionSummary(version, status, ev.actor))
                     }
+                    is WallLayoutChanged -> {
+                        version++; status = "draft"
+                        history.add(WallVersionSummary(version, status, ev.actor))
+                    }
                     is WallPublished -> {
                         status = "published"
                         history.removeLastOrNull()
@@ -993,6 +1010,7 @@ fun Application.module(
                     body = e.config.body, primaryCta = e.config.primaryCta,
                     secondaryCta = e.config.secondaryCta, channels = e.config.channels,
                     translations = e.config.translations, createdBy = e.actor,
+                    layout = e.layout, // VWE-17
                 )
             })
         }
@@ -1010,6 +1028,7 @@ fun Application.module(
                     body = event.config.body, primaryCta = event.config.primaryCta,
                     secondaryCta = event.config.secondaryCta, channels = event.config.channels,
                     translations = event.config.translations, createdBy = event.actor,
+                    layout = event.layout, // VWE-17
                 ),
             )
         }
@@ -1035,7 +1054,9 @@ fun Application.module(
                 translations = request.translations,
             )
             val event = WallTemplateCreated(
-                templateId = id, name = request.name, config = config, actor = staff.userId.value,
+                templateId = id, name = request.name, config = config,
+                layout = request.layout, // VWE-17: persist block layout alongside flat config
+                actor = staff.userId.value,
             )
             eventStore.append(listOf(event), condition = null)
             call.respond(
@@ -1047,6 +1068,7 @@ fun Application.module(
                     imageUrl = config.imageUrl, imageAlt = config.imageAlt,
                     legalText = config.legalText,
                     translations = config.translations, createdBy = staff.userId.value,
+                    layout = request.layout, // VWE-17
                 ),
             )
         }
@@ -1064,7 +1086,14 @@ fun Application.module(
             val templateEvent = templateEvents.filterIsInstance<WallTemplateCreated>().lastOrNull()
                 ?: return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "unknown template"))
             val config = templateEvent.config.copy(brandId = brandId)
-            val result = wallService.create(WallId(wallId), config, actor = staff.userId.value)
+            val createResult = wallService.create(WallId(wallId), config, actor = staff.userId.value)
+            // VWE-17: if the template carries a block layout, save it as a WallLayoutChanged event
+            val templateLayout = templateEvent.layout
+            val result = if (createResult is WallService.SaveResult.Saved && templateLayout != null) {
+                wallService.saveLayout(WallId(wallId), templateLayout, actor = staff.userId.value, expectedVersion = null)
+            } else {
+                createResult
+            }
             call.respondSaveResult(result)
         }
         // ADM-04: subject inspector — meter state, entitlements, identity

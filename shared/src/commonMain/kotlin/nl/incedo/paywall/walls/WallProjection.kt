@@ -12,6 +12,8 @@ data class WallView(
     /** Number of config versions so far (ADM-06 version history). */
     val version: Int,
     val lastEditedBy: String,
+    /** VWE-03: block layout if the wall was last saved via the block editor; null for flat-config walls. */
+    val layout: WallLayout? = null,
 )
 
 /** Folds wall events into [WallView]s; disposable like every read model (DM-04). */
@@ -34,6 +36,15 @@ class WallProjection {
                     status = "draft", // edits always go through draft (ADM-06)
                     version = current.version + 1,
                     lastEditedBy = event.actor,
+                    layout = null, // flat-config save clears the block layout
+                )
+            }
+            is WallLayoutChanged -> views[event.wallId]?.let { current ->
+                views[event.wallId] = current.copy(
+                    status = "draft",
+                    version = current.version + 1,
+                    lastEditedBy = event.actor,
+                    layout = event.layout,
                 )
             }
             is WallPublished -> views[event.wallId]?.let { current ->

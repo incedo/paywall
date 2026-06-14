@@ -27,6 +27,7 @@ import nl.incedo.paywall.api.OfferStatsResponse
 import nl.incedo.paywall.api.SaveWallRequest
 import nl.incedo.paywall.api.VariantStatsResponse
 import nl.incedo.paywall.api.WallResponse
+import nl.incedo.paywall.api.WallTemplateRequest
 import nl.incedo.paywall.designer.BrandsScreen
 import nl.incedo.paywall.designer.PartnersScreen
 import nl.incedo.paywall.designer.ConfigScreen
@@ -303,6 +304,21 @@ fun App() {
                             is ConsoleApi.SaveOutcome.Conflict -> statusMessage = outcome.message
                             is ConsoleApi.SaveOutcome.Failed -> statusMessage = outcome.message
                         }
+                    },
+                    onSaveAsTemplate = { name, layout ->
+                        val templateId = name.lowercase().trim().replace(Regex("[^a-z0-9]+"), "-")
+                        val request = WallTemplateRequest(
+                            name = name,
+                            wallType = definition.type.name.lowercase(),
+                            title = definition.title,
+                            body = definition.body,
+                            primaryCta = definition.primaryCta,
+                            secondaryCta = definition.secondaryCta,
+                            layout = layout,
+                        )
+                        runCatching { api.saveWallTemplate(templateId, request) }
+                            .onSuccess { statusMessage = "Template '$name' saved" }
+                            .onFailure { statusMessage = "Failed to save template: ${it.message}" }
                     },
                 )
             }

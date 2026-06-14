@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -29,11 +30,15 @@ import nl.incedo.paywall.model.WallDefinition
 import nl.incedo.paywall.model.WallType
 import nl.incedo.paywall.model.defaultCopyFor
 import nl.incedo.paywall.walls.WallCopy
+import nl.incedo.paywall.walls.WallLayout
+import nl.incedo.paywall.walls.WallLayoutValidator
 import nl.incedo.paywall.screens.ConsentStepScreen
 import nl.incedo.paywall.screens.ContentGateWall
 import nl.incedo.paywall.screens.MeterNudgeBanner
 import nl.incedo.paywall.screens.PricingWall
 import nl.incedo.paywall.screens.RegistrationWallScreen
+import nl.incedo.paywall.screens.WallLayoutRenderer
+import nl.incedo.paywall.screens.toWallLayout
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
 import nl.incedo.paywall.ui.CrmDivider
@@ -62,28 +67,80 @@ fun WallDesignerScreen(
     onPublish: () -> Unit,
     onLoadHistory: suspend () -> List<WallVersionSummary> = { emptyList() },
     onRollback: suspend (Int) -> Unit = {},
+    /** VWE-17: called when the author saves the current block layout as a template. */
+    onSaveAsTemplate: (suspend (name: String, layout: WallLayout) -> Unit)? = null,
 ) {
+    val scope = rememberCoroutineScope()
     var mobilePreview by remember { mutableStateOf(false) }
     var visitorContext by remember { mutableStateOf(0) } // 0=anonymous 1=registered 2=subscriber
     var gateContext by remember { mutableStateOf(0) }    // 0=paywall 1=registration 2=consent 3=nudge
     var history by remember { mutableStateOf<List<WallVersionSummary>>(emptyList()) }
+    // VWE-12/14: block editor mode — starts from back-compat projection of the current definition
+    var blockEditorMode by remember { mutableStateOf(false) }
+    // VWE-18: per-session undo/redo history (max 50 snapshots; resets when definition changes)
+    val layoutHistory = remember(definition) { mutableStateListOf(definition.toWallLayout()) }
+    var historyPointer by remember(definition) { mutableStateOf(0) }
+    var blockLayout by remember(definition) { mutableStateOf(definition.toWallLayout()) }
+    val canUndo = historyPointer > 0
+    val canRedo = historyPointer < layoutHistory.lastIndex
+    fun pushLayout(newLayout: WallLayout) {
+        // Truncate any redo history above the current pointer
+        while (layoutHistory.size > historyPointer + 1) layoutHistory.removeLast()
+        layoutHistory.add(newLayout)
+        if (layoutHistory.size > 50) { layoutHistory.removeAt(0); historyPointer = maxOf(0, historyPointer - 1) }
+        historyPointer = layoutHistory.lastIndex
+        blockLayout = newLayout
+    }
+    fun undo() { if (canUndo) { historyPointer--; blockLayout = layoutHistory[historyPointer] } }
+    fun redo() { if (canRedo) { historyPointer++; blockLayout = layoutHistory[historyPointer] } }
+    val layoutForPreview: WallLayout = if (blockEditorMode) blockLayout else definition.toWallLayout()
+    val layoutHasViolations = blockEditorMode && WallLayoutValidator.validate(blockLayout).isNotEmpty()
+    // VWE-16: block publish when any block has WCAG 2.1 AA violations (ADM-17)
+    val layoutHasA11yViolations = blockEditorMode && blockLayout.blocks.any { blockAccessibilityLint(it).isNotEmpty() }
 
     LaunchedEffect(wallName) { history = runCatching { onLoadHistory() }.getOrDefault(emptyList()) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        DesignerToolbar(wallName, wallStatus, onBack, onSaveDraft, onPublish)
+        DesignerToolbar(wallName, wallStatus, onBack, onSaveDraft, onPublish,
+            publishBlocked = layoutHasViolations || layoutHasA11yViolations)
         CrmDivider()
         Row(modifier = Modifier.fillMaxWidth()) {
-            ConfigPanel(
-                definition = definition,
-                onDefinitionChange = onDefinitionChange,
+            // VWE-12/14: left panel toggles between flat form (legacy) and block editor
+            Column(
                 modifier = Modifier
                     .width(320.dp)
                     .verticalScroll(rememberScrollState())
                     .padding(CrmTheme.spacing.xl),
-            )
+                verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
+            ) {
+                CrmSegmentedToggle(
+                    options = listOf("Content form", "Block editor"),
+                    selectedIndex = if (blockEditorMode) 1 else 0,
+                    onSelect = { blockEditorMode = it == 1 },
+                )
+                if (blockEditorMode) {
+                    BlockEditorPanel(
+                        layout = blockLayout,
+                        onLayoutChange = ::pushLayout,
+                        canUndo = canUndo,
+                        canRedo = canRedo,
+                        onUndo = ::undo,
+                        onRedo = ::redo,
+                        onSaveAsTemplate = if (onSaveAsTemplate != null) {
+                            { name -> scope.launch { onSaveAsTemplate(name, blockLayout) } }
+                        } else null,
+                    )
+                } else {
+                    ConfigPanel(
+                        definition = definition,
+                        onDefinitionChange = onDefinitionChange,
+                    )
+                }
+            }
             PreviewPanel(
                 definition = definition,
+                // VWE-15: pass block editor layout so preview recomposes live (VWE-11)
+                blockEditorLayout = if (blockEditorMode) blockLayout else null,
                 mobilePreview = mobilePreview,
                 onPreviewDeviceChange = { mobilePreview = it },
                 visitorContext = visitorContext,
@@ -116,6 +173,7 @@ private fun DesignerToolbar(
     onBack: () -> Unit,
     onSaveDraft: () -> Unit,
     onPublish: () -> Unit,
+    publishBlocked: Boolean = false,
 ) {
     Row(
         modifier = Modifier
@@ -130,7 +188,12 @@ private fun DesignerToolbar(
         CrmTag(wallStatus, CrmTheme.colors.surfaceVariant, CrmTheme.colors.onSurfaceVariant)
         Row(modifier = Modifier.weight(1f)) {}
         CrmSecondaryButton("Save draft", onClick = onSaveDraft)
-        CrmPrimaryButton("Publish", onClick = onPublish)
+        // VWE-13: Publish is disabled when the block editor layout has structural violations
+        if (publishBlocked) {
+            CrmSecondaryButton("Publish (fix layout first)")
+        } else {
+            CrmPrimaryButton("Publish", onClick = onPublish)
+        }
     }
 }
 
@@ -138,11 +201,10 @@ private fun DesignerToolbar(
 private fun ConfigPanel(
     definition: WallDefinition,
     onDefinitionChange: (WallDefinition) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     var newLocale by remember { mutableStateOf("") }
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg)) {
+    Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg)) {
         CrmText("Wall type", style = CrmTheme.typography.label, color = CrmTheme.colors.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
             WallType.entries.forEach { type ->
@@ -284,6 +346,8 @@ private fun ConfigPanel(
 @Composable
 private fun PreviewPanel(
     definition: WallDefinition,
+    /** VWE-15/11: non-null when block editor is active; preview recomposes live on layout change. */
+    blockEditorLayout: WallLayout? = null,
     mobilePreview: Boolean,
     onPreviewDeviceChange: (Boolean) -> Unit,
     visitorContext: Int,
@@ -376,9 +440,14 @@ private fun PreviewPanel(
                             }
                             // Meter-warning nudge (PW-23) — 1 article remaining
                             gateContext == 3 -> MeterNudgeBanner(definition)
-                            // Normal paywall
+                            // Normal paywall — block editor layout overrides the flat-config rendering (VWE-15/11)
+                            definition.type == WallType.Hard && blockEditorLayout != null ->
+                                CrmCard { Column(
+                                    modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.xl),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) { WallLayoutRenderer(blockEditorLayout) } }
                             definition.type == WallType.Hard -> PricingWall(definition)
-                            else -> ContentGateWall(definition)
+                            else -> ContentGateWall(definition, layout = blockEditorLayout)
                         }
                     }
                 }
