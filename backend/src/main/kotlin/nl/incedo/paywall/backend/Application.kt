@@ -1776,7 +1776,17 @@ fun Application.module(
         // Integration inbound (MT-13): consent-based identity link signals —
         // login (US-04), newsletter tokens, share tokens (BP-05), extra devices.
         post("/api/v1/integration/identity-link") {
-            val request = call.receive<IdentityLinkRequest>()
+            val rawBody = call.receive<ByteArray>()
+            if (!webhookVerifier.verify(rawBody, call.request.headers[WebhookVerifier.SIGNATURE_HEADER])) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "invalid webhook signature (NFR-03)"))
+                return@post
+            }
+            val request = try {
+                kotlinx.serialization.json.Json.decodeFromString<IdentityLinkRequest>(rawBody.decodeToString())
+            } catch (_: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid request body"))
+                return@post
+            }
             if (request.subjectA.isBlank() || request.subjectB.isBlank() || request.cause.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "subjectA, subjectB and cause are required"))
                 return@post
