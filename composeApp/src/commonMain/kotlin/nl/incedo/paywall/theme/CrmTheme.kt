@@ -138,10 +138,60 @@ object CrmBorder {
     val thick: Dp = 2.dp
 }
 
+@Immutable
+data class CrmElevation(
+    val none: Dp = 0.dp,
+    val xs: Dp = 1.dp,
+    val sm: Dp = 2.dp,
+    val md: Dp = 4.dp,
+    val lg: Dp = 8.dp,
+    val xl: Dp = 16.dp,
+)
+
+@Immutable
+data class CrmAnimation(
+    val fast: Int = 150,
+    val normal: Int = 300,
+    val slow: Int = 500,
+)
+
+@Immutable
+data class CrmOpacity(
+    val hover: Float = 0.08f,
+    val focus: Float = 0.12f,
+    val pressed: Float = 0.16f,
+    val dragged: Float = 0.24f,
+    val disabled: Float = 0.38f,
+    val overlay: Float = 0.50f,
+    val container: Float = 0.15f,
+)
+
+@Immutable
+data class CrmIconSize(
+    val xs: Dp = 12.dp,
+    val sm: Dp = 16.dp,
+    val md: Dp = 20.dp,
+    val lg: Dp = 24.dp,
+    val xl: Dp = 32.dp,
+    val xxl: Dp = 48.dp,
+)
+
+@Immutable
+data class CrmFocus(
+    val ringWidth: Dp = 2.dp,
+    val ringOffset: Dp = 2.dp,
+    val minTouchTarget: Dp = 48.dp,
+)
+
 val LocalCrmColors = staticCompositionLocalOf { LightCrmColors }
 val LocalCrmTypography = staticCompositionLocalOf { CrmTypography() }
 val LocalCrmSpacing = staticCompositionLocalOf { CrmSpacing() }
 val LocalCrmShapes = staticCompositionLocalOf { CrmShapes() }
+val LocalCrmElevation = staticCompositionLocalOf { CrmElevation() }
+val LocalCrmAnimation = staticCompositionLocalOf { CrmAnimation() }
+val LocalCrmOpacity = staticCompositionLocalOf { CrmOpacity() }
+val LocalCrmIconSize = staticCompositionLocalOf { CrmIconSize() }
+val LocalCrmFocus = staticCompositionLocalOf { CrmFocus() }
 
 object CrmTheme {
     val colors: CrmColors
@@ -152,6 +202,16 @@ object CrmTheme {
         @Composable get() = LocalCrmSpacing.current
     val shapes: CrmShapes
         @Composable get() = LocalCrmShapes.current
+    val elevation: CrmElevation
+        @Composable get() = LocalCrmElevation.current
+    val animation: CrmAnimation
+        @Composable get() = LocalCrmAnimation.current
+    val opacity: CrmOpacity
+        @Composable get() = LocalCrmOpacity.current
+    val iconSize: CrmIconSize
+        @Composable get() = LocalCrmIconSize.current
+    val focus: CrmFocus
+        @Composable get() = LocalCrmFocus.current
 }
 
 @Composable
@@ -161,6 +221,11 @@ fun CrmTheme(darkTheme: Boolean = false, content: @Composable () -> Unit) {
         LocalCrmTypography provides CrmTypography(),
         LocalCrmSpacing provides CrmSpacing(),
         LocalCrmShapes provides CrmShapes(),
+        LocalCrmElevation provides CrmElevation(),
+        LocalCrmAnimation provides CrmAnimation(),
+        LocalCrmOpacity provides CrmOpacity(),
+        LocalCrmIconSize provides CrmIconSize(),
+        LocalCrmFocus provides CrmFocus(),
         content = content,
     )
 }
