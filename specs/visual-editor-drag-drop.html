@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spec — Visual Wall Editor: Block Composition &amp; Drag-and-Drop</title>
+<style>
+  :root{
+    --primary:#1A73E8;--primary-variant:#1557B0;--bg:#F8F9FA;--surface:#FFFFFF;
+    --surface-variant:#F1F3F4;--on-bg:#202124;--on-variant:#5F6368;--divider:#DADCE0;
+    --success:#1E8E3E;--success-bg:#E6F4EA;--warning:#F9AB00;--warning-bg:#FEF7E0;
+    --error:#D93025;--error-bg:#FCE8E6;--info-bg:#E8F0FE;
+  }
+  *{box-sizing:border-box}
+  body{font-family:"Roboto","Google Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    font-size:14px;line-height:20px;color:var(--on-bg);background:var(--bg);margin:0;padding:0 0 64px}
+  .wrap{max-width:980px;margin:0 auto;padding:0 24px}
+  header.top{background:var(--surface);border-bottom:1px solid var(--divider);padding:24px 0;margin-bottom:24px}
+  h1{font-size:24px;line-height:32px;font-weight:700;margin:0 0 4px}
+  h2{font-size:20px;line-height:28px;font-weight:600;margin:32px 0 12px;padding-top:8px;border-top:1px solid var(--divider)}
+  h3{font-size:16px;line-height:24px;font-weight:600;margin:20px 0 8px}
+  p{margin:0 0 12px}
+  a{color:var(--primary);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:"Roboto Mono",ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:var(--surface-variant);padding:1px 5px;border-radius:4px}
+  pre{background:var(--surface);border:1px solid var(--divider);border-radius:8px;padding:14px;overflow:auto;font-size:13px;line-height:1.5}
+  .lead{color:var(--on-variant)}
+  table{width:100%;border-collapse:collapse;margin:12px 0;background:var(--surface);border:1px solid var(--divider);border-radius:8px;overflow:hidden}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--divider);vertical-align:top}
+  th{font-size:12px;font-weight:600;color:var(--on-variant);background:var(--surface-variant)}
+  tr:last-child td{border-bottom:none}
+  .pill{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:9999px}
+  .must{background:var(--error-bg);color:var(--error)}
+  .should{background:var(--warning-bg);color:#8a6d00}
+  .could{background:var(--info-bg);color:var(--primary)}
+  .done{background:var(--success-bg);color:var(--success)}
+  .partial{background:var(--warning-bg);color:#8a6d00}
+  .missing{background:var(--error-bg);color:var(--error)}
+  blockquote{margin:12px 0;padding:12px 16px;background:var(--info-bg);border-left:3px solid var(--primary);border-radius:0 8px 8px 0}
+  .id{font-family:"Roboto Mono",monospace;font-weight:600;white-space:nowrap}
+  ul{margin:0 0 12px;padding-left:20px}
+  li{margin:4px 0}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <h1>Visual Wall Editor — Block Composition &amp; Drag-and-Drop</h1>
+  <p class="lead">Follow-up spec · builds on ADM-11/12/17 · prefix <code>VWE-*</code> · 2026-06-14</p>
+</div></header>
+<div class="wrap">
+
+<p>This spec turns ADM-11's <em>"visually composes wall designs from a constrained block library"</em>
+into a concrete block model, a drag-and-drop editor, and the missing-parts backlog. It is written after a
+code review of <code>main</code> (16 BCs, 523 tests, 96% coverage): the structured-output and no-JS
+guarantees of ADM-11 are <strong>met</strong>, but the <strong>composition interaction</strong> ADM-11
+describes is not yet built.</p>
+
+<blockquote><strong>Scope boundary (unchanged).</strong> The editor produces a structured wall definition
+(JSON), never code or arbitrary HTML/JS (GAP-10, BP-01). Drag-and-drop changes only <em>how a business
+user arranges constrained blocks</em>; it does not widen what can be rendered. The gate component still
+renders server-side and the no-JS guarantee (BP-01) is preserved.</blockquote>
+
+<h2>1. Where we are today</h2>
+
+<p>The current implementation models a wall as a <strong>flat, fixed-slot template</strong> and edits it
+with a <strong>form</strong>, not a block canvas.</p>
+
+<table>
+  <tr><th>Capability (ADM-11 intent)</th><th>Status</th><th>Evidence on <code>main</code></th></tr>
+  <tr><td>Structured definition, no HTML/JS, no-JS safe</td><td><span class="pill done">DONE</span></td>
+    <td><code>shared/.../walls/WallConfig.kt</code>, gate renderers in <code>composeApp/.../screens/</code></td></tr>
+  <tr><td>Content of the constrained blocks exists as fields</td><td><span class="pill done">DONE</span></td>
+    <td><code>WallConfig</code> / <code>WallDefinition</code>: title, body, primaryCta, secondaryCta, imageUrl, imageAlt, legalText, requireConsentStep, registrationWall</td></tr>
+  <tr><td>Live preview (type, light/dark, web/mobile)</td><td><span class="pill done">DONE</span></td>
+    <td><code>WallDesignerScreen.kt</code> PreviewPanel</td></tr>
+  <tr><td>Draft → publish, versioning, rollback, audit</td><td><span class="pill done">DONE</span></td>
+    <td>ADM-13: <code>WallService</code>, version history endpoint</td></tr>
+  <tr><td><strong>Constrained block library</strong> (add/remove blocks)</td><td><span class="pill missing">MISSING</span></td>
+    <td>No block palette; blocks are fixed template slots</td></tr>
+  <tr><td><strong>Visual arrangement / reordering</strong> of blocks</td><td><span class="pill missing">MISSING</span></td>
+    <td>Block order is hard-coded in the gate renderers</td></tr>
+  <tr><td><strong>Drag-and-drop interaction</strong></td><td><span class="pill missing">MISSING</span></td>
+    <td>No <code>pointerInput</code>/<code>detectDragGestures</code> anywhere in <code>composeApp/src</code></td></tr>
+  <tr><td>Per-block inspector with typed props</td><td><span class="pill partial">PARTIAL</span></td>
+    <td>Flat text fields edit the whole wall, not a selected block</td></tr>
+  <tr><td>In-editor accessibility lint (contrast, tap target, alt, heading order)</td><td><span class="pill partial">PARTIAL</span></td>
+    <td>ADM-17 rule exists as a constraint; not surfaced as live lint in the editor</td></tr>
+</table>
+
+<blockquote><strong>Honest note on the design package.</strong> The original <code>Wall Designer.dc.html</code>
+comp was itself a config-panel + live-preview <em>form</em>, not a drag-and-drop canvas. Drag-and-drop is an
+<em>intention stated in the requirement</em> (ADM-11 "visually composes … from a constrained block
+library"), not something the design exploration prototyped. This spec is therefore additive design work,
+and §6 flags the product decisions that need sign-off before build.</blockquote>
+
+<h2>2. The block model (VWE-01..05)</h2>
+
+<p>Replace the fixed-slot template with an <strong>ordered list of typed blocks</strong>. The flat
+<code>WallConfig</code> maps deterministically onto a default block list, so existing walls keep working
+(migration, VWE-05).</p>
+
+<pre>// shared/commonMain — pure Kotlin, serializable, multiplatform
+@Serializable
+sealed interface WallBlock { val id: String }
+
+@Serializable data class Headline(override val id:String, val text:String): WallBlock
+@Serializable data class BodyCopy(override val id:String, val text:String): WallBlock
+@Serializable data class PriceDisplay(override val id:String, val planRef:String? = null): WallBlock // price filled by CEP at render
+@Serializable data class CtaButton(override val id:String, val label:String, val role:CtaRole): WallBlock
+@Serializable data class LoginLink(override val id:String, val label:String = "Log in"): WallBlock
+@Serializable data class ImageBlock(override val id:String, val url:String, val alt:String = ""): WallBlock
+@Serializable data class LegalText(override val id:String, val text:String): WallBlock
+@Serializable data class ConsentBlock(override val id:String): WallBlock            // AC-14
+@Serializable data class MeterIndicator(override val id:String): WallBlock          // PW-22/23
+@Serializable data class SocialProof(override val id:String, val text:String): WallBlock
+
+enum class CtaRole { PRIMARY, SECONDARY }
+
+@Serializable
+data class WallLayout(val blocks: List&lt;WallBlock&gt;)   // ordered; the editor's output</pre>
+
+<table>
+  <tr><th>ID</th><th>Pri</th><th>Requirement</th></tr>
+  <tr><td class="id">VWE-01</td><td><span class="pill must">MUST</span></td>
+    <td>A wall design holds an <strong>ordered <code>WallLayout</code></strong> of typed blocks drawn from the constrained library above. No free-form block type may be added without a spec change (this <em>is</em> the "constrained" in constrained block library).</td></tr>
+  <tr><td class="id">VWE-02</td><td><span class="pill must">MUST</span></td>
+    <td><strong>Structural validity</strong> is enforced server-side on save (ADM-01 — the console owns no logic): a gate layout MUST contain at least one value-proposition block (Headline or BodyCopy) and at least one PRIMARY <code>CtaButton</code> (PW-03); <code>ConsentBlock</code> and <code>PriceDisplay</code> are singletons; <code>ConsentBlock</code>, if present, MUST be first (AC-14 "distinct step"); <code>LegalText</code> MUST follow the CTAs.</td></tr>
+  <tr><td class="id">VWE-03</td><td><span class="pill must">MUST</span></td>
+    <td>Block edits are <strong>events</strong> on the wall stream (extends ADM-13): <code>WallLayoutChanged</code> carries the new ordered layout; versioning/rollback/audit apply unchanged. New events registered in <code>paywallSerializersModule</code>.</td></tr>
+  <tr><td class="id">VWE-04</td><td><span class="pill should">SHOULD</span></td>
+    <td>Per-block <strong>translatable text</strong> (ADM-15): each text-bearing block carries a locale map; the renderer picks the brand locale, falling back to default. Extends the existing <code>WallCopy</code> override to block granularity.</td></tr>
+  <tr><td class="id">VWE-05</td><td><span class="pill must">MUST</span></td>
+    <td><strong>Back-compat migration</strong>: an existing flat <code>WallConfig</code> deterministically projects to a default <code>WallLayout</code> (Headline=title, BodyCopy=body, PriceDisplay, CtaButton(primary), CtaButton(secondary)/LoginLink, optional ImageBlock/LegalText/ConsentBlock). Old walls render identically; round-trip test guards it.</td></tr>
+</table>
+
+<h2>3. The drag-and-drop editor (VWE-10..18)</h2>
+
+<p>A three-zone workspace: <strong>palette</strong> (left, the constrained library), <strong>canvas</strong>
+(centre, the live gate the blocks compose), <strong>inspector</strong> (right, props of the selected
+block). This reuses the existing <code>CrmTheme</code> tokens and the live-preview machinery already in
+<code>WallDesignerScreen</code>.</p>
+
+<table>
+  <tr><th>ID</th><th>Pri</th><th>Requirement</th></tr>
+  <tr><td class="id">VWE-10</td><td><span class="pill must">MUST</span></td>
+    <td><strong>Palette → canvas drag</strong>: dragging a block type from the palette and dropping it on the canvas inserts a block at the drop index. Compose <code>detectDragGestures</code> in <code>commonMain</code> so it works on web (Wasm), desktop (JVM) and touch targets (multiplatform rule).</td></tr>
+  <tr><td class="id">VWE-11</td><td><span class="pill must">MUST</span></td>
+    <td><strong>Reorder within the canvas</strong>: a placed block can be dragged to a new position; the layout order updates live and the preview recomposes.</td></tr>
+  <tr><td class="id">VWE-12</td><td><span class="pill must">MUST</span></td>
+    <td><strong>Keyboard / non-pointer fallback</strong> (NFR-13, WCAG 2.1 AA): every drag action has an equivalent button/keyboard path — select block, "move up / move down / remove". Drag-and-drop is an enhancement, never the only way to arrange a layout (also covers environments where pointer-drag is awkward).</td></tr>
+  <tr><td class="id">VWE-13</td><td><span class="pill must">MUST</span></td>
+    <td><strong>Constraint feedback during composition</strong>: invalid drops are rejected with an inline reason (VWE-02), e.g. a second <code>ConsentBlock</code> or a <code>LegalText</code> dropped above the CTAs. The publish button is disabled while the layout is structurally invalid.</td></tr>
+  <tr><td class="id">VWE-14</td><td><span class="pill must">MUST</span></td>
+    <td><strong>Per-block inspector</strong>: selecting a block shows only its typed props (Headline → text; CtaButton → label + role; ImageBlock → url + alt). Replaces the flat content form.</td></tr>
+  <tr><td class="id">VWE-15</td><td><span class="pill should">SHOULD</span></td>
+    <td><strong>Multi-context live preview</strong> (ADM-12): the canvas previews the composed layout per breakpoint (mobile/desktop), per brand theme (ADM-10), and per visitor state (anonymous/registered/subscriber) — the gate contexts of ADM-12.</td></tr>
+  <tr><td class="id">VWE-16</td><td><span class="pill should">SHOULD</span></td>
+    <td><strong>In-editor accessibility lint</strong> (ADM-17): contrast (text vs brand background), tap-target size, missing image alt, and heading order are flagged on the offending block before publish; publish is blocked on AA failures.</td></tr>
+  <tr><td class="id">VWE-17</td><td><span class="pill could">COULD</span></td>
+    <td><strong>Templates from layouts</strong> (ADM-16): a composed layout can be saved as a template and instantiated for another brand, keeping brand theme tokens separate from block layout/copy.</td></tr>
+  <tr><td class="id">VWE-18</td><td><span class="pill could">COULD</span></td>
+    <td><strong>Undo/redo</strong> of composition actions within an editing session (the event log already gives cross-session history via ADM-13; this is in-session ergonomics).</td></tr>
+</table>
+
+<h2>4. Multiplatform &amp; rendering notes</h2>
+<ul>
+  <li><strong>One source tree.</strong> The drag layer uses Compose pointer/gesture APIs available in
+    <code>commonMain</code>, so web (Wasm) and desktop (JVM) share it; mobile/touch inherits it later. No
+    platform-specific editor branch (multiplatform rule).</li>
+  <li><strong>Renderer stays declarative.</strong> The gate component renders a <code>WallLayout</code> by
+    mapping each block to a <code>CrmTheme</code>-tokened composable — the same renderer the live preview
+    uses and the same one the public gate uses. One renderer, no drift, no-JS preserved (BP-01).</li>
+  <li><strong>Server is authoritative.</strong> Structural validity (VWE-02) and accessibility gating
+    (VWE-16) are re-checked on the save/publish endpoint; the editor's checks are UX, not the security
+    boundary (ADM-01).</li>
+</ul>
+
+<h2>5. Build order (suggested slices)</h2>
+<ol>
+  <li><strong>Model + migration</strong> (VWE-01/05): <code>WallBlock</code>/<code>WallLayout</code>, default projection from flat config, round-trip + projection tests. No UI yet — old editor keeps working.</li>
+  <li><strong>Block renderer</strong>: one composable per block type; gate preview + public gate both render from <code>WallLayout</code>. Visual parity test against the current fixed layout.</li>
+  <li><strong>Inspector + add/remove/reorder by buttons</strong> (VWE-12/14): the keyboard-accessible path first — this alone delivers block composition without drag.</li>
+  <li><strong>Drag-and-drop layer</strong> (VWE-10/11/13): palette drag + canvas reorder on top of the button path.</li>
+  <li><strong>Multi-context preview + a11y lint</strong> (VWE-15/16), then templates/undo (VWE-17/18).</li>
+</ol>
+<p class="lead">Slice 3 is the pragmatic MVP: it satisfies ADM-11's "constrained block library" composition
+(add/remove/reorder, structured output) and WCAG before any drag code exists; drag-and-drop (slice 4) is
+then a pure enhancement.</p>
+
+<h2>6. Open product decisions (need sign-off)</h2>
+<table>
+  <tr><th>Question</th><th>Why it matters</th><th>Recommended default</th></tr>
+  <tr><td>Is full free-arrangement wanted, or a fixed skeleton with optional blocks?</td>
+    <td>Free arrangement is more work and more ways to make an ugly/illegal wall; a constrained skeleton (value prop → price → CTAs → legal) matches PW-03 and most publisher walls.</td>
+    <td><strong>Constrained skeleton</strong> with optional/insertable blocks and enforced ordering (VWE-02), not a blank canvas.</td></tr>
+  <tr><td>Drag-and-drop now, or button-based reorder first?</td>
+    <td>The accessible button path (VWE-12) delivers the requirement; drag is ergonomics.</td>
+    <td>Ship slice 3 (buttons) first; drag in the next slice.</td></tr>
+  <tr><td>Per-block locale (VWE-04) vs per-wall locale (current <code>WallCopy</code>)?</td>
+    <td>Block-level is finer but heavier; the experiment is nl-NL only today (ADM-15).</td>
+    <td>Keep per-wall <code>WallCopy</code> for the experiment; design the block model so per-block can be added without a schema break.</td></tr>
+</table>
+
+<p class="lead" style="margin-top:24px">See also: <a href="quality-gap-analysis.html">Quality &amp; Requirements Gap Analysis</a> ·
+<a href="index.html">Specs index</a></p>
+
+</div>
+</body>
+</html>

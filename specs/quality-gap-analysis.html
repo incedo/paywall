@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spec — Quality &amp; Requirements Gap Analysis</title>
+<style>
+  :root{--primary:#1A73E8;--bg:#F8F9FA;--surface:#FFFFFF;--surface-variant:#F1F3F4;
+    --on-bg:#202124;--on-variant:#5F6368;--divider:#DADCE0;--success:#1E8E3E;--success-bg:#E6F4EA;
+    --warning:#F9AB00;--warning-bg:#FEF7E0;--error:#D93025;--error-bg:#FCE8E6;--info-bg:#E8F0FE}
+  *{box-sizing:border-box}
+  body{font-family:"Roboto","Google Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    font-size:14px;line-height:20px;color:var(--on-bg);background:var(--bg);margin:0;padding:0 0 64px}
+  .wrap{max-width:980px;margin:0 auto;padding:0 24px}
+  header.top{background:var(--surface);border-bottom:1px solid var(--divider);padding:24px 0;margin-bottom:24px}
+  h1{font-size:24px;line-height:32px;font-weight:700;margin:0 0 4px}
+  h2{font-size:20px;line-height:28px;font-weight:600;margin:32px 0 12px;padding-top:8px;border-top:1px solid var(--divider)}
+  p{margin:0 0 12px}
+  a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
+  code{font-family:"Roboto Mono",monospace;font-size:13px;background:var(--surface-variant);padding:1px 5px;border-radius:4px}
+  pre{background:var(--surface);border:1px solid var(--divider);border-radius:8px;padding:12px;overflow:auto;font-size:13px}
+  .lead{color:var(--on-variant)}
+  table{width:100%;border-collapse:collapse;margin:12px 0;background:var(--surface);border:1px solid var(--divider);border-radius:8px;overflow:hidden}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--divider);vertical-align:top}
+  th{font-size:12px;font-weight:600;color:var(--on-variant);background:var(--surface-variant)}
+  tr:last-child td{border-bottom:none}
+  .pill{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:9999px;white-space:nowrap}
+  .high{background:var(--error-bg);color:var(--error)}
+  .med{background:var(--warning-bg);color:#8a6d00}
+  .low{background:var(--info-bg);color:var(--primary)}
+  .ok{background:var(--success-bg);color:var(--success)}
+  .id{font-family:"Roboto Mono",monospace;font-weight:600;white-space:nowrap}
+  blockquote{margin:12px 0;padding:12px 16px;background:var(--success-bg);border-left:3px solid var(--success);border-radius:0 8px 8px 0}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <h1>Quality &amp; Requirements Gap Analysis</h1>
+  <p class="lead">Review of <code>main</code> · prefix <code>Q-*</code> · 2026-06-14</p>
+</div></header>
+<div class="wrap">
+
+<blockquote><strong>Headline: the codebase is in good shape.</strong> 16 bounded contexts, 523 tests
+(0 failures), 96.2% backend line coverage, stable-only versions enforced, and the security/robustness
+basics already present — rate limiting (AC-06, <code>RequestRateLimiter</code>), webhook signature
+verification (<code>WebhookVerifier</code>), idempotent webhooks (tested), and staff RBAC + step-up on ~20
+admin endpoints. The findings below are <em>refinements</em>, not alarms. Each was verified against a real
+file or build output; nothing here is speculative.</blockquote>
+
+<h2>1. Build &amp; environment robustness</h2>
+<table>
+  <tr><th>ID</th><th>Sev</th><th>Finding &amp; suggested improvement</th></tr>
+  <tr><td class="id">Q-1</td><td><span class="pill high">HIGH</span></td>
+    <td><strong>Build breaks under a non-UTF-8 locale.</strong> BDD test methods use back-tick names with
+    em-dashes (e.g. <code>`Scenario - Grace period — past_due still gets access (SUB-05)`</code>). The Kotlin
+    compiler writes a <code>.class</code> file whose name contains <code>—</code>; on a container whose
+    <code>sun.jnu.encoding</code> defaults to <code>ANSI_X3.4-1968</code> (ASCII, no <code>LANG</code> set)
+    this throws <code>InvalidPathException</code> and the whole build fails. Verified: the gate failed on the
+    default locale and passed only with <code>LANG=C.UTF-8</code>.
+    <br><em>Fix:</em> pin a UTF-8 locale in the build/CI image, add <code>-Dfile.encoding=UTF-8
+    -Dsun.jnu.encoding=UTF-8</code> to <code>org.gradle.jvmargs</code>, <strong>or</strong> keep test
+    method names ASCII-only. The encoding flag is the most portable.</td></tr>
+  <tr><td class="id">Q-2</td><td><span class="pill low">LOW</span></td>
+    <td><strong>Configuration cache off.</strong> Gradle suggests enabling it; the build is ~1.5 min warm.
+    Low priority, pure speed.</td></tr>
+</table>
+
+<h2>2. Coverage transparency</h2>
+<table>
+  <tr><th>ID</th><th>Sev</th><th>Finding &amp; suggested improvement</th></tr>
+  <tr><td class="id">Q-3</td><td><span class="pill med">MED</span></td>
+    <td><strong>The 96% excludes the production event-store adapter.</strong>
+    <code>backend/build.gradle.kts</code> excludes <code>persistence/**</code> from the JaCoCo report — that
+    is <code>PostgresEventStore</code>, the real DB adapter (append-condition / advisory-lock / partition
+    logic). Its integration tests are gated on <code>PAYWALL_TEST_PG_URL</code> and don't feed the report,
+    so the headline number reflects everything <em>except</em> the hardest infra. Not wrong, but the number
+    reads more reassuring than it is.
+    <br><em>Fix:</em> run the Postgres integration tests in CI (a PG service container) and include
+    <code>persistence/**</code> in the report, or report it as a separate, explicitly-tracked figure so the
+    exclusion is visible rather than implicit.</td></tr>
+  <tr><td class="id">Q-4</td><td><span class="pill low">LOW</span></td>
+    <td><strong>Other exclusions are defensible but broad.</strong> Typed-ID value classes, generated
+    serialization (<code>EventSerializationKt</code>), the JWKS-fetching <code>Companion</code> and
+    <code>KratosCiamSessionClient</code> are excluded — all reasonable (value classes / JaCoCo-unreachable /
+    live-infra). Keep them, but add a one-line comment per exclusion stating <em>why</em> so the list stays
+    auditable as it grows.</td></tr>
+  <tr><td class="id">Q-5</td><td><span class="pill low">LOW</span></td>
+    <td><strong>Line coverage ≠ behaviour coverage.</strong> Several projection rate getters
+    (<code>VariantStatsProjection</code>, <code>CohortProjection</code>, offer acceptance) guard divide-by-zero
+    but are mostly happy-path tested. Add a boundary test per rate (zero denominator, single sample) where
+    not already present.</td></tr>
+</table>
+
+<h2>3. Security &amp; robustness (already strong — spot refinements)</h2>
+<table>
+  <tr><th>ID</th><th>Sev</th><th>Finding &amp; suggested improvement</th></tr>
+  <tr><td class="id">Q-6</td><td><span class="pill ok">OK</span></td>
+    <td><strong>Verified present:</strong> origin trust (INF-02) intercepts all but <code>/health</code>;
+    staff RBAC + AAL2 step-up across admin endpoints; webhook signature verification on
+    <code>/integration/cep-advice</code>; rate limiting (AC-06); idempotent ad-completion and duplicate
+    webhooks (tested). No action — recorded so the next reviewer doesn't re-flag these.</td></tr>
+  <tr><td class="id">Q-7</td><td><span class="pill med">MED</span></td>
+    <td><strong>Confirm signature verification is uniform across all inbound webhooks.</strong>
+    <code>cep-advice</code> verifies the signature; audit that <em>every</em> machine-to-machine inbound
+    (entitlements ingest, ad-completion, account-deletion, offer callbacks) either verifies a signature or is
+    provably covered by origin trust + a secret. List them in one place so coverage is obvious; add a test
+    that an unsigned/forged body is rejected for each.</td></tr>
+  <tr><td class="id">Q-8</td><td><span class="pill low">LOW</span></td>
+    <td><strong>Idempotency is per-handler, not systemic.</strong> Dedup currently relies on decision models
+    ignoring duplicates (ad-completion) or DCB. Consider a shared idempotency-key check on integration
+    endpoints (store the provider event id; reject replays) so a new webhook can't silently double-count.</td></tr>
+</table>
+
+<h2>4. Requirements correctness (verified divergences)</h2>
+<p>These are not polish — each is a behaviour that diverges from a MUST requirement, confirmed by reading the
+cited line on <code>main</code>.</p>
+<table>
+  <tr><th>ID</th><th>Sev</th><th>Requirement &amp; verified divergence</th></tr>
+  <tr><td class="id">Q-12</td><td><span class="pill high">HIGH</span></td>
+    <td><strong>MT-04 / MT-05 — bots and prefetch reads still burn a meter credit.</strong>
+    In <code>AccessService.kt</code> the <code>isBot</code> flag (line 140) flows only into
+    <code>logWallEvent</code> as a log label (used at lines 404/426/443); the metering write at
+    <code>:286-288</code> fires on <code>decision.countsTowardMeter</code> regardless of <code>isBot</code>.
+    Only <code>isVerifiedCrawler</code> (line 175) short-circuits. MT-04 says a read counts "not for … bots,
+    or prefetch requests"; there is also no prefetch (<code>Sec-Purpose</code>) detection at all.
+    <br><em>Fix:</em> when <code>isBot</code> (and not a verified crawler) or prefetch, serve teaser/gate
+    without counting — mirror the verified-crawler branch. Add a regression test per strategy.</td></tr>
+  <tr><td class="id">Q-13</td><td><span class="pill high">HIGH</span></td>
+    <td><strong>FGA-01 / FGA-02 — a null-expiry grant lives forever.</strong>
+    <code>GrantDecision.kt:47</code>: <code>it.expiresAtEpochMs == null || it.expiresAtEpochMs &gt; now</code>
+    — a null expiry is treated as a perpetual live grant, and <code>GrantIssued.expiresAtEpochMs</code>
+    defaults to <code>null</code>. FGA-02 requires every grant be time-bound (<code>expires_at</code>
+    required). The admin path defaults to 30 days, but the type and decision model permit/honour a permanent
+    grant (and three non-admin issuance paths append <code>GrantIssued</code> directly).
+    <br><em>Fix:</em> make <code>expiresAtEpochMs</code> non-nullable and fail <strong>closed</strong> on a
+    missing expiry; route share-token/ad/data-gate issuance through one <code>issueGrant()</code> that
+    applies the FGA-02 TTL ceiling and FGA-03 per-source cap.</td></tr>
+  <tr><td class="id">Q-14</td><td><span class="pill med">MED</span></td>
+    <td><strong>NFR-20 — ES256 tokens are silently rejected.</strong>
+    <code>CiamJwtValidator.kt:91,93</code> casts the JWK to <code>RSAPublicKey</code> and builds only
+    <code>Algorithm.RSA256</code>; an EC key returns <code>unknown_key</code> → AC-07 anonymous. NFR-20's
+    allowlist is "RS256/ES256". If Ory Hydra is configured for ES256, every genuine subscriber silently
+    loses entitlement.
+    <br><em>Fix:</em> branch on JWK key type — <code>ECDSA256</code> for <code>ECPublicKey</code>,
+    <code>RSA256</code> for RSA; keep <code>none</code>/HS* rejected.</td></tr>
+  <tr><td class="id">Q-15</td><td><span class="pill med">MED</span></td>
+    <td><strong>MT-06 — <code>rolling_30d</code> meter period is a silent no-op.</strong>
+    <code>AccessService.kt:490-491</code>: both the <code>rolling_30d</code> and <code>else</code> arms
+    return <code>currentPeriod()</code> (calendar month). An operator configuring a rolling window gets
+    calendar-month behaviour with no error.
+    <br><em>Fix:</em> implement the rolling window (needs the period/tag scheme the code comment notes) or
+    reject <code>rolling_30d</code> at config-load (API-03) so the config cannot silently lie.</td></tr>
+  <tr><td class="id">Q-16</td><td><span class="pill med">MED</span></td>
+    <td><strong>NFR-20 — audience check is opt-in and off by default.</strong> The <code>aud</code> validation
+    runs only when <code>CIAM_AUDIENCE</code> is set; an unconfigured deployment accepts tokens minted for any
+    other Hydra client. NFR-20 makes <code>aud</code> a MUST.
+    <br><em>Fix:</em> fail startup if a JWKS issuer is configured without an audience, rather than silently
+    disabling a MUST check.</td></tr>
+  <tr><td class="id">Q-17</td><td><span class="pill med">MED</span></td>
+    <td><strong>NFR-11 / FGA-05 — the decide path does not fail open.</strong> The event-store queries in
+    <code>/api/v1/decide</code> and <code>/articles/{id}</code> have no try/catch; a store/Keto outage
+    propagates as a 500 instead of degrading (FGA-05: proceed without grants; NFR-11: fail open). INF-06
+    places fail-open at the edge Worker (not in this repo), so this is partly an architecture-boundary call,
+    but the service-level guarantee is currently unmet origin-side.
+    <br><em>Fix (if pursued):</em> wrap the decide path to log the incident and return teaser/gate for
+    premium (full for free) on infrastructure failure.</td></tr>
+  <tr><td class="id">Q-18</td><td><span class="pill med">MED</span></td>
+    <td><strong>DG-03 — data-gate consent withdrawal is unmodelled.</strong> Only
+    <code>DataGateConsentGiven</code> exists; there is no withdrawal event/endpoint and nothing consults
+    withdrawal before issuing future data-gate grants, so "withdrawal stops future use" cannot be met (the
+    TTL-bound non-retroactive half is fine).
+    <br><em>Fix:</em> add <code>DataGateConsentWithdrawn</code> + endpoint and reject new grants for a
+    withdrawn subject+purpose.</td></tr>
+</table>
+
+<h2>5. Product gap: the visual composer</h2>
+<table>
+  <tr><th>ID</th><th>Sev</th><th>Finding</th></tr>
+  <tr><td class="id">Q-9</td><td><span class="pill med">MED</span></td>
+    <td><strong>ADM-11 visual composition is output-complete but interaction-incomplete</strong> — no
+    constrained block library, no drag-and-drop. Fully specified in the companion doc →
+    <a href="visual-editor-drag-drop.html">Visual Wall Editor — Block Composition &amp; Drag-and-Drop</a>.</td></tr>
+  <tr><td class="id">Q-10</td><td><span class="pill low">LOW</span></td>
+    <td><strong>ADM-15 locale is per-wall, not per-block</strong> (<code>WallCopy</code>). Fine for nl-NL;
+    structure it so per-block locale (VWE-04) is a clean later extension.</td></tr>
+  <tr><td class="id">Q-11</td><td><span class="pill low">LOW</span></td>
+    <td><strong>ADM-17 accessibility lint is a rule, not live editor feedback</strong> (VWE-16). Wire the
+    existing checks into the editor's publish gate.</td></tr>
+</table>
+
+<h2>6. Overall assessment</h2>
+<p>This is a mature, broadly-tested codebase — access-decision core, metering, entitlements, FGA, analytics,
+payments, partners, brands, offers and the admin surface are all present, event-sourced, with the security
+basics (RBAC, step-up, rate-limit, webhook signatures, idempotency) in place. But "523 tests / 96%" should
+not be read as "no correctness gaps": the review found a handful of <strong>real MUST divergences</strong>,
+of which two are high-impact — <strong>Q-12</strong> (bots/prefetch burn meter credit, a direct
+MT-04/MT-05 violation that also skews AN-* funnel data) and <strong>Q-13</strong> (a null-expiry grant is
+permanent, against FGA-02). <strong>Q-14</strong> (ES256 rejected) is a latent outage waiting on a CIAM
+config choice. These are narrow, well-localised fixes — but they show that high line-coverage masked
+behaviours the tests simply never asserted. On the build side, <strong>Q-1</strong> (ASCII-locale fragility)
+should be fixed before it bites a fresh CI runner. The largest <em>product</em> gap is the unbuilt
+drag-and-drop composer (Q-9), specified separately. Recommended order: Q-1, then Q-12/Q-13/Q-14, then the
+remaining MED items, then the visual-editor build.</p>
+
+<p class="lead" style="margin-top:24px"><a href="index.html">← Specs index</a></p>
+
+</div>
+</body>
+</html>

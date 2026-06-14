@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Implementation Plan — Quality Fixes &amp; Visual Editor</title>
+<style>
+  :root{--primary:#1A73E8;--bg:#F8F9FA;--surface:#FFFFFF;--surface-variant:#F1F3F4;
+    --on-bg:#202124;--on-variant:#5F6368;--divider:#DADCE0;--success:#1E8E3E;--success-bg:#E6F4EA;
+    --warning:#F9AB00;--warning-bg:#FEF7E0;--error:#D93025;--error-bg:#FCE8E6;--info-bg:#E8F0FE}
+  *{box-sizing:border-box}
+  body{font-family:"Roboto","Google Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    font-size:14px;line-height:20px;color:var(--on-bg);background:var(--bg);margin:0;padding:0 0 64px}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 24px}
+  header.top{background:var(--surface);border-bottom:1px solid var(--divider);padding:24px 0;margin-bottom:24px}
+  h1{font-size:24px;line-height:32px;font-weight:700;margin:0 0 4px}
+  h2{font-size:20px;line-height:28px;font-weight:600;margin:32px 0 8px;padding-top:8px;border-top:1px solid var(--divider)}
+  h2 .phase{display:inline-block;font-size:12px;font-weight:700;color:#fff;background:var(--primary);border-radius:6px;padding:2px 8px;margin-right:8px;vertical-align:middle}
+  h3{font-size:16px;font-weight:600;margin:18px 0 6px}
+  p{margin:0 0 12px}
+  a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
+  code{font-family:"Roboto Mono",monospace;font-size:13px;background:var(--surface-variant);padding:1px 5px;border-radius:4px}
+  .lead{color:var(--on-variant)}
+  table{width:100%;border-collapse:collapse;margin:10px 0;background:var(--surface);border:1px solid var(--divider);border-radius:8px;overflow:hidden}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--divider);vertical-align:top}
+  th{font-size:12px;font-weight:600;color:var(--on-variant);background:var(--surface-variant)}
+  tr:last-child td{border-bottom:none}
+  .id{font-family:"Roboto Mono",monospace;font-weight:600;white-space:nowrap}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:9999px;white-space:nowrap}
+  .high{background:var(--error-bg);color:var(--error)}
+  .med{background:var(--warning-bg);color:#8a6d00}
+  .low{background:var(--info-bg);color:var(--primary)}
+  .s{color:var(--on-variant);white-space:nowrap;font-variant-numeric:tabular-nums}
+  blockquote{margin:12px 0;padding:12px 16px;background:var(--info-bg);border-left:3px solid var(--primary);border-radius:0 8px 8px 0}
+  ul{margin:0 0 12px;padding-left:20px}li{margin:3px 0}
+  .goal{background:var(--surface-variant);border-radius:8px;padding:10px 12px;margin:6px 0 12px;font-size:13px}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <h1>Implementation Plan — Quality Fixes &amp; Visual Editor</h1>
+  <p class="lead">Derived from the two review specs · 2026-06-14 · sizes are rough (½d / 1d / 2–3d / 1wk)</p>
+</div></header>
+<div class="wrap">
+
+<p>This plan sequences the work found in
+<a href="quality-gap-analysis.html">Quality &amp; Requirements Gap Analysis</a> (Q-*) and
+<a href="visual-editor-drag-drop.html">Visual Wall Editor — Block Composition &amp; Drag-and-Drop</a> (VWE-*)
+into four phases. Order is by <strong>risk reduced per unit effort</strong>: stop the build fragility and the
+two real correctness bugs first; then the remaining MUST divergences; then build the visual composer
+(accessible MVP before drag-and-drop). Each row names its verifying test so "done" is unambiguous.</p>
+
+<blockquote><strong>Working agreement.</strong> One phase per feature branch, ~7–10 small commits, full suite
+green before each commit (<code>LANG=C.UTF-8 ./gradlew :shared:jvmTest :backend:test</code> + a local PG 16),
+cite the requirement ID in every commit. PRs opened per completable slice. No alpha/beta deps
+(<code>verifyStableVersions</code>). New domain events registered in <code>paywallSerializersModule</code>.</blockquote>
+
+<h2><span class="phase">P0</span> Correctness hotfixes &amp; build robustness</h2>
+<div class="goal"><strong>Goal:</strong> green on any CI runner, and close the two real access-control bugs.
+Small, localised, high-value. Ship as one PR.</div>
+<table>
+  <tr><th>Item</th><th>Sev</th><th>Change</th><th>Verifying test</th><th>Est</th></tr>
+  <tr><td class="id">Q-1</td><td><span class="pill high">HIGH</span></td>
+    <td>Add <code>-Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8</code> to <code>org.gradle.jvmargs</code> (and pin a UTF-8 locale in the CI image). Removes the ASCII-locale build break on em-dash test names.</td>
+    <td>Build passes with <code>LANG</code> unset / <code>LANG=C</code></td><td class="s">½d</td></tr>
+  <tr><td class="id">Q-12</td><td><span class="pill high">HIGH</span></td>
+    <td>MT-04/05: when <code>isBot</code> (and not a verified crawler) or a prefetch (<code>Sec-Purpose: prefetch</code>), serve teaser/gate <em>without</em> counting — mirror the verified-crawler branch in <code>AccessService.decide</code>. Add prefetch signal plumbing through the controller.</td>
+    <td>New: bot + prefetch reads leave <code>meterUsed</code> unchanged across the metered strategy</td><td class="s">1d</td></tr>
+  <tr><td class="id">Q-13</td><td><span class="pill high">HIGH</span></td>
+    <td>FGA-02: make <code>GrantIssued.expiresAtEpochMs</code> non-nullable; <code>GrantDecision</code> fails <strong>closed</strong> on a missing/zero expiry. Route share-token / ad / data-gate issuance through one <code>issueGrant()</code> applying the FGA-02 TTL ceiling + FGA-03 per-source cap.</td>
+    <td>New: a null/absent-expiry grant is not live; the three non-admin paths reject over-TTL / over-cap</td><td class="s">1–2d</td></tr>
+  <tr><td class="id">Q-14</td><td><span class="pill med">MED</span></td>
+    <td>NFR-20: branch <code>CiamJwtValidator</code> on JWK key type — <code>ECDSA256</code> for <code>ECPublicKey</code>, <code>RSA256</code> for RSA; keep <code>none</code>/HS* rejected.</td>
+    <td>Extend <code>CiamAuthTest</code>: a valid ES256 token authenticates; HS256/none still rejected</td><td class="s">½d</td></tr>
+</table>
+
+<h2><span class="phase">P1</span> Remaining MUST divergences &amp; coverage truth</h2>
+<div class="goal"><strong>Goal:</strong> no silently-disabled MUST checks; coverage number tells the truth. One PR.</div>
+<table>
+  <tr><th>Item</th><th>Sev</th><th>Change</th><th>Verifying test</th><th>Est</th></tr>
+  <tr><td class="id">Q-15</td><td><span class="pill med">MED</span></td>
+    <td>MT-06: implement the <code>rolling_30d</code> window (period/tag scheme), <strong>or</strong> reject it at config-load (API-03) until supported. No silent no-op.</td>
+    <td>Config with <code>rolling_30d</code> either gates on a 30-day window or fails validation</td><td class="s">1d / 2–3d</td></tr>
+  <tr><td class="id">Q-16</td><td><span class="pill med">MED</span></td>
+    <td>NFR-20: fail startup when a JWKS issuer is configured without <code>CIAM_AUDIENCE</code>; verify <code>aud</code> always in prod.</td>
+    <td>Startup throws without audience; token with wrong <code>aud</code> → anonymous</td><td class="s">½d</td></tr>
+  <tr><td class="id">Q-17</td><td><span class="pill med">MED</span></td>
+    <td>NFR-11/FGA-05: wrap the decide / article paths so a store/Keto outage logs the incident and returns teaser/gate for premium (full for free) — fail open, never 500. (Confirm boundary with edge team — INF-06 may own this.)</td>
+    <td>New: a throwing EventStore yields a gated 200, not a 500</td><td class="s">1d</td></tr>
+  <tr><td class="id">Q-18</td><td><span class="pill med">MED</span></td>
+    <td>DG-03: add <code>DataGateConsentWithdrawn</code> event + endpoint; the data-gate completion path rejects new grants for a withdrawn subject+purpose.</td>
+    <td>New: after withdrawal, a data-gate completion issues no grant</td><td class="s">1d</td></tr>
+  <tr><td class="id">Q-3</td><td><span class="pill med">MED</span></td>
+    <td>Coverage transparency: run the Postgres integration tests in CI (PG service container) and include <code>persistence/**</code> in the report — or report it as an explicit separate figure. Add the <em>why</em> comment to each JaCoCo exclusion (Q-4).</td>
+    <td>CI report shows a persistence-adapter number (no longer silently excluded)</td><td class="s">1d</td></tr>
+  <tr><td class="id">Q-7</td><td><span class="pill low">LOW</span></td>
+    <td>Audit that every inbound webhook (entitlements, ad-completion, account-deletion, offer callbacks) verifies a signature or is provably origin-trust-only; add a forged-body rejection test per endpoint (Q-8: optional shared idempotency-key check).</td>
+    <td>Per-endpoint: unsigned/forged body → 401</td><td class="s">1d</td></tr>
+</table>
+
+<h2><span class="phase">P2</span> Visual editor — block model &amp; accessible composition (MVP)</h2>
+<div class="goal"><strong>Goal:</strong> deliver ADM-11's "constrained block library" composition (add/remove/reorder,
+structured output, WCAG) <em>before any drag code</em>. This already satisfies the requirement; drag is P3.</div>
+<table>
+  <tr><th>Item</th><th>Change</th><th>Verifying test</th><th>Est</th></tr>
+  <tr><td class="id">VWE-01/05</td>
+    <td>Add <code>WallBlock</code> sealed type + ordered <code>WallLayout</code> in shared; deterministic projection from the flat <code>WallConfig</code> (back-compat). No UI yet — old editor keeps working.</td>
+    <td>Round-trip + projection test: old walls render identically</td><td class="s">2–3d</td></tr>
+  <tr><td class="id">VWE-02/03</td>
+    <td>Server-side structural validity on save (≥1 value-prop block, ≥1 primary CTA, singleton consent/price, ordering); block edits as <code>WallLayoutChanged</code> events (versioning/audit unchanged).</td>
+    <td>Invalid layouts rejected with reason; layout history rolls back</td><td class="s">2–3d</td></tr>
+  <tr><td>renderer</td>
+    <td>One composable per block type; the gate preview <em>and</em> the public gate both render from <code>WallLayout</code> (one renderer, no drift, no-JS preserved).</td>
+    <td>Visual-parity test vs the current fixed layout</td><td class="s">2–3d</td></tr>
+  <tr><td class="id">VWE-12/14</td>
+    <td>Per-block inspector + add/remove/reorder by <strong>buttons/keyboard</strong> (the accessible path first). Replaces the flat content form.</td>
+    <td>Compose UI test: add block, reorder up/down, remove, edit props</td><td class="s">2–3d</td></tr>
+</table>
+
+<h2><span class="phase">P3</span> Visual editor — drag-and-drop &amp; polish</h2>
+<div class="goal"><strong>Goal:</strong> drag-and-drop as an enhancement on top of the accessible MVP, plus
+multi-context preview and in-editor a11y lint.</div>
+<table>
+  <tr><th>Item</th><th>Change</th><th>Verifying test</th><th>Est</th></tr>
+  <tr><td class="id">VWE-10/11/13</td>
+    <td>Palette→canvas drag insert + in-canvas reorder (Compose <code>detectDragGestures</code> in commonMain → web+desktop+touch); invalid drops rejected inline; publish disabled while structurally invalid.</td>
+    <td>Gesture test: drag insert at index, reorder, rejected illegal drop</td><td class="s">1wk</td></tr>
+  <tr><td class="id">VWE-15</td>
+    <td>Multi-context live preview (ADM-12): per breakpoint, per brand theme, per visitor state.</td>
+    <td>Preview renders all three contexts from one layout</td><td class="s">2–3d</td></tr>
+  <tr><td class="id">VWE-16 / Q-11</td>
+    <td>In-editor accessibility lint (ADM-17): contrast, tap-target, missing alt, heading order flagged on the block; publish blocked on AA failures. Wire the existing checks into the publish gate.</td>
+    <td>A low-contrast / missing-alt block blocks publish with a per-block message</td><td class="s">2–3d</td></tr>
+  <tr><td class="id">VWE-17/18 / Q-10</td>
+    <td>Templates from layouts (ADM-16), in-session undo/redo, and per-block locale (VWE-04 / ADM-15) when more locales land.</td>
+    <td>Template instantiated for another brand keeps theme separate from copy</td><td class="s">1wk</td></tr>
+</table>
+
+<h2>Sequencing &amp; dependencies</h2>
+<ul>
+  <li><strong>P0 → P1</strong> are independent of the editor and can ship immediately; P0 first (build + the two real bugs). Together ≈ 1 week.</li>
+  <li><strong>P2 depends on nothing in P0/P1</strong> but is the long pole; its first slice (VWE-01/05 model + projection) unblocks everything else and is safe (no behaviour change). P2 ≈ 2 weeks.</li>
+  <li><strong>P3 depends on P2</strong> (drag needs the block model + accessible reorder underneath). P3 ≈ 2–3 weeks.</li>
+  <li>Net: correctness/robustness closed in ~1 week; a requirement-complete visual composer (P2) in ~3 weeks; full drag-and-drop experience (P3) in ~5–6 weeks elapsed, parallelisable across two people (P0/P1 + P2 concurrently).</li>
+</ul>
+
+<h2>Open product decisions (block before P2/P3)</h2>
+<table>
+  <tr><th>Decision</th><th>Recommended default</th></tr>
+  <tr><td>Free-arrangement canvas, or constrained skeleton with optional/insertable blocks?</td>
+    <td><strong>Constrained skeleton</strong> with enforced ordering (VWE-02) — matches PW-03, fewer ways to build an illegal wall.</td></tr>
+  <tr><td>Drag-and-drop now, or accessible button reorder first?</td>
+    <td><strong>Buttons first (P2)</strong>; drag is a P3 enhancement on top.</td></tr>
+  <tr><td>Q-15: build the rolling-30d window, or reject the config value?</td>
+    <td><strong>Reject at config-load</strong> now; build the window only if a variant actually needs it.</td></tr>
+  <tr><td>Q-17: fail-open at the origin, or treat as edge-Worker responsibility (INF-06)?</td>
+    <td>Confirm with the edge team; if the Worker owns it, document and add a contract test instead of origin code.</td></tr>
+</table>
+
+<p class="lead" style="margin-top:24px"><a href="index.html">← Specs index</a> ·
+<a href="quality-gap-analysis.html">Quality gap analysis</a> ·
+<a href="visual-editor-drag-drop.html">Visual editor spec</a></p>
+
+</div>
+</body>
+</html>
