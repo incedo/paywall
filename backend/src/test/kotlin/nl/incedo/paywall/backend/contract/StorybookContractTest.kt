@@ -17,6 +17,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import nl.incedo.paywall.api.AddControlRequest
+import nl.incedo.paywall.api.DecoratorResponse
+import nl.incedo.paywall.api.RegisterDecoratorRequest
+import nl.incedo.paywall.api.UpdateDecoratorPriorityRequest
 import nl.incedo.paywall.api.UpdateScenarioRequest
 import nl.incedo.paywall.api.UpdateStoryRequest
 import nl.incedo.paywall.api.ChangeControlDefaultRequest
@@ -391,5 +394,146 @@ class StorybookContractTest {
             setBody(ChangeControlDefaultRequest("tertiary"))
         }
         assertEquals(HttpStatusCode.NotFound, resp.status)
+    }
+
+    // ── Decorator contract tests ───────────────────────────────────────────────
+
+    private fun decoratorReq(id: String = "d1", key: String = "theme/default-dark") = RegisterDecoratorRequest(
+        decoratorId = id, decoratorKey = key, title = "Default Dark",
+        type = "THEME", renderRef = "decorators.theme.defaultDark", priority = 10, scope = "GLOBAL",
+    )
+
+    @Test fun `POST decorator returns 201 with fields`() = contractTest { client ->
+        val resp = client.post("/api/v1/storybook/decorators") {
+            contentType(ContentType.Application.Json); setBody(decoratorReq())
+        }
+        assertEquals(HttpStatusCode.Created, resp.status)
+        val body = resp.body<DecoratorResponse>()
+        assertEquals("d1", body.decoratorId)
+        assertEquals("theme/default-dark", body.decoratorKey)
+        assertEquals("THEME", body.type)
+        assertEquals("GLOBAL", body.scope)
+        assertEquals(10, body.priority)
+        assertEquals("ACTIVE", body.lifecycle)
+    }
+
+    @Test fun `POST decorator with duplicate key returns 409 (BR-3)`() = contractTest { client ->
+        client.post("/api/v1/storybook/decorators") {
+            contentType(ContentType.Application.Json); setBody(decoratorReq())
+        }
+        val resp = client.post("/api/v1/storybook/decorators") {
+            contentType(ContentType.Application.Json)
+            setBody(decoratorReq(id = "d2", key = "theme/default-dark"))
+        }
+        assertEquals(HttpStatusCode.Conflict, resp.status)
+    }
+
+    @Test fun `POST decorator with missing required fields returns 400`() = contractTest { client ->
+        val resp = client.post("/api/v1/storybook/decorators") {
+            contentType(ContentType.Application.Json)
+            setBody(decoratorReq().copy(renderRef = ""))
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status)
+    }
+
+    @Test fun `POST decorator with non-positive priority returns 400 (BR-5)`() = contractTest { client ->
+        val resp = client.post("/api/v1/storybook/decorators") {
+            contentType(ContentType.Application.Json)
+            setBody(decoratorReq().copy(priority = 0))
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status)
+    }
+
+    @Test fun `GET decorators lists active decorators`() = contractTest { client ->
+        client.post("/api/v1/storybook/decorators") {
+            contentType(ContentType.Application.Json); setBody(decoratorReq())
+        }
+        val list = client.get("/api/v1/storybook/decorators").body<List<DecoratorResponse>>()
+        assertEquals(1, list.size)
+    }
+
+    @Test fun `GET decorator by id returns decorator`() = contractTest { client ->
+        client.post("/api/v1/storybook/decorators") {
+            contentType(ContentType.Application.Json); setBody(decoratorReq())
+        }
+        val resp = client.get("/api/v1/storybook/decorators/d1")
+        assertEquals(HttpStatusCode.OK, resp.status)
+        assertEquals("d1", resp.body<DecoratorResponse>().decoratorId)
+    }
+
+    @Test fun `GET decorator with unknown id returns 404`() = contractTest { client ->
+        assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/storybook/decorators/unknown").status)
+    }
+
+    @Test fun `PUT priority updates decorator ordering`() = contractTest { client ->
+        client.post("/api/v1/storybook/decorators") {
+            contentType(ContentType.Application.Json); setBody(decoratorReq())
+        }
+        val resp = client.put("/api/v1/storybook/decorators/d1/priority") {
+            contentType(ContentType.Application.Json)
+            setBody(UpdateDecoratorPriorityRequest(priority = 20))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        assertEquals(20, client.get("/api/v1/storybook/decorators/d1").body<DecoratorResponse>().priority)
+    }
+
+    @Test fun `PUT priority with zero returns 400 (BR-5)`() = contractTest { client ->
+        client.post("/api/v1/storybook/decorators") {
+            contentType(ContentType.Application.Json); setBody(decoratorReq())
+        }
+        val resp = client.put("/api/v1/storybook/decorators/d1/priority") {
+            contentType(ContentType.Application.Json)
+            setBody(UpdateDecoratorPriorityRequest(priority = 0))
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status)
+    }
+
+    @Test fun `POST link decorator to story succeeds for STORY-scope`() = contractTest { client ->
+        client.post("/api/v1/storybook/stories") {
+            contentType(ContentType.Application.Json)
+            setBody(storyReq())
+        }
+        client.post("/api/v1/storybook/decorators") {
+            contentType(ContentType.Application.Json)
+            setBody(decoratorReq().copy(scope = "STORY"))
+        }
+        val resp = client.post("/api/v1/storybook/decorators/d1/stories/s1")
+        assertEquals(HttpStatusCode.Created, resp.status)
+    }
+
+    @Test fun `POST link GLOBAL decorator to story returns 409 (BR-7)`() = contractTest { client ->
+        client.post("/api/v1/storybook/stories") {
+            contentType(ContentType.Application.Json); setBody(storyReq())
+        }
+        client.post("/api/v1/storybook/decorators") {
+            contentType(ContentType.Application.Json); setBody(decoratorReq()) // GLOBAL scope
+        }
+        val resp = client.post("/api/v1/storybook/decorators/d1/stories/s1")
+        assertEquals(HttpStatusCode.Conflict, resp.status)
+    }
+
+    @Test fun `POST link decorator to scenario requires existing scenario (BR-8)`() = contractTest { client ->
+        client.post("/api/v1/storybook/decorators") {
+            contentType(ContentType.Application.Json)
+            setBody(decoratorReq().copy(scope = "SCENARIO"))
+        }
+        val resp = client.post("/api/v1/storybook/decorators/d1/scenarios/unknown")
+        assertEquals(HttpStatusCode.NotFound, resp.status)
+    }
+
+    @Test fun `DELETE decorator archives it`() = contractTest { client ->
+        client.post("/api/v1/storybook/decorators") {
+            contentType(ContentType.Application.Json); setBody(decoratorReq())
+        }
+        assertEquals(HttpStatusCode.Accepted, client.delete("/api/v1/storybook/decorators/d1").status)
+        assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/storybook/decorators/d1").status)
+    }
+
+    @Test fun `DELETE already archived decorator returns 409`() = contractTest { client ->
+        client.post("/api/v1/storybook/decorators") {
+            contentType(ContentType.Application.Json); setBody(decoratorReq())
+        }
+        client.delete("/api/v1/storybook/decorators/d1")
+        assertEquals(HttpStatusCode.Conflict, client.delete("/api/v1/storybook/decorators/d1").status)
     }
 }

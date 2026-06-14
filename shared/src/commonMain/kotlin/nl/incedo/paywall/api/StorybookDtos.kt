@@ -111,6 +111,38 @@ data class ControlItemResponse(
     val optionsRef: String? = null,
 )
 
+// ── Decorator DTOs ────────────────────────────────────────────────────────────
+
+@Serializable
+data class RegisterDecoratorRequest(
+    val decoratorId: String,
+    val decoratorKey: String,
+    val title: String,
+    val type: String,
+    val renderRef: String,
+    val priority: Int = 10,
+    val scope: String = "GLOBAL",
+    val lifecycle: String = "ACTIVE",
+    val configurationRef: String? = null,
+)
+
+@Serializable
+data class UpdateDecoratorPriorityRequest(
+    val priority: Int,
+)
+
+@Serializable
+data class DecoratorResponse(
+    val decoratorId: String,
+    val decoratorKey: String,
+    val title: String,
+    val type: String,
+    val scope: String,
+    val priority: Int,
+    val lifecycle: String,
+    val configurationRef: String? = null,
+)
+
 fun ControlState.toResponse() = ControlItemResponse(
     controlId = controlId,
     key = key,

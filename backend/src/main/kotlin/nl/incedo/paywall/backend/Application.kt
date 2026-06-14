@@ -143,12 +143,15 @@ import nl.incedo.paywall.notifications.MailSent
 import nl.incedo.paywall.api.AddControlRequest
 import nl.incedo.paywall.api.ChangeControlDefaultRequest
 import nl.incedo.paywall.api.ControlSchemaResponse
+import nl.incedo.paywall.api.DecoratorResponse
 import nl.incedo.paywall.api.RegisterControlSchemaRequest
+import nl.incedo.paywall.api.RegisterDecoratorRequest
 import nl.incedo.paywall.api.RegisterScenarioRequest
 import nl.incedo.paywall.api.RegisterStoryRequest
 import nl.incedo.paywall.api.ScenarioResponse
 import nl.incedo.paywall.api.StoryResponse
 import nl.incedo.paywall.api.toResponse
+import nl.incedo.paywall.api.UpdateDecoratorPriorityRequest
 import nl.incedo.paywall.storybook.ControlAdded
 import nl.incedo.paywall.storybook.ControlDefaultChanged
 import nl.incedo.paywall.storybook.ControlId
@@ -181,6 +184,21 @@ import nl.incedo.paywall.storybook.scenarioKeyTag
 import nl.incedo.paywall.storybook.scenarioTag
 import nl.incedo.paywall.storybook.storyKeyTag
 import nl.incedo.paywall.storybook.storyTag
+import nl.incedo.paywall.storybook.DecoratorArchived
+import nl.incedo.paywall.storybook.DecoratorDecision
+import nl.incedo.paywall.storybook.DecoratorId
+import nl.incedo.paywall.storybook.DecoratorKey
+import nl.incedo.paywall.storybook.DecoratorKeyUniquenessDecision
+import nl.incedo.paywall.storybook.DecoratorLifecycle
+import nl.incedo.paywall.storybook.DecoratorLinkedToScenario
+import nl.incedo.paywall.storybook.DecoratorLinkedToStory
+import nl.incedo.paywall.storybook.DecoratorMetadataUpdated
+import nl.incedo.paywall.storybook.DecoratorPriorityChanged
+import nl.incedo.paywall.storybook.DecoratorRegistered
+import nl.incedo.paywall.storybook.DecoratorScope
+import nl.incedo.paywall.storybook.DecoratorType
+import nl.incedo.paywall.storybook.decoratorKeyTag
+import nl.incedo.paywall.storybook.decoratorTag
 
 /**
  * Default experiment (EX-02): the four strategies of Doc 1 at equal weight.
@@ -2644,6 +2662,164 @@ fun Application.module(
                 removedAtEpochMs = System.currentTimeMillis(),
             )), condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ControlRemoved"))
+        }
+
+        // ── Decorator API ──────────────────────────────────────────────────────────
+
+        post("/api/v1/storybook/decorators") {
+            val req = call.receive<RegisterDecoratorRequest>()
+            if (req.decoratorId.isBlank() || req.decoratorKey.isBlank() || req.title.isBlank() || req.renderRef.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "decoratorId, decoratorKey, title, and renderRef are required"))
+                return@post
+            }
+            if (req.priority <= 0) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "priority must be positive (BR-5)"))
+                return@post
+            }
+            val decType = runCatching { DecoratorType.valueOf(req.type.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "type must be one of ${DecoratorType.entries.joinToString()}"))
+                return@post
+            }
+            val scope = runCatching { DecoratorScope.valueOf(req.scope.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scope must be one of ${DecoratorScope.entries.joinToString()}"))
+                return@post
+            }
+            val lifecycle = runCatching { DecoratorLifecycle.valueOf(req.lifecycle.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "lifecycle must be one of ${DecoratorLifecycle.entries.joinToString()}"))
+                return@post
+            }
+            val decoratorId = DecoratorId(req.decoratorId)
+            val decoratorKey = DecoratorKey(req.decoratorKey)
+            // BR-3: key must be globally unique
+            val keyEvents = eventStore.query(EventQuery(setOf(decoratorKeyTag(decoratorKey)))).events
+            if (DecoratorKeyUniquenessDecision().also { it.applyAll(keyEvents) }.isTaken(req.decoratorKey)) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "decoratorKey '${req.decoratorKey}' already in use (BR-3)"))
+                return@post
+            }
+            if (DecoratorDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(decoratorTag(decoratorId)))).events) }.exists) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "decorator '${req.decoratorId}' already exists"))
+                return@post
+            }
+            eventStore.append(listOf(DecoratorRegistered(
+                decoratorId = decoratorId, decoratorKey = decoratorKey, title = req.title,
+                type = decType, renderRef = req.renderRef, priority = req.priority,
+                scope = scope, lifecycle = lifecycle, configurationRef = req.configurationRef,
+                registeredAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Created, DecoratorResponse(
+                decoratorId = req.decoratorId, decoratorKey = req.decoratorKey, title = req.title,
+                type = decType.name, scope = scope.name, priority = req.priority,
+                lifecycle = lifecycle.name, configurationRef = req.configurationRef,
+            ))
+        }
+
+        get("/api/v1/storybook/decorators") {
+            val events = eventStore.query(EventQuery(setOf("decorators"))).events
+            val byId = mutableMapOf<String, DecoratorDecision>()
+            events.forEach { ev ->
+                when (ev) {
+                    is DecoratorRegistered -> byId.getOrPut(ev.decoratorId.value) { DecoratorDecision() }.apply(ev)
+                    is DecoratorMetadataUpdated -> byId[ev.decoratorId.value]?.apply(ev)
+                    is DecoratorPriorityChanged -> byId[ev.decoratorId.value]?.apply(ev)
+                    is DecoratorArchived -> byId[ev.decoratorId.value]?.apply(ev)
+                    else -> Unit
+                }
+            }
+            call.respond(byId.values.filter { !it.archived }.sortedWith(compareBy({ it.priority }, { it.decoratorKey }))
+                .map { DecoratorResponse(it.decoratorKey, it.decoratorKey, it.title, it.type.name, it.scope.name, it.priority, it.lifecycle.name) })
+        }
+
+        get("/api/v1/storybook/decorators/{decoratorId}") {
+            val did = call.parameters["decoratorId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "decoratorId required"))
+            val decision = DecoratorDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(decoratorTag(DecoratorId(did))))).events) }
+            if (!decision.exists || decision.archived) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "decorator not found")); return@get
+            }
+            call.respond(DecoratorResponse(did, decision.decoratorKey, decision.title, decision.type.name, decision.scope.name, decision.priority, decision.lifecycle.name))
+        }
+
+        put("/api/v1/storybook/decorators/{decoratorId}/priority") {
+            val did = call.parameters["decoratorId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "decoratorId required"))
+            val decoratorId = DecoratorId(did)
+            val decision = DecoratorDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(decoratorTag(decoratorId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "decorator not found")); return@put
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "decorator is archived")); return@put
+            }
+            val req = call.receive<UpdateDecoratorPriorityRequest>()
+            if (req.priority <= 0) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "priority must be positive (BR-5)")); return@put
+            }
+            eventStore.append(listOf(DecoratorPriorityChanged(decoratorId, req.priority, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "DecoratorPriorityChanged", "newPriority" to req.priority.toString()))
+        }
+
+        post("/api/v1/storybook/decorators/{decoratorId}/stories/{storyId}") {
+            val did = call.parameters["decoratorId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "decoratorId required"))
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val decoratorId = DecoratorId(did)
+            val storyId = StoryId(sid)
+            val decision = DecoratorDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(decoratorTag(decoratorId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "decorator not found")); return@post
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "decorator is archived")); return@post
+            }
+            // BR-7: GLOBAL scope decorator may not be bound per-story
+            if (decision.scope == DecoratorScope.GLOBAL) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "GLOBAL-scope decorators cannot be story-linked (BR-7)")); return@post
+            }
+            val story = StoryDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(storyTag(storyId)))).events) }
+            if (!story.exists || story.archived) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "story not found")); return@post
+            }
+            eventStore.append(listOf(DecoratorLinkedToStory(decoratorId, storyId, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Created, mapOf("recorded" to "DecoratorLinkedToStory"))
+        }
+
+        post("/api/v1/storybook/decorators/{decoratorId}/scenarios/{scenarioId}") {
+            val did = call.parameters["decoratorId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "decoratorId required"))
+            val scenId = call.parameters["scenarioId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scenarioId required"))
+            val decoratorId = DecoratorId(did)
+            val scenarioId = ScenarioId(scenId)
+            val decision = DecoratorDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(decoratorTag(decoratorId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "decorator not found")); return@post
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "decorator is archived")); return@post
+            }
+            // BR-8: scenario must exist
+            val scenario = ScenarioDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(scenarioTag(scenarioId)))).events) }
+            if (!scenario.exists || scenario.archived) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "scenario not found (BR-8)")); return@post
+            }
+            eventStore.append(listOf(DecoratorLinkedToScenario(decoratorId, scenarioId, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Created, mapOf("recorded" to "DecoratorLinkedToScenario"))
+        }
+
+        delete("/api/v1/storybook/decorators/{decoratorId}") {
+            val did = call.parameters["decoratorId"]?.takeIf { it.isNotBlank() }
+                ?: return@delete call.respond(HttpStatusCode.BadRequest, mapOf("error" to "decoratorId required"))
+            val decoratorId = DecoratorId(did)
+            val decision = DecoratorDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(decoratorTag(decoratorId)))).events) }
+            if (!decision.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "decorator not found")); return@delete
+            }
+            if (decision.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "decorator already archived")); return@delete
+            }
+            eventStore.append(listOf(DecoratorArchived(decoratorId, System.currentTimeMillis())), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "DecoratorArchived"))
         }
 
         // PA-01: get partner summary (for admin console).

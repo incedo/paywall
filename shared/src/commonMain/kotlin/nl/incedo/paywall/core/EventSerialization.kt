@@ -47,6 +47,12 @@ import nl.incedo.paywall.storybook.StoryMetadataUpdated
 import nl.incedo.paywall.storybook.ScenarioRegistered
 import nl.incedo.paywall.storybook.ScenarioMetadataUpdated
 import nl.incedo.paywall.storybook.ScenarioArchived
+import nl.incedo.paywall.storybook.DecoratorRegistered
+import nl.incedo.paywall.storybook.DecoratorMetadataUpdated
+import nl.incedo.paywall.storybook.DecoratorPriorityChanged
+import nl.incedo.paywall.storybook.DecoratorLinkedToStory
+import nl.incedo.paywall.storybook.DecoratorLinkedToScenario
+import nl.incedo.paywall.storybook.DecoratorArchived
 import nl.incedo.paywall.storybook.ControlSchemaRegistered
 import nl.incedo.paywall.storybook.ControlAdded
 import nl.incedo.paywall.storybook.ControlRemoved
@@ -109,6 +115,12 @@ val paywallSerializersModule = SerializersModule {
         subclass(ControlRemoved::class)
         subclass(ControlDefaultChanged::class)
         subclass(ControlSchemaArchived::class)
+        subclass(DecoratorRegistered::class)
+        subclass(DecoratorMetadataUpdated::class)
+        subclass(DecoratorPriorityChanged::class)
+        subclass(DecoratorLinkedToStory::class)
+        subclass(DecoratorLinkedToScenario::class)
+        subclass(DecoratorArchived::class)
     }
 }
 
