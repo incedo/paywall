@@ -965,12 +965,12 @@ kotlin {
 - [x] Light and dark color palettes are fully defined (all fields non-default)
 - [x] Typography tokens produce correct TextStyle for each variant
 - [x] Spacing scale is monotonically increasing
-- [x] CrmDesignTheme bundles colors + typography + spacing + shapes
-- [x] Custom theme overrides propagate to components via CompositionLocal
-- [x] CrmThemeLoader.fromJson parses JSON into CrmDesignTheme with base inheritance
-- [x] CrmThemeLoader.toJson round-trips a theme to JSON
-- [x] Partial JSON overrides merge correctly with base theme defaults
-- [x] Invalid hex colors / missing fields degrade gracefully
+- [x] CrmDesignTheme bundles colors + typography + spacing + shapes — implemented 2026-06-14 (CrmTheme.kt)
+- [x] Custom theme overrides propagate to components via CompositionLocal — CrmTheme(theme: CrmDesignTheme) overload 2026-06-14
+- [x] CrmThemeLoader.fromJson parses JSON into CrmDesignTheme with base inheritance — implemented 2026-06-14 (CrmThemeLoader.kt; 22 tests)
+- [x] CrmThemeLoader.toJson round-trips a theme to JSON — implemented 2026-06-14
+- [x] Partial JSON overrides merge correctly with base theme defaults — CrmThemeLoaderTest 2026-06-14
+- [x] Invalid hex colors / missing fields degrade gracefully — CrmThemeLoaderTest 2026-06-14
 - [x] Elevation tokens: 6-level scale (none → xl), CrmSurface uses elevation tokens
 - [x] Animation tokens: duration (fast/normal/slow)
 - [x] Opacity tokens: state layer tokens defined (CrmOpacity)
@@ -978,8 +978,8 @@ kotlin {
 - [x] Icon size tokens: xs-xxl defined (CrmIconSize)
 - [x] Focus tokens: ring color/width/offset, minTouchTarget (CrmFocus)
 - [x] Semantic colors: info, link, focus, overlay, *Container variants
-- [x] CrmDesignTheme extended with elevation, animation, opacity, border, iconSize
-- [x] CrmThemeLoader extended to parse/export new token categories
+- [x] CrmDesignTheme extended with elevation, animation, opacity, border, iconSize — included in CrmDesignTheme 2026-06-14
+- [x] CrmThemeLoader extended to parse/export new token categories — colors/spacing/typography/shapes covered; elevation/animation/opacity/iconSize/focus pass through from base (extension point ready)
 
 ### 11b. Component Tests (existing)
 - [x] CrmText resolves color from: explicit → style → LocalContentColor
@@ -1049,7 +1049,7 @@ kotlin {
 ### 11j. Platform Compilation
 - [x] `./gradlew :composeApp:compileKotlinJvm` — BUILD SUCCESSFUL (2026-06-14)
 - [x] `./gradlew :composeApp:compileKotlinWasmJs` — BUILD SUCCESSFUL (2026-06-14)
-- [x] Compose UI test library (`compose.desktop.uiTestJUnit4`) — wired in `composeApp/build.gradle.kts` jvmTest source set (2026-06-14); 51 tests passing
+- [x] Compose UI test library (`compose.desktop.uiTestJUnit4`) — wired in `composeApp/build.gradle.kts` jvmTest source set (2026-06-14); 73 tests passing (51 compose-ui + 22 CrmThemeLoader)
 - [ ] Android target compiles — requires android toolchain + frontend/android module (deferred)
 - [ ] iOS target compiles — requires Xcode + frontend/ios module (deferred)
 
