@@ -101,3 +101,20 @@ Feature: Storybook story, scenario, and control-schema management
     Given story "s1", scenario "sc1" are registered
     When staff archives scenario "sc1"
     Then the scenario is no longer visible
+
+  # ── Responsive BC ────────────────────────────────────────────────────────────
+
+  Scenario: Registering a responsive profile for a story
+    Given story "s1" is registered
+    When staff registers responsive profile "mobile/phone-first" for story "s1"
+    Then a responsive profile is created with key "mobile/phone-first"
+
+  Scenario: Adding form factors to a responsive profile
+    Given a responsive profile "mobile/phone-first" exists for story "s1"
+    When staff adds form factor "PHONE" to the responsive profile
+    Then the responsive profile has form factor "PHONE"
+
+  Scenario: Responsive profile listing excludes archived profiles
+    Given a responsive profile "mobile/phone-first" exists for story "s1"
+    When staff archives the responsive profile
+    Then the story has no active responsive profiles

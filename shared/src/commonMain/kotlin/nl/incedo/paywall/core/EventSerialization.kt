@@ -58,6 +58,14 @@ import nl.incedo.paywall.storybook.ControlAdded
 import nl.incedo.paywall.storybook.ControlRemoved
 import nl.incedo.paywall.storybook.ControlDefaultChanged
 import nl.incedo.paywall.storybook.ControlSchemaArchived
+import nl.incedo.paywall.storybook.ResponsiveProfileRegistered
+import nl.incedo.paywall.storybook.ResponsiveFormFactorSupported
+import nl.incedo.paywall.storybook.ResponsiveWidthClassesDefined
+import nl.incedo.paywall.storybook.ResponsiveNavigationPatternSet
+import nl.incedo.paywall.storybook.ResponsiveDensityProfileSet
+import nl.incedo.paywall.storybook.ResponsiveExpectationLinked
+import nl.incedo.paywall.storybook.ResponsiveLayoutRuleAdded
+import nl.incedo.paywall.storybook.ResponsiveProfileArchived
 
 /**
  * Polymorphic registration of every domain event, shared by all event-store
@@ -121,6 +129,14 @@ val paywallSerializersModule = SerializersModule {
         subclass(DecoratorLinkedToStory::class)
         subclass(DecoratorLinkedToScenario::class)
         subclass(DecoratorArchived::class)
+        subclass(ResponsiveProfileRegistered::class)
+        subclass(ResponsiveFormFactorSupported::class)
+        subclass(ResponsiveWidthClassesDefined::class)
+        subclass(ResponsiveNavigationPatternSet::class)
+        subclass(ResponsiveDensityProfileSet::class)
+        subclass(ResponsiveExpectationLinked::class)
+        subclass(ResponsiveLayoutRuleAdded::class)
+        subclass(ResponsiveProfileArchived::class)
     }
 }
 

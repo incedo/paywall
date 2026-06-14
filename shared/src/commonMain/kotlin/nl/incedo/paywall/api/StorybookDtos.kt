@@ -152,3 +152,59 @@ fun ControlState.toResponse() = ControlItemResponse(
     bindingRef = bindingRef,
     optionsRef = optionsRef,
 )
+
+// ── Responsive BC ─────────────────────────────────────────────────────────────
+
+@Serializable
+data class RegisterResponsiveProfileRequest(
+    val profileKey: String,
+    val lifecycle: String = "ACTIVE",
+)
+
+@Serializable
+data class AddFormFactorRequest(
+    val formFactor: String,
+)
+
+@Serializable
+data class DefineWidthClassesRequest(
+    val widthClasses: List<String>,
+)
+
+@Serializable
+data class SetNavigationPatternRequest(
+    val context: String,
+    val navigationPattern: String,
+)
+
+@Serializable
+data class SetDensityProfileRequest(
+    val context: String,
+    val densityProfile: String,
+)
+
+@Serializable
+data class LinkExpectationRequest(
+    val scenarioId: String? = null,
+    val expectationRef: String,
+)
+
+@Serializable
+data class AddLayoutRuleRequest(
+    val ruleRef: String,
+)
+
+@Serializable
+data class ResponsiveProfileResponse(
+    val profileId: String,
+    val profileKey: String,
+    val storyId: String,
+    val lifecycle: String,
+    val formFactors: List<String>,
+    val widthClasses: List<String>,
+    val navigationPatterns: Map<String, String>,
+    val densityProfiles: Map<String, String>,
+    val expectationRefs: List<String>,
+    val layoutRules: List<String>,
+)
+

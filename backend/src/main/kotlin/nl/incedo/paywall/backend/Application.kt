@@ -152,6 +152,14 @@ import nl.incedo.paywall.api.ScenarioResponse
 import nl.incedo.paywall.api.StoryResponse
 import nl.incedo.paywall.api.toResponse
 import nl.incedo.paywall.api.UpdateDecoratorPriorityRequest
+import nl.incedo.paywall.api.RegisterResponsiveProfileRequest
+import nl.incedo.paywall.api.AddFormFactorRequest
+import nl.incedo.paywall.api.DefineWidthClassesRequest
+import nl.incedo.paywall.api.SetNavigationPatternRequest
+import nl.incedo.paywall.api.SetDensityProfileRequest
+import nl.incedo.paywall.api.LinkExpectationRequest
+import nl.incedo.paywall.api.AddLayoutRuleRequest
+import nl.incedo.paywall.api.ResponsiveProfileResponse
 import nl.incedo.paywall.storybook.ControlAdded
 import nl.incedo.paywall.storybook.ControlDefaultChanged
 import nl.incedo.paywall.storybook.ControlId
@@ -199,6 +207,23 @@ import nl.incedo.paywall.storybook.DecoratorScope
 import nl.incedo.paywall.storybook.DecoratorType
 import nl.incedo.paywall.storybook.decoratorKeyTag
 import nl.incedo.paywall.storybook.decoratorTag
+import nl.incedo.paywall.storybook.ResponsiveProfileRegistered
+import nl.incedo.paywall.storybook.ResponsiveFormFactorSupported
+import nl.incedo.paywall.storybook.ResponsiveWidthClassesDefined
+import nl.incedo.paywall.storybook.ResponsiveNavigationPatternSet
+import nl.incedo.paywall.storybook.ResponsiveDensityProfileSet
+import nl.incedo.paywall.storybook.ResponsiveExpectationLinked
+import nl.incedo.paywall.storybook.ResponsiveLayoutRuleAdded
+import nl.incedo.paywall.storybook.ResponsiveProfileArchived
+import nl.incedo.paywall.storybook.ResponsiveDecisionModel
+import nl.incedo.paywall.storybook.ResponsiveProfileId
+import nl.incedo.paywall.storybook.ResponsiveProfileKey
+import nl.incedo.paywall.storybook.FormFactor
+import nl.incedo.paywall.storybook.WidthClass
+import nl.incedo.paywall.storybook.NavigationPattern
+import nl.incedo.paywall.storybook.DensityProfile
+import nl.incedo.paywall.storybook.ResponsiveLifecycle
+import nl.incedo.paywall.storybook.responsiveTag
 
 /**
  * Default experiment (EX-02): the four strategies of Doc 1 at equal weight.
@@ -2820,6 +2845,191 @@ fun Application.module(
             }
             eventStore.append(listOf(DecoratorArchived(decoratorId, System.currentTimeMillis())), condition = null)
             call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "DecoratorArchived"))
+        }
+
+        // ── Responsive BC ─────────────────────────────────────────────────────
+
+        post("/api/v1/storybook/stories/{storyId}/responsive") {
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val storyId = StoryId(sid)
+            val storyDecision = StoryDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(storyTag(storyId)))).events) }
+            if (!storyDecision.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "story not found"))
+            if (storyDecision.archived) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "story is archived"))
+            val req = call.receive<RegisterResponsiveProfileRequest>()
+            val profileId = ResponsiveProfileId(java.util.UUID.randomUUID().toString())
+            val lifecycle = runCatching { ResponsiveLifecycle.valueOf(req.lifecycle.uppercase()) }.getOrElse {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid lifecycle"))
+            }
+            eventStore.append(listOf(ResponsiveProfileRegistered(
+                profileId = profileId,
+                profileKey = ResponsiveProfileKey(req.profileKey),
+                storyId = storyId,
+                lifecycle = lifecycle,
+                registeredAtEpochMs = System.currentTimeMillis(),
+                tags = setOf(responsiveTag(profileId), storyTag(storyId), "responsive-profiles"),
+            )), condition = null)
+            call.respond(HttpStatusCode.Created, mapOf("profileId" to profileId.value))
+        }
+
+        post("/api/v1/storybook/responsive/{profileId}/form-factors") {
+            val pid = call.parameters["profileId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "profileId required"))
+            val profileId = ResponsiveProfileId(pid)
+            val decision = ResponsiveDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(responsiveTag(profileId)))).events) }
+            if (!decision.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "profile not found"))
+            if (decision.archived) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "profile is archived"))
+            val req = call.receive<AddFormFactorRequest>()
+            val formFactor = runCatching { FormFactor.valueOf(req.formFactor.uppercase()) }.getOrElse {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid formFactor"))
+            }
+            eventStore.append(listOf(ResponsiveFormFactorSupported(
+                profileId = profileId,
+                formFactor = formFactor,
+                addedAtEpochMs = System.currentTimeMillis(),
+                tags = setOf(responsiveTag(profileId), "form-factor:${formFactor.name}", "responsive-profiles"),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ResponsiveFormFactorSupported"))
+        }
+
+        put("/api/v1/storybook/responsive/{profileId}/width-classes") {
+            val pid = call.parameters["profileId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "profileId required"))
+            val profileId = ResponsiveProfileId(pid)
+            val decision = ResponsiveDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(responsiveTag(profileId)))).events) }
+            if (!decision.exists) return@put call.respond(HttpStatusCode.NotFound, mapOf("error" to "profile not found"))
+            if (decision.archived) return@put call.respond(HttpStatusCode.Conflict, mapOf("error" to "profile is archived"))
+            val req = call.receive<DefineWidthClassesRequest>()
+            val classes = req.widthClasses.mapNotNull { runCatching { WidthClass.valueOf(it.uppercase()) }.getOrNull() }.toSet()
+            if (classes.isEmpty()) return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "at least one valid widthClass required"))
+            eventStore.append(listOf(ResponsiveWidthClassesDefined(
+                profileId = profileId,
+                widthClasses = classes,
+                definedAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ResponsiveWidthClassesDefined"))
+        }
+
+        put("/api/v1/storybook/responsive/{profileId}/navigation") {
+            val pid = call.parameters["profileId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "profileId required"))
+            val profileId = ResponsiveProfileId(pid)
+            val decision = ResponsiveDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(responsiveTag(profileId)))).events) }
+            if (!decision.exists) return@put call.respond(HttpStatusCode.NotFound, mapOf("error" to "profile not found"))
+            if (decision.archived) return@put call.respond(HttpStatusCode.Conflict, mapOf("error" to "profile is archived"))
+            val req = call.receive<SetNavigationPatternRequest>()
+            val pattern = runCatching { NavigationPattern.valueOf(req.navigationPattern.uppercase()) }.getOrElse {
+                return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid navigationPattern"))
+            }
+            eventStore.append(listOf(ResponsiveNavigationPatternSet(
+                profileId = profileId,
+                context = req.context,
+                navigationPattern = pattern,
+                setAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ResponsiveNavigationPatternSet"))
+        }
+
+        put("/api/v1/storybook/responsive/{profileId}/density") {
+            val pid = call.parameters["profileId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "profileId required"))
+            val profileId = ResponsiveProfileId(pid)
+            val decision = ResponsiveDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(responsiveTag(profileId)))).events) }
+            if (!decision.exists) return@put call.respond(HttpStatusCode.NotFound, mapOf("error" to "profile not found"))
+            if (decision.archived) return@put call.respond(HttpStatusCode.Conflict, mapOf("error" to "profile is archived"))
+            val req = call.receive<SetDensityProfileRequest>()
+            val density = runCatching { DensityProfile.valueOf(req.densityProfile.uppercase()) }.getOrElse {
+                return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid densityProfile"))
+            }
+            eventStore.append(listOf(ResponsiveDensityProfileSet(
+                profileId = profileId,
+                context = req.context,
+                densityProfile = density,
+                setAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ResponsiveDensityProfileSet"))
+        }
+
+        put("/api/v1/storybook/responsive/{profileId}/expectation") {
+            val pid = call.parameters["profileId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "profileId required"))
+            val profileId = ResponsiveProfileId(pid)
+            val decision = ResponsiveDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(responsiveTag(profileId)))).events) }
+            if (!decision.exists) return@put call.respond(HttpStatusCode.NotFound, mapOf("error" to "profile not found"))
+            if (decision.archived) return@put call.respond(HttpStatusCode.Conflict, mapOf("error" to "profile is archived"))
+            val req = call.receive<LinkExpectationRequest>()
+            if (req.expectationRef.isBlank()) return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "expectationRef required"))
+            val scenarioId = req.scenarioId?.let { ScenarioId(it) }
+            eventStore.append(listOf(ResponsiveExpectationLinked(
+                profileId = profileId,
+                scenarioId = scenarioId,
+                expectationRef = req.expectationRef,
+                linkedAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ResponsiveExpectationLinked"))
+        }
+
+        post("/api/v1/storybook/responsive/{profileId}/layout-rules") {
+            val pid = call.parameters["profileId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "profileId required"))
+            val profileId = ResponsiveProfileId(pid)
+            val decision = ResponsiveDecisionModel().also { it.applyAll(eventStore.query(EventQuery(setOf(responsiveTag(profileId)))).events) }
+            if (!decision.exists) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "profile not found"))
+            if (decision.archived) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "profile is archived"))
+            val req = call.receive<AddLayoutRuleRequest>()
+            if (req.ruleRef.isBlank()) return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "ruleRef required"))
+            eventStore.append(listOf(ResponsiveLayoutRuleAdded(
+                profileId = profileId,
+                ruleRef = req.ruleRef,
+                addedAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ResponsiveLayoutRuleAdded"))
+        }
+
+        get("/api/v1/storybook/stories/{storyId}/responsive") {
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val storyId = StoryId(sid)
+            val allEvents = eventStore.query(EventQuery(setOf(storyTag(storyId), "responsive-profiles"))).events
+            val profileIds = allEvents.filterIsInstance<ResponsiveProfileRegistered>().map { it.profileId }.distinct()
+            val profiles = profileIds.map { profileId ->
+                val profileEvents = allEvents.filter { responsiveTag(profileId) in it.tags }
+                val d = ResponsiveDecisionModel().also { it.applyAll(profileEvents) }
+                ResponsiveProfileResponse(
+                    profileId = profileId.value,
+                    profileKey = d.profileKey,
+                    storyId = sid,
+                    lifecycle = d.lifecycle.name,
+                    formFactors = d.formFactors.map { it.name },
+                    widthClasses = d.widthClasses.map { it.name },
+                    navigationPatterns = d.navigationPatterns.mapValues { it.value.name },
+                    densityProfiles = d.densityProfiles.mapValues { it.value.name },
+                    expectationRefs = d.expectationRefs.toList(),
+                    layoutRules = d.layoutRules.toList(),
+                )
+            }.filter { !it.lifecycle.equals("ARCHIVED", ignoreCase = true) }
+            call.respond(profiles)
+        }
+
+        get("/api/v1/storybook/responsive/{profileId}") {
+            val pid = call.parameters["profileId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "profileId required"))
+            val profileId = ResponsiveProfileId(pid)
+            val events = eventStore.query(EventQuery(setOf(responsiveTag(profileId)))).events
+            val d = ResponsiveDecisionModel().also { it.applyAll(events) }
+            if (!d.exists) return@get call.respond(HttpStatusCode.NotFound, mapOf("error" to "profile not found"))
+            call.respond(ResponsiveProfileResponse(
+                profileId = pid,
+                profileKey = d.profileKey,
+                storyId = d.storyId,
+                lifecycle = d.lifecycle.name,
+                formFactors = d.formFactors.map { it.name },
+                widthClasses = d.widthClasses.map { it.name },
+                navigationPatterns = d.navigationPatterns.mapValues { it.value.name },
+                densityProfiles = d.densityProfiles.mapValues { it.value.name },
+                expectationRefs = d.expectationRefs.toList(),
+                layoutRules = d.layoutRules.toList(),
+            ))
         }
 
         // PA-01: get partner summary (for admin console).

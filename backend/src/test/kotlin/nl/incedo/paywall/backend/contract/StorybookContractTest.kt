@@ -29,6 +29,14 @@ import nl.incedo.paywall.api.RegisterScenarioRequest
 import nl.incedo.paywall.api.RegisterStoryRequest
 import nl.incedo.paywall.api.ScenarioResponse
 import nl.incedo.paywall.api.StoryResponse
+import nl.incedo.paywall.api.RegisterResponsiveProfileRequest
+import nl.incedo.paywall.api.AddFormFactorRequest
+import nl.incedo.paywall.api.DefineWidthClassesRequest
+import nl.incedo.paywall.api.SetNavigationPatternRequest
+import nl.incedo.paywall.api.SetDensityProfileRequest
+import nl.incedo.paywall.api.LinkExpectationRequest
+import nl.incedo.paywall.api.AddLayoutRuleRequest
+import nl.incedo.paywall.api.ResponsiveProfileResponse
 import nl.incedo.paywall.backend.AccessService
 import nl.incedo.paywall.backend.defaultExperiment
 import nl.incedo.paywall.backend.module
@@ -535,5 +543,147 @@ class StorybookContractTest {
         }
         client.delete("/api/v1/storybook/decorators/d1")
         assertEquals(HttpStatusCode.Conflict, client.delete("/api/v1/storybook/decorators/d1").status)
+    }
+
+    // ── Responsive BC ─────────────────────────────────────────────────────────
+
+    private fun responsiveReq() = RegisterResponsiveProfileRequest(profileKey = "mobile/phone-first")
+
+    private suspend fun setupStoryAndResponsive(client: io.ktor.client.HttpClient): String {
+        client.post("/api/v1/storybook/stories") { contentType(ContentType.Application.Json); setBody(storyReq()) }
+        val resp = client.post("/api/v1/storybook/stories/s1/responsive") {
+            contentType(ContentType.Application.Json); setBody(responsiveReq())
+        }
+        return resp.body<Map<String, String>>()["profileId"]!!
+    }
+
+    @Test fun `POST responsive for story returns 201 with profileId`() = contractTest { client ->
+        client.post("/api/v1/storybook/stories") { contentType(ContentType.Application.Json); setBody(storyReq()) }
+        val resp = client.post("/api/v1/storybook/stories/s1/responsive") {
+            contentType(ContentType.Application.Json); setBody(responsiveReq())
+        }
+        assertEquals(HttpStatusCode.Created, resp.status)
+        assertNotNull(resp.body<Map<String, String>>()["profileId"])
+    }
+
+    @Test fun `POST responsive for unknown story returns 404`() = contractTest { client ->
+        val resp = client.post("/api/v1/storybook/stories/unknown/responsive") {
+            contentType(ContentType.Application.Json); setBody(responsiveReq())
+        }
+        assertEquals(HttpStatusCode.NotFound, resp.status)
+    }
+
+    @Test fun `POST responsive for archived story returns 409`() = contractTest { client ->
+        client.post("/api/v1/storybook/stories") { contentType(ContentType.Application.Json); setBody(storyReq()) }
+        client.delete("/api/v1/storybook/stories/s1")
+        val resp = client.post("/api/v1/storybook/stories/s1/responsive") {
+            contentType(ContentType.Application.Json); setBody(responsiveReq())
+        }
+        assertEquals(HttpStatusCode.Conflict, resp.status)
+    }
+
+    @Test fun `POST form-factor adds to profile`() = contractTest { client ->
+        val pid = setupStoryAndResponsive(client)
+        val resp = client.post("/api/v1/storybook/responsive/$pid/form-factors") {
+            contentType(ContentType.Application.Json); setBody(AddFormFactorRequest("PHONE"))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        val profile = client.get("/api/v1/storybook/responsive/$pid").body<ResponsiveProfileResponse>()
+        assertTrue("PHONE" in profile.formFactors)
+    }
+
+    @Test fun `POST invalid form-factor returns 400`() = contractTest { client ->
+        val pid = setupStoryAndResponsive(client)
+        val resp = client.post("/api/v1/storybook/responsive/$pid/form-factors") {
+            contentType(ContentType.Application.Json); setBody(AddFormFactorRequest("INVALID"))
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status)
+    }
+
+    @Test fun `PUT width-classes sets classes on profile`() = contractTest { client ->
+        val pid = setupStoryAndResponsive(client)
+        val resp = client.put("/api/v1/storybook/responsive/$pid/width-classes") {
+            contentType(ContentType.Application.Json); setBody(DefineWidthClassesRequest(listOf("COMPACT", "MEDIUM")))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        val profile = client.get("/api/v1/storybook/responsive/$pid").body<ResponsiveProfileResponse>()
+        assertTrue("COMPACT" in profile.widthClasses)
+        assertTrue("MEDIUM" in profile.widthClasses)
+    }
+
+    @Test fun `PUT navigation sets pattern for context`() = contractTest { client ->
+        val pid = setupStoryAndResponsive(client)
+        val resp = client.put("/api/v1/storybook/responsive/$pid/navigation") {
+            contentType(ContentType.Application.Json)
+            setBody(SetNavigationPatternRequest(context = "PHONE", navigationPattern = "BOTTOM_BAR"))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        val profile = client.get("/api/v1/storybook/responsive/$pid").body<ResponsiveProfileResponse>()
+        assertEquals("BOTTOM_BAR", profile.navigationPatterns["PHONE"])
+    }
+
+    @Test fun `PUT density sets density for context`() = contractTest { client ->
+        val pid = setupStoryAndResponsive(client)
+        val resp = client.put("/api/v1/storybook/responsive/$pid/density") {
+            contentType(ContentType.Application.Json)
+            setBody(SetDensityProfileRequest(context = "PHONE", densityProfile = "COMPACT"))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        val profile = client.get("/api/v1/storybook/responsive/$pid").body<ResponsiveProfileResponse>()
+        assertEquals("COMPACT", profile.densityProfiles["PHONE"])
+    }
+
+    @Test fun `PUT expectation links expectation ref`() = contractTest { client ->
+        val pid = setupStoryAndResponsive(client)
+        val resp = client.put("/api/v1/storybook/responsive/$pid/expectation") {
+            contentType(ContentType.Application.Json)
+            setBody(LinkExpectationRequest(expectationRef = "specs.phone.portrait"))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        val profile = client.get("/api/v1/storybook/responsive/$pid").body<ResponsiveProfileResponse>()
+        assertTrue("specs.phone.portrait" in profile.expectationRefs)
+    }
+
+    @Test fun `PUT expectation with blank ref returns 400`() = contractTest { client ->
+        val pid = setupStoryAndResponsive(client)
+        val resp = client.put("/api/v1/storybook/responsive/$pid/expectation") {
+            contentType(ContentType.Application.Json)
+            setBody(LinkExpectationRequest(expectationRef = ""))
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status)
+    }
+
+    @Test fun `POST layout-rule adds rule ref`() = contractTest { client ->
+        val pid = setupStoryAndResponsive(client)
+        val resp = client.post("/api/v1/storybook/responsive/$pid/layout-rules") {
+            contentType(ContentType.Application.Json); setBody(AddLayoutRuleRequest("rules.adaptive-grid"))
+        }
+        assertEquals(HttpStatusCode.Accepted, resp.status)
+        val profile = client.get("/api/v1/storybook/responsive/$pid").body<ResponsiveProfileResponse>()
+        assertTrue("rules.adaptive-grid" in profile.layoutRules)
+    }
+
+    @Test fun `GET story responsive profiles returns list`() = contractTest { client ->
+        setupStoryAndResponsive(client)
+        val resp = client.get("/api/v1/storybook/stories/s1/responsive")
+        assertEquals(HttpStatusCode.OK, resp.status)
+        val list = resp.body<List<ResponsiveProfileResponse>>()
+        assertEquals(1, list.size)
+        assertEquals("mobile/phone-first", list.first().profileKey)
+    }
+
+    @Test fun `GET responsive profile by id returns profile`() = contractTest { client ->
+        val pid = setupStoryAndResponsive(client)
+        val resp = client.get("/api/v1/storybook/responsive/$pid")
+        assertEquals(HttpStatusCode.OK, resp.status)
+        val profile = resp.body<ResponsiveProfileResponse>()
+        assertEquals("mobile/phone-first", profile.profileKey)
+        assertEquals("s1", profile.storyId)
+        assertEquals("ACTIVE", profile.lifecycle)
+    }
+
+    @Test fun `GET unknown responsive profile returns 404`() = contractTest { client ->
+        val resp = client.get("/api/v1/storybook/responsive/unknown-id")
+        assertEquals(HttpStatusCode.NotFound, resp.status)
     }
 }
