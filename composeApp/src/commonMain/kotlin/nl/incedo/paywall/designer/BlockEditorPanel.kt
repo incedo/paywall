@@ -3,18 +3,27 @@ package nl.incedo.paywall.designer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import nl.incedo.paywall.theme.CrmBorder
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
@@ -37,17 +46,32 @@ import nl.incedo.paywall.walls.WallBlock
 import nl.incedo.paywall.walls.WallLayout
 import nl.incedo.paywall.walls.WallLayoutValidator
 
+/** VWE-11: in-progress canvas reorder drag. */
+private data class CanvasDragState(
+    val blockId: String,
+    val fromIndex: Int,
+    val accDeltaY: Float = 0f,
+    val dropIndex: Int,
+)
+
+/** VWE-10: in-progress palette → canvas drag insertion. */
+private data class PaletteDragState(
+    val label: String,
+    val factory: (String) -> WallBlock,
+    val paletteItemRootY: Float,
+    val accDeltaY: Float = 0f,
+    val dropIndex: Int = -1,
+)
+
 /**
- * VWE-12/14: keyboard-accessible block composition panel.
+ * VWE-10/11/12/14: block editor panel.
  *
  * Three sections:
- *  1. Block canvas list — each block has Move Up / Move Down / Remove buttons.
- *  2. Per-block inspector — typed props for the selected block.
- *  3. Palette — add-block buttons for every block type in the constrained library.
+ *  1. Block canvas — each block has a drag handle (VWE-11 reorder), plus ↑↓✕ keyboard controls (VWE-12/14).
+ *  2. Per-block inspector.
+ *  3. Palette — tap + to append, or drag onto canvas to insert at a specific position (VWE-10).
  *
- * Constraint violations (VWE-02/13) are shown inline; invalid actions are disabled
- * with a reason message. The publish button in the parent is disabled while the
- * layout has violations (the parent checks violations via [WallLayoutValidator]).
+ * Constraint violations (VWE-02/13) are shown inline; invalid drops are silently rejected.
  */
 @Composable
 fun BlockEditorPanel(
@@ -58,6 +82,22 @@ fun BlockEditorPanel(
     var selectedId by remember { mutableStateOf<String?>(null) }
     val blocks = layout.blocks
     val violations = WallLayoutValidator.validate(blocks)
+    val blocksState = rememberUpdatedState(blocks)
+
+    // Root-coordinate positions captured via onGloballyPositioned, read inside gesture lambdas.
+    val blockRootY = remember { mutableStateMapOf<String, Float>() }
+    val blockRootH = remember { mutableStateMapOf<String, Float>() }
+    var canvasRootY by remember { mutableStateOf(0f) }
+    val paletteRootY = remember { mutableStateMapOf<String, Float>() }
+
+    var canvasDrag by remember { mutableStateOf<CanvasDragState?>(null) }
+    var paletteDrag by remember { mutableStateOf<PaletteDragState?>(null) }
+
+    val dropIndicatorAt = when {
+        canvasDrag != null -> canvasDrag!!.dropIndex
+        paletteDrag != null && paletteDrag!!.dropIndex >= 0 -> paletteDrag!!.dropIndex
+        else -> -1
+    }
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg)) {
 
@@ -78,32 +118,119 @@ fun BlockEditorPanel(
             }
         }
 
-        // ── Block canvas list ──────────────────────────────────────────────────
+        // ── Block canvas ───────────────────────────────────────────────────────
         CrmText("Layout", style = CrmTheme.typography.label, color = CrmTheme.colors.onSurfaceVariant)
         if (blocks.isEmpty()) {
-            CrmText(
-                "No blocks yet — add from the palette below.",
-                style = CrmTheme.typography.caption,
-                color = CrmTheme.colors.onSurfaceVariant,
-            )
+            val hovering = paletteDrag != null && paletteDrag!!.dropIndex >= 0
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coords -> canvasRootY = coords.positionInRoot().y }
+                    .then(
+                        if (hovering) Modifier
+                            .background(CrmTheme.colors.infoContainer)
+                            .border(CrmBorder.thick, CrmTheme.colors.primary, CrmTheme.shapes.md)
+                        else Modifier
+                    )
+                    .padding(CrmTheme.spacing.md),
+            ) {
+                CrmText(
+                    if (hovering) "Release to add here" else "No blocks yet — drag from the palette or tap + below.",
+                    style = CrmTheme.typography.caption,
+                    color = if (hovering) CrmTheme.colors.primary else CrmTheme.colors.onSurfaceVariant,
+                )
+            }
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
+            Column(
+                modifier = Modifier.onGloballyPositioned { coords ->
+                    canvasRootY = coords.positionInRoot().y
+                },
+            ) {
                 blocks.forEachIndexed { index, block ->
                     val isSelected = block.id == selectedId
+                    val isDragging = canvasDrag?.blockId == block.id
                     val removalReason = WallLayoutValidator.removalBlockedReason(blocks, block.id)
+
+                    // Drop indicator above this block
+                    if (dropIndicatorAt == index) {
+                        DropIndicator()
+                    } else if (index > 0) {
+                        Spacer(Modifier.height(CrmTheme.spacing.xs))
+                    }
 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .onGloballyPositioned { coords ->
+                                blockRootY[block.id] = coords.positionInRoot().y
+                                blockRootH[block.id] = coords.size.height.toFloat()
+                            }
                             .background(
-                                if (isSelected) CrmTheme.colors.infoContainer else CrmTheme.colors.surface,
+                                when {
+                                    isDragging -> CrmTheme.colors.surfaceVariant
+                                    isSelected -> CrmTheme.colors.infoContainer
+                                    else -> CrmTheme.colors.surface
+                                },
                             )
-                            .border(CrmBorder.default, CrmTheme.colors.divider, CrmTheme.shapes.md)
+                            .border(
+                                if (isDragging) CrmBorder.thick else CrmBorder.default,
+                                if (isDragging) CrmTheme.colors.primary else CrmTheme.colors.divider,
+                                CrmTheme.shapes.md,
+                            )
                             .clickable { selectedId = if (isSelected) null else block.id }
                             .padding(CrmTheme.spacing.sm),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs),
                     ) {
+                        // VWE-11: drag handle — pointer input only, no click semantics
+                        Box(
+                            modifier = Modifier
+                                .padding(end = CrmTheme.spacing.xs)
+                                .pointerInput(block.id) {
+                                    detectDragGestures(
+                                        onDragStart = { _ ->
+                                            val cb = blocksState.value
+                                            val fromIdx = cb.indexOfFirst { it.id == block.id }
+                                            if (fromIdx >= 0) {
+                                                canvasDrag = CanvasDragState(block.id, fromIdx, 0f, fromIdx)
+                                            }
+                                        },
+                                        onDrag = { change, amount ->
+                                            change.consume()
+                                            val ds = canvasDrag ?: return@detectDragGestures
+                                            val newDelta = ds.accDeltaY + amount.y
+                                            val originY = blockRootY[ds.blockId] ?: return@detectDragGestures
+                                            val halfH = (blockRootH[ds.blockId] ?: 0f) / 2f
+                                            val pointerY = originY + halfH + newDelta
+                                            val cb = blocksState.value
+                                            val newDrop = calcDropIdx(cb, blockRootY, blockRootH, pointerY)
+                                            canvasDrag = ds.copy(accDeltaY = newDelta, dropIndex = newDrop)
+                                        },
+                                        onDragEnd = {
+                                            val ds = canvasDrag
+                                            if (ds != null) {
+                                                val cb = blocksState.value
+                                                // dropIndex is the target position in the original list;
+                                                // after removing the dragged block, positions above fromIndex shift down by 1.
+                                                val insertAt = if (ds.dropIndex > ds.fromIndex) ds.dropIndex - 1 else ds.dropIndex
+                                                val clamped = insertAt.coerceIn(0, cb.lastIndex)
+                                                if (clamped != ds.fromIndex) {
+                                                    onLayoutChange(WallLayout(reorder(cb, ds.fromIndex, clamped)))
+                                                }
+                                            }
+                                            canvasDrag = null
+                                        },
+                                        onDragCancel = { canvasDrag = null },
+                                    )
+                                },
+                        ) {
+                            CrmText(
+                                "⋮⋮",
+                                style = CrmTheme.typography.caption,
+                                color = CrmTheme.colors.onSurfaceVariant,
+                            )
+                        }
+
                         Column(modifier = Modifier.weight(1f)) {
                             CrmText(blockTypeLabel(block), style = CrmTheme.typography.label)
                             CrmText(
@@ -112,14 +239,9 @@ fun BlockEditorPanel(
                                 color = CrmTheme.colors.onSurfaceVariant,
                             )
                         }
-                        // Move up — disabled for first block or when ConsentBlock ordering rule applies
+                        // Move up — disabled when ordering rule blocks it
                         val moveUpReason = canMoveUpReason(blocks, index)
-                        CrmTextButton(
-                            "↑",
-                            modifier = Modifier.then(
-                                if (moveUpReason != null) Modifier else Modifier,
-                            ),
-                        ) {
+                        CrmTextButton("↑") {
                             if (moveUpReason == null) onLayoutChange(WallLayout(swap(blocks, index, index - 1)))
                         }
                         // Move down
@@ -127,7 +249,7 @@ fun BlockEditorPanel(
                         CrmTextButton("↓") {
                             if (moveDownReason == null) onLayoutChange(WallLayout(swap(blocks, index, index + 1)))
                         }
-                        // Remove — disabled when removal would violate constraints
+                        // Remove — blocked when removal would violate VWE-02
                         CrmTextButton("✕") {
                             if (removalReason == null) {
                                 if (selectedId == block.id) selectedId = null
@@ -135,7 +257,7 @@ fun BlockEditorPanel(
                             }
                         }
                     }
-                    // Show constraint reason for removal when block is selected and removal is blocked
+
                     if (isSelected && removalReason != null) {
                         CrmText(
                             "Cannot remove: $removalReason",
@@ -144,6 +266,11 @@ fun BlockEditorPanel(
                             modifier = Modifier.padding(start = CrmTheme.spacing.sm),
                         )
                     }
+                }
+
+                // Drop indicator after last block
+                if (dropIndicatorAt == blocks.size) {
+                    DropIndicator()
                 }
             }
         }
@@ -165,7 +292,11 @@ fun BlockEditorPanel(
         }
 
         // ── Add-block palette ──────────────────────────────────────────────────
-        CrmText("Add block", style = CrmTheme.typography.label, color = CrmTheme.colors.onSurfaceVariant)
+        CrmText(
+            "Add block — tap + or drag onto canvas",
+            style = CrmTheme.typography.label,
+            color = CrmTheme.colors.onSurfaceVariant,
+        )
         val paletteItems = listOf(
             "Headline" to { id: String -> Headline(id = id, text = "New headline") as WallBlock },
             "Body Copy" to { id: String -> BodyCopy(id = id, text = "Body copy") as WallBlock },
@@ -191,19 +322,61 @@ fun BlockEditorPanel(
                         val addReason = if (blockType != null) {
                             WallLayoutValidator.additionBlockedReason(blocks, blockType)
                         } else null
+                        val isBeingDragged = paletteDrag?.label == label
                         CrmSecondaryButton(
-                            "+ $label",
-                            modifier = Modifier.weight(1f),
+                            if (isBeingDragged) "✦ $label" else "+ $label",
+                            modifier = Modifier
+                                .weight(1f)
+                                .onGloballyPositioned { coords ->
+                                    paletteRootY[label] = coords.positionInRoot().y
+                                }
+                                // VWE-10: drag palette item onto canvas to insert at a specific position
+                                .pointerInput(label) {
+                                    detectDragGestures(
+                                        onDragStart = { _ ->
+                                            paletteDrag = PaletteDragState(
+                                                label = label,
+                                                factory = factory,
+                                                paletteItemRootY = paletteRootY[label] ?: 0f,
+                                            )
+                                        },
+                                        onDrag = { change, amount ->
+                                            change.consume()
+                                            val pd = paletteDrag ?: return@detectDragGestures
+                                            val newDelta = pd.accDeltaY + amount.y
+                                            val pointerAbsY = pd.paletteItemRootY + newDelta
+                                            val cb = blocksState.value
+                                            val newDrop = if (pointerAbsY >= canvasRootY) {
+                                                calcDropIdx(cb, blockRootY, blockRootH, pointerAbsY)
+                                            } else -1
+                                            paletteDrag = pd.copy(accDeltaY = newDelta, dropIndex = newDrop)
+                                        },
+                                        onDragEnd = {
+                                            val pd = paletteDrag
+                                            if (pd != null && pd.dropIndex >= 0) {
+                                                val cb = blocksState.value
+                                                val bType = paletteBlockTypes[pd.label]
+                                                val blocked = bType != null &&
+                                                    WallLayoutValidator.additionBlockedReason(cb, bType) != null
+                                                if (!blocked) {
+                                                    val newId = "${pd.label.lowercase().replace(" ", "-")}-${cb.size}"
+                                                    val newBlock = pd.factory(newId)
+                                                    // VWE-02: ConsentBlock must always be first (AC-14)
+                                                    val insertIdx = if (newBlock is ConsentBlock) 0 else pd.dropIndex
+                                                    onLayoutChange(WallLayout(insertAt(cb, insertIdx, newBlock)))
+                                                }
+                                            }
+                                            paletteDrag = null
+                                        },
+                                        onDragCancel = { paletteDrag = null },
+                                    )
+                                },
                         ) {
+                            // Tap + to append at end (unchanged from VWE-12 keyboard path)
                             if (addReason == null) {
                                 val newId = "${label.lowercase().replace(" ", "-")}-${blocks.size}"
                                 val newBlock = factory(newId)
-                                // VWE-02: ConsentBlock is always inserted first
-                                val newBlocks = if (newBlock is ConsentBlock) {
-                                    listOf(newBlock) + blocks
-                                } else {
-                                    blocks + newBlock
-                                }
+                                val newBlocks = if (newBlock is ConsentBlock) listOf(newBlock) + blocks else blocks + newBlock
                                 onLayoutChange(WallLayout(newBlocks))
                             }
                         }
@@ -212,6 +385,19 @@ fun BlockEditorPanel(
             }
         }
     }
+}
+
+/** Thin colored line shown at the drag insertion point between two blocks. */
+@Composable
+private fun DropIndicator() {
+    Spacer(Modifier.height(CrmTheme.spacing.xs))
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(CrmTheme.spacing.xxs)
+            .background(CrmTheme.colors.primary),
+    )
+    Spacer(Modifier.height(CrmTheme.spacing.xs))
 }
 
 @Composable
@@ -273,26 +459,41 @@ private fun blockPreview(block: WallBlock): String = when (block) {
     is MeterIndicator -> "Article count meter (PW-22)"
 }
 
-/** Returns a human-readable reason why moving up is blocked, or null if it can move. */
 private fun canMoveUpReason(blocks: List<WallBlock>, index: Int): String? {
     if (index == 0) return "Already at top"
-    // ConsentBlock must stay first
     if (blocks[index - 1] is ConsentBlock) return "Cannot move above the consent step (AC-14)"
-    // Check that moving would not put LegalText before a CTA
-    val after = swap(blocks, index, index - 1)
-    val violations = WallLayoutValidator.validate(after)
-    return violations.firstOrNull()
+    return WallLayoutValidator.validate(swap(blocks, index, index - 1)).firstOrNull()
 }
 
-/** Returns a human-readable reason why moving down is blocked, or null if it can move. */
 private fun canMoveDownReason(blocks: List<WallBlock>, index: Int): String? {
     if (index == blocks.lastIndex) return "Already at bottom"
-    // ConsentBlock must stay first
     if (blocks[index] is ConsentBlock) return "Consent block must remain first (AC-14)"
-    val after = swap(blocks, index, index + 1)
-    val violations = WallLayoutValidator.validate(after)
-    return violations.firstOrNull()
+    return WallLayoutValidator.validate(swap(blocks, index, index + 1)).firstOrNull()
 }
 
 private fun swap(list: List<WallBlock>, a: Int, b: Int): List<WallBlock> =
     list.toMutableList().also { it[a] = list[b]; it[b] = list[a] }
+
+private fun reorder(list: List<WallBlock>, fromIdx: Int, toIdx: Int): List<WallBlock> {
+    val mutable = list.toMutableList()
+    val item = mutable.removeAt(fromIdx)
+    mutable.add(toIdx.coerceIn(0, mutable.size), item)
+    return mutable
+}
+
+private fun insertAt(list: List<WallBlock>, index: Int, block: WallBlock): List<WallBlock> {
+    val mutable = list.toMutableList()
+    mutable.add(index.coerceIn(0, mutable.size), block)
+    return mutable
+}
+
+private fun calcDropIdx(
+    blocks: List<WallBlock>,
+    positions: Map<String, Float>,
+    heights: Map<String, Float>,
+    pointerAbsY: Float,
+): Int = blocks.indices.firstOrNull { i ->
+    val top = positions[blocks[i].id] ?: return@firstOrNull false
+    val h = heights[blocks[i].id] ?: 0f
+    pointerAbsY < top + h / 2f
+} ?: blocks.size
