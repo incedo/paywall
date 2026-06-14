@@ -1,6 +1,6 @@
 # Design System — Forms Pattern
 
-**Status**: DRAFT
+**Status**: AGREED
 **Last Updated**: 2026-06-12
 **Depends On**: architecture/design-system.md
 
@@ -222,7 +222,17 @@ Section: Presentation (read-only preview)
 
 ---
 
-## 9. Accessibility
+## 9. Completion Criteria
+
+- [x] `CrmFormSection` implemented — title, optional description, content slot, lg spacing between fields — 2026-06-14
+- [x] `CrmInputField` implemented — label, value, placeholder, error state (red border + message), helperText, singleLine — 2026-06-14
+- [x] Error takes precedence over helperText — 2026-06-14
+- [x] All components compile on JVM and WasmJs targets — 2026-06-14
+- [x] InputComponentsTest covers CrmInputField (7 tests) and CrmFormSection (3 tests) — 2026-06-14
+
+---
+
+## 10. Accessibility
 
 - All inputs have associated labels (no floating labels — always visible above)
 - Required fields announced to screen readers: "Title, required"

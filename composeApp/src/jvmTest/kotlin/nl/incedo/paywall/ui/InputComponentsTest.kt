@@ -147,4 +147,93 @@ class InputComponentsTest {
         }
         onNodeWithText("3/100").assertIsDisplayed()
     }
+
+    // ── CrmInputField ────────────────────────────────────────────────────────
+
+    @Test
+    fun `input field shows label`() = runComposeUiTest {
+        setContent { CrmTheme { CrmInputField(label = "Title", value = "", onValueChange = {}) } }
+        onNodeWithText("Title").assertIsDisplayed()
+    }
+
+    @Test
+    fun `input field shows current value`() = runComposeUiTest {
+        setContent { CrmTheme { CrmInputField(label = "Title", value = "My wall", onValueChange = {}) } }
+        onNodeWithText("My wall").assertIsDisplayed()
+    }
+
+    @Test
+    fun `input field shows placeholder when empty`() = runComposeUiTest {
+        setContent {
+            CrmTheme { CrmInputField(label = "Title", value = "", onValueChange = {}, placeholder = "Enter title") }
+        }
+        onNodeWithText("Enter title").assertIsDisplayed()
+    }
+
+    @Test
+    fun `input field hides placeholder when value present`() = runComposeUiTest {
+        setContent {
+            CrmTheme { CrmInputField(label = "Title", value = "Hello", onValueChange = {}, placeholder = "Enter title") }
+        }
+        onNodeWithText("Enter title").assertDoesNotExist()
+    }
+
+    @Test
+    fun `input field shows error text`() = runComposeUiTest {
+        setContent {
+            CrmTheme { CrmInputField(label = "Title", value = "", onValueChange = {}, error = "Title is required") }
+        }
+        onNodeWithText("Title is required").assertIsDisplayed()
+    }
+
+    @Test
+    fun `input field shows helper text when no error`() = runComposeUiTest {
+        setContent {
+            CrmTheme { CrmInputField(label = "Limit", value = "3", onValueChange = {}, helperText = "Articles per month") }
+        }
+        onNodeWithText("Articles per month").assertIsDisplayed()
+    }
+
+    @Test
+    fun `input field error takes precedence over helper text`() = runComposeUiTest {
+        setContent {
+            CrmTheme {
+                CrmInputField(
+                    label = "Limit", value = "", onValueChange = {},
+                    error = "Required", helperText = "Articles per month",
+                )
+            }
+        }
+        onNodeWithText("Required").assertIsDisplayed()
+        onNodeWithText("Articles per month").assertDoesNotExist()
+    }
+
+    // ── CrmFormSection ────────────────────────────────────────────────────────
+
+    @Test
+    fun `form section shows title`() = runComposeUiTest {
+        setContent { CrmTheme { CrmFormSection(title = "Wall Type") {} } }
+        onNodeWithText("Wall Type").assertIsDisplayed()
+    }
+
+    @Test
+    fun `form section shows description when provided`() = runComposeUiTest {
+        setContent {
+            CrmTheme { CrmFormSection(title = "Copy", description = "Text shown in the gate") {} }
+        }
+        onNodeWithText("Text shown in the gate").assertIsDisplayed()
+    }
+
+    @Test
+    fun `form section renders content slot`() = runComposeUiTest {
+        setContent {
+            CrmTheme {
+                CrmFormSection(title = "Copy") {
+                    CrmInputField(label = "Title", value = "Hello", onValueChange = {})
+                }
+            }
+        }
+        onNodeWithText("Title").assertIsDisplayed()
+        onNodeWithText("Hello").assertIsDisplayed()
+    }
 }
