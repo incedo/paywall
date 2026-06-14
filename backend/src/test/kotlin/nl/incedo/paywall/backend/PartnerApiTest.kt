@@ -253,4 +253,70 @@ class PartnerApiTest {
         }
         assertEquals(HttpStatusCode.NotFound, resp.status)
     }
+
+    // ── PA-01: list partners ────────────────────────────────────────────────
+
+    @Test
+    fun listPartnersReturnsAllActive() = apiTest { client ->
+        createPartner(client)
+        val resp = client.get("/api/v1/admin/partners") {
+            header("X-Origin-Secret", originSecretValue)
+        }
+        assertEquals(HttpStatusCode.OK, resp.status)
+        val partners = resp.body<List<PartnerResponse>>()
+        assertEquals(1, partners.size, "PA-01: list must include the created partner")
+        assertEquals("partner-alpha", partners[0].partnerId)
+    }
+
+    // ── Validation: blank field rejections ─────────────────────────────────
+
+    @Test
+    fun partnerCreateWithBlankFieldsReturns400() = apiTest { client ->
+        val resp = client.post("/api/v1/admin/partners") {
+            contentType(ContentType.Application.Json)
+            header("X-Origin-Secret", originSecretValue)
+            setBody(CreatePartnerRequest(partnerId = "", name = ""))
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status, "PA-01: blank partnerId/name must be rejected")
+    }
+
+    @Test
+    fun addMemberWithBlankSubjectIdReturns400() = apiTest { client ->
+        createPartner(client)
+        val resp = client.post("/api/v1/admin/partners/partner-alpha/members") {
+            contentType(ContentType.Application.Json)
+            header("X-Origin-Secret", originSecretValue)
+            setBody(AddPartnerMemberRequest(subjectId = ""))
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status, "PA-05: blank subjectId must be rejected")
+    }
+
+    @Test
+    fun addMemberToNonexistentPartnerReturns404() = apiTest { client ->
+        val resp = client.post("/api/v1/admin/partners/no-such-partner/members") {
+            contentType(ContentType.Application.Json)
+            header("X-Origin-Secret", originSecretValue)
+            setBody(AddPartnerMemberRequest(subjectId = "user:alice"))
+        }
+        assertEquals(HttpStatusCode.NotFound, resp.status, "PA-05: member add must 404 if partner does not exist")
+    }
+
+    @Test
+    fun addIpRangeWithBlankCidrReturns400() = apiTest { client ->
+        createPartner(client)
+        val resp = client.post("/api/v1/admin/partners/partner-alpha/ip-ranges") {
+            contentType(ContentType.Application.Json)
+            header("X-Origin-Secret", originSecretValue)
+            setBody(PartnerIpRangeRequest(cidr = "", active = true))
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status, "IPW-01: blank CIDR must be rejected")
+    }
+
+    @Test
+    fun getNonexistentPartnerReturns404() = apiTest { client ->
+        val resp = client.get("/api/v1/admin/partners/no-such-partner") {
+            header("X-Origin-Secret", originSecretValue)
+        }
+        assertEquals(HttpStatusCode.NotFound, resp.status, "PA-01: get unknown partner must return 404")
+    }
 }

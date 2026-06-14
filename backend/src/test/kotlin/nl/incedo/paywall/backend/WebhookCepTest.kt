@@ -292,4 +292,79 @@ class WebhookCepTest {
         val v = capturedVariant
         assert(!v.isNullOrEmpty() && v != "unknown") { "UP-06: variant must not be null/unknown but was '$v'" }
     }
+
+    // ── NFR-03: signature validation for remaining webhook endpoints ──────────
+
+    @Test
+    fun cepAdviceWithBlankSubjectIdReturns400() = apiTest { client ->
+        val resp = client.post("/api/v1/integration/cep-advice") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"subjectId":"","gate":true}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status, "API-08: blank subjectId must be rejected")
+    }
+
+    @Test
+    fun cepOfferPushWithInvalidSignatureReturns401() = apiTest(
+        webhookVerifier = WebhookVerifier(webhookSecret),
+    ) { client ->
+        val resp = client.post("/api/v1/integration/cep-offers") {
+            contentType(ContentType.Application.Json)
+            header(WebhookVerifier.SIGNATURE_HEADER, "sha256=badhash")
+            setBody("""{"subjectId":"visitor:v1","channel":"email","offerId":"o1","kind":"upsell"}""")
+        }
+        assertEquals(HttpStatusCode.Unauthorized, resp.status, "API-08: invalid signature must be rejected")
+    }
+
+    @Test
+    fun cepOfferPushWithBlankFieldsReturns400() = apiTest { client ->
+        val resp = client.post("/api/v1/integration/cep-offers") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"subjectId":"","channel":"email","offerId":"","kind":"upsell"}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status, "API-08: blank subjectId/offerId must be rejected")
+    }
+
+    @Test
+    fun cepOfferPushWithNoOfferServiceReturns503() = apiTest(cepClient = null) { client ->
+        val resp = client.post("/api/v1/integration/cep-offers") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"subjectId":"visitor:v1","channel":"email","offerId":"o1","kind":"upsell"}""")
+        }
+        assertEquals(HttpStatusCode.ServiceUnavailable, resp.status, "UP-08: no offer service must return 503")
+    }
+
+    @Test
+    fun accountDeletionWithInvalidSignatureReturns401() = apiTest(
+        webhookVerifier = WebhookVerifier(webhookSecret),
+    ) { client ->
+        val resp = client.post("/api/v1/integration/account-deletion") {
+            contentType(ContentType.Application.Json)
+            header(WebhookVerifier.SIGNATURE_HEADER, "sha256=badhash")
+            setBody("""{"userId":"user-1"}""")
+        }
+        assertEquals(HttpStatusCode.Unauthorized, resp.status, "NFR-03: invalid account-deletion sig must be rejected")
+    }
+
+    @Test
+    fun adCompletionWithInvalidSignatureReturns401() = apiTest(
+        webhookVerifier = WebhookVerifier(webhookSecret),
+    ) { client ->
+        val resp = client.post("/api/v1/integration/ad-completion") {
+            contentType(ContentType.Application.Json)
+            header(WebhookVerifier.SIGNATURE_HEADER, "sha256=badhash")
+            setBody("""{"subjectId":"visitor:v1","articleId":"a1","adPlayId":"play-1"}""")
+        }
+        assertEquals(HttpStatusCode.Unauthorized, resp.status, "AG-01: invalid ad-completion sig must be rejected")
+    }
+
+    @Test
+    fun entitlementWebhookWithBlankSubjectIdReturns400() = apiTest { client ->
+        val body = """{"subjectId":"","subscriptionRef":"sub-1","active":true}"""
+        val resp = client.post("/api/v1/integration/entitlements") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status, "NFR-03: blank subjectId must be rejected")
+    }
 }

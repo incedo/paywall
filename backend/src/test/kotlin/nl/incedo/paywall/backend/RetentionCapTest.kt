@@ -164,4 +164,79 @@ class RetentionCapTest {
         assertEquals("downsell", accepted.first().kind)
         assertEquals("offer-1", accepted.first().offerId)
     }
+
+    // ── UP-08: receiveAsyncOffer retention cap (DN-05) ───────────────────────
+
+    @Test
+    fun receiveAsyncOfferBlockedByRetentionCap() {
+        val store = InMemoryEventStore()
+        val asyncSubjectId = SubjectId("visitor:async-dn05")
+        kotlinx.coroutines.runBlocking {
+            store.append(listOf(
+                OfferAccepted(
+                    subjectId = asyncSubjectId,
+                    offerId = "prev-retention-email",
+                    kind = "downsell",
+                    channel = "email",
+                    acceptedAtEpochMs = now - 180L * 24 * 3600 * 1000, // 6 months ago, within 12-month cap
+                )
+            ), condition = null)
+        }
+
+        val offerService = OfferService(
+            eventStore = store,
+            cepClient = stubCep(),
+            clock = { now },
+        )
+        val result = kotlinx.coroutines.runBlocking {
+            offerService.receiveAsyncOffer(
+                asyncSubjectId,
+                nl.incedo.paywall.cep.Offer(
+                    offerId = "new-downsell-email",
+                    kind = "downsell",
+                    toPlanId = "basic-monthly",
+                    channels = setOf("email"),
+                    source = "cep",
+                ),
+                "email",
+            )
+        }
+        assertEquals(
+            OfferService.OfferDecision.Suppressed("retention_cap"),
+            result,
+            "DN-05: receiveAsyncOffer must enforce retention cap"
+        )
+    }
+
+    // ── UP-07: CEP exception → cep_error suppression ─────────────────────────
+
+    @Test
+    fun cepExceptionSuppressesWithCepError() {
+        val store = InMemoryEventStore()
+        val throwingCep = object : nl.incedo.paywall.cep.CepClient {
+            override suspend fun requestOffer(
+                subject: nl.incedo.paywall.access.Subject,
+                trigger: String,
+                currentPlanId: String?,
+                variant: String?,
+            ): nl.incedo.paywall.cep.Offer? = throw RuntimeException("CEP down")
+        }
+
+        val offerService = OfferService(
+            eventStore = store,
+            cepClient = throwingCep,
+            clock = { now },
+        )
+        val result = kotlinx.coroutines.runBlocking {
+            offerService.decideOffer(
+                visitor,
+                OfferService.TriggerContext("gate_shown", "web"),
+            )
+        }
+        assertEquals(
+            OfferService.OfferDecision.Suppressed("cep_error"),
+            result,
+            "UP-07: CEP exception must suppress with cep_error reason"
+        )
+    }
 }

@@ -140,4 +140,13 @@ class BrandApiTest {
         val body = wallResp.body<nl.incedo.paywall.api.WallResponse>()
         assertEquals("brand-nl", body.brandId)
     }
+
+    @Test
+    fun updateThemeForNonexistentBrandReturns404() = apiTest { client ->
+        val resp = client.post("/api/v1/admin/brands/no-such-brand/theme") {
+            contentType(ContentType.Application.Json)
+            setBody(UpdateBrandThemeRequest(themeJson = """{"primary":"#000"}""", actor = "test"))
+        }
+        assertEquals(HttpStatusCode.NotFound, resp.status, "ADM-10: theme update on unknown brand must return 404")
+    }
 }
