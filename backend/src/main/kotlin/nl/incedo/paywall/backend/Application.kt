@@ -266,6 +266,9 @@ import nl.incedo.paywall.storybook.GovernanceDecisionOutcome
 import nl.incedo.paywall.storybook.policyTag
 import nl.incedo.paywall.storybook.policyKeyTag
 import nl.incedo.paywall.storybook.toResponse
+import org.slf4j.LoggerFactory
+
+private val log = LoggerFactory.getLogger("paywall.decide")
 
 /**
  * Default experiment (EX-02): the four strategies of Doc 1 at equal weight.
@@ -584,20 +587,32 @@ fun Application.module(
             // edge (origin secret present), preventing clients from opting out.
             val isPrefetch = originSecret != null &&
                 call.request.headers["Sec-Purpose"]?.startsWith("prefetch") == true
-            val outcome = service.decide(
-                subject = subject,
-                article = Article(ArticleId(request.articleId), tier),
-                channel = request.channel,
-                // INF-09: CF bot score supplements UA-based detection (either signal flags as bot).
-                isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]) || isBotByCfScore(cfBotScore),
-                isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
-                isVerifiedCrawler = isVerifiedCrawler,
-                isPrefetch = isPrefetch,
-                forceVariant = forceVariant,
-                correlationId = correlationId,
-                externalScore = request.externalScore, // DY-06
-                killedVariants = killedVariantsCache.get(), // NFR-15
-            )
+            val outcome = try {
+                service.decide(
+                    subject = subject,
+                    article = Article(ArticleId(request.articleId), tier),
+                    channel = request.channel,
+                    // INF-09: CF bot score supplements UA-based detection (either signal flags as bot).
+                    isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]) || isBotByCfScore(cfBotScore),
+                    isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
+                    isVerifiedCrawler = isVerifiedCrawler,
+                    isPrefetch = isPrefetch,
+                    forceVariant = forceVariant,
+                    correlationId = correlationId,
+                    externalScore = request.externalScore, // DY-06
+                    killedVariants = killedVariantsCache.get(), // NFR-15
+                )
+            } catch (e: Exception) {
+                // NFR-11/FGA-05: fail open — gate premium on store outage rather than 500,
+                // so readers are not locked out and the edge can cache the safe response.
+                log.error("NFR-11: decide store outage — failing open (gate premium / full free)", e)
+                call.respond(if (tier == ContentTier.FREE) {
+                    DecideResponse(access = "full", reason = "fail_open", variant = "unknown")
+                } else {
+                    DecideResponse(access = "gate", reason = "fail_safe", variant = "unknown", wallType = "hard")
+                })
+                return@post
+            }
             call.respond(DecideResponse.from(outcome))
         }
         // AC-13: soft-gate dismissal — visitor dismisses the soft overlay in the Dynamic
@@ -649,14 +664,29 @@ fun Application.module(
                 parseCfBotScore(call.request.headers["X-CF-Bot-Score"]) else null
             val isPrefetchArticle = originSecret != null &&
                 call.request.headers["Sec-Purpose"]?.startsWith("prefetch") == true
-            val outcome = service.decide(
-                subject = subject,
-                article = Article(stored.id, stored.tier),
-                isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]) || isBotByCfScore(cfBotScoreArticle),
-                isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
-                isVerifiedCrawler = isVerifiedCrawler,
-                isPrefetch = isPrefetchArticle,
-            )
+            val outcome = try {
+                service.decide(
+                    subject = subject,
+                    article = Article(stored.id, stored.tier),
+                    isBot = isBotUserAgent(call.request.headers[HttpHeaders.UserAgent]) || isBotByCfScore(cfBotScoreArticle),
+                    isSuspicious = service.recordIpAndCheckSuspicious(subject, clientIp),
+                    isVerifiedCrawler = isVerifiedCrawler,
+                    isPrefetch = isPrefetchArticle,
+                )
+            } catch (e: Exception) {
+                // NFR-11/FGA-05: fail open — teaser/gate for premium, full for free on store outage.
+                log.error("NFR-11: article decide store outage — failing open", e)
+                val failSafe = if (stored.tier == ContentTier.FREE) {
+                    ArticleResponse(id = stored.id.value, title = stored.title,
+                        tier = stored.tier.name.lowercase(), access = "full", body = stored.body)
+                } else {
+                    ArticleResponse(id = stored.id.value, title = stored.title,
+                        tier = stored.tier.name.lowercase(), access = "gate",
+                        teaser = ArticleRepository.teaserOf(stored))
+                }
+                call.respond(failSafe)
+                return@get
+            }
             // BP-03: premium pages carry noarchive so archive crawlers only
             // snapshot the teaser and not the full body (also applies to verified
             // search crawlers — noarchive suppresses Google Cache, not indexing).
