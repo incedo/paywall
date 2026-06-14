@@ -67,7 +67,10 @@ fun WallDesignerScreen(
     onPublish: () -> Unit,
     onLoadHistory: suspend () -> List<WallVersionSummary> = { emptyList() },
     onRollback: suspend (Int) -> Unit = {},
+    /** VWE-17: called when the author saves the current block layout as a template. */
+    onSaveAsTemplate: (suspend (name: String, layout: WallLayout) -> Unit)? = null,
 ) {
+    val scope = rememberCoroutineScope()
     var mobilePreview by remember { mutableStateOf(false) }
     var visitorContext by remember { mutableStateOf(0) } // 0=anonymous 1=registered 2=subscriber
     var gateContext by remember { mutableStateOf(0) }    // 0=paywall 1=registration 2=consent 3=nudge
@@ -123,6 +126,9 @@ fun WallDesignerScreen(
                         canRedo = canRedo,
                         onUndo = ::undo,
                         onRedo = ::redo,
+                        onSaveAsTemplate = if (onSaveAsTemplate != null) {
+                            { name -> scope.launch { onSaveAsTemplate(name, blockLayout) } }
+                        } else null,
                     )
                 } else {
                     ConfigPanel(

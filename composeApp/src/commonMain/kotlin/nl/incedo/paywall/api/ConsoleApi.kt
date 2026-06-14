@@ -174,6 +174,13 @@ class ConsoleApi(private val baseUrl: String = "http://localhost:8080") {
     suspend fun wallTemplates(): List<WallTemplateResponse> =
         client.get("$baseUrl/api/v1/admin/wall-templates").body()
 
+    /** VWE-17: save or overwrite a block-editor layout as a reusable template (ADM-16). */
+    suspend fun saveWallTemplate(templateId: String, request: WallTemplateRequest): WallTemplateResponse =
+        client.post("$baseUrl/api/v1/admin/wall-templates/$templateId") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
+
     suspend fun wallFromTemplate(wallId: String, templateId: String, brandId: String): SaveOutcome {
         val response = client.post("$baseUrl/api/v1/walls/$wallId/from-template/$templateId?brandId=$brandId") {
             contentType(ContentType.Application.Json)

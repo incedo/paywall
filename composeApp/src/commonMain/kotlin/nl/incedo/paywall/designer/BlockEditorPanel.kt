@@ -82,12 +82,18 @@ fun BlockEditorPanel(
     canRedo: Boolean = false,
     onUndo: () -> Unit = {},
     onRedo: () -> Unit = {},
+    /** VWE-17: called when the author taps "Save as template"; null hides the button. */
+    onSaveAsTemplate: ((templateName: String) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     var selectedId by remember { mutableStateOf<String?>(null) }
     val blocks = layout.blocks
     val violations = WallLayoutValidator.validate(blocks)
     val blocksState = rememberUpdatedState(blocks)
+
+    // VWE-17: inline template-name form state
+    var saveTemplateMode by remember { mutableStateOf(false) }
+    var templateName by remember { mutableStateOf("") }
 
     // Root-coordinate positions captured via onGloballyPositioned, read inside gesture lambdas.
     val blockRootY = remember { mutableStateMapOf<String, Float>() }
@@ -106,7 +112,7 @@ fun BlockEditorPanel(
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg)) {
 
-        // VWE-18: undo/redo controls in the panel header
+        // VWE-18: undo/redo controls + VWE-17: save-as-template in the panel header
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -116,6 +122,32 @@ fun BlockEditorPanel(
             Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
                 CrmTextButton("↩") { if (canUndo) onUndo() }
                 CrmTextButton("↪") { if (canRedo) onRedo() }
+                if (onSaveAsTemplate != null) {
+                    CrmTextButton("Save as template") { saveTemplateMode = !saveTemplateMode }
+                }
+            }
+        }
+        // VWE-17: inline template name form — shown when author taps "Save as template"
+        if (saveTemplateMode && onSaveAsTemplate != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CrmTextField(
+                    "Template name",
+                    templateName,
+                    onValueChange = { templateName = it },
+                    modifier = Modifier.weight(1f),
+                )
+                CrmSecondaryButton("Save") {
+                    if (templateName.isNotBlank()) {
+                        onSaveAsTemplate(templateName.trim())
+                        saveTemplateMode = false
+                        templateName = ""
+                    }
+                }
+                CrmTextButton("✕") { saveTemplateMode = false; templateName = "" }
             }
         }
 

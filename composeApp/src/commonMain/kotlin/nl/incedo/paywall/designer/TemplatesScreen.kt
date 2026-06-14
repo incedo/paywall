@@ -79,11 +79,20 @@ fun TemplatesScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             CrmText(tmpl.name, style = CrmTheme.typography.bodySmall)
-                            CrmTag(
-                                tmpl.wallType,
-                                CrmTheme.colors.infoContainer,
-                                CrmTheme.colors.primary,
-                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
+                                if (tmpl.layout != null) {
+                                    CrmTag(
+                                        "Block layout",
+                                        CrmTheme.colors.surfaceVariant,
+                                        CrmTheme.colors.onSurfaceVariant,
+                                    )
+                                }
+                                CrmTag(
+                                    tmpl.wallType,
+                                    CrmTheme.colors.infoContainer,
+                                    CrmTheme.colors.primary,
+                                )
+                            }
                         }
                         CrmText(
                             "by ${tmpl.createdBy}",

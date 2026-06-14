@@ -120,6 +120,7 @@ import nl.incedo.paywall.partners.partnerTag
 import nl.incedo.paywall.walls.WallConfig
 import nl.incedo.paywall.walls.WallConfigChanged
 import nl.incedo.paywall.walls.WallCreated
+import nl.incedo.paywall.walls.WallLayout
 import nl.incedo.paywall.walls.WallLayoutChanged
 import nl.incedo.paywall.walls.WallPublished
 import nl.incedo.paywall.walls.WallTemplateCreated
@@ -1009,6 +1010,7 @@ fun Application.module(
                     body = e.config.body, primaryCta = e.config.primaryCta,
                     secondaryCta = e.config.secondaryCta, channels = e.config.channels,
                     translations = e.config.translations, createdBy = e.actor,
+                    layout = e.layout, // VWE-17
                 )
             })
         }
@@ -1026,6 +1028,7 @@ fun Application.module(
                     body = event.config.body, primaryCta = event.config.primaryCta,
                     secondaryCta = event.config.secondaryCta, channels = event.config.channels,
                     translations = event.config.translations, createdBy = event.actor,
+                    layout = event.layout, // VWE-17
                 ),
             )
         }
@@ -1051,7 +1054,9 @@ fun Application.module(
                 translations = request.translations,
             )
             val event = WallTemplateCreated(
-                templateId = id, name = request.name, config = config, actor = staff.userId.value,
+                templateId = id, name = request.name, config = config,
+                layout = request.layout, // VWE-17: persist block layout alongside flat config
+                actor = staff.userId.value,
             )
             eventStore.append(listOf(event), condition = null)
             call.respond(
@@ -1063,6 +1068,7 @@ fun Application.module(
                     imageUrl = config.imageUrl, imageAlt = config.imageAlt,
                     legalText = config.legalText,
                     translations = config.translations, createdBy = staff.userId.value,
+                    layout = request.layout, // VWE-17
                 ),
             )
         }
@@ -1080,7 +1086,14 @@ fun Application.module(
             val templateEvent = templateEvents.filterIsInstance<WallTemplateCreated>().lastOrNull()
                 ?: return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "unknown template"))
             val config = templateEvent.config.copy(brandId = brandId)
-            val result = wallService.create(WallId(wallId), config, actor = staff.userId.value)
+            val createResult = wallService.create(WallId(wallId), config, actor = staff.userId.value)
+            // VWE-17: if the template carries a block layout, save it as a WallLayoutChanged event
+            val templateLayout = templateEvent.layout
+            val result = if (createResult is WallService.SaveResult.Saved && templateLayout != null) {
+                wallService.saveLayout(WallId(wallId), templateLayout, actor = staff.userId.value, expectedVersion = null)
+            } else {
+                createResult
+            }
             call.respondSaveResult(result)
         }
         // ADM-04: subject inspector — meter state, entitlements, identity

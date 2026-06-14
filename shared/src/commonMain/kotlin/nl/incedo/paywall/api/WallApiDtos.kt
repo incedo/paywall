@@ -125,9 +125,11 @@ data class WallTemplateRequest(
     val imageAlt: String = "",
     val legalText: String = "",
     val translations: Map<String, nl.incedo.paywall.walls.WallCopy> = emptyMap(),
+    /** VWE-17: block layout if the template was authored in the block editor. */
+    val layout: nl.incedo.paywall.walls.WallLayout? = null,
 )
 
-/** ADM-16: response shape for a saved wall template. */
+/** ADM-16/VWE-17: response shape for a saved wall template. */
 @Serializable
 data class WallTemplateResponse(
     val id: String,
@@ -143,6 +145,8 @@ data class WallTemplateResponse(
     val legalText: String = "",
     val translations: Map<String, nl.incedo.paywall.walls.WallCopy>,
     val createdBy: String,
+    /** VWE-17: block layout when template was authored in the block editor; null for flat-config templates. */
+    val layout: nl.incedo.paywall.walls.WallLayout? = null,
 )
 
 /** AN-10/AN-11/AN-12 dashboard numbers per variant. */

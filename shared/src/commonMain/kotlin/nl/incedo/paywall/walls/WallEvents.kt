@@ -140,6 +140,13 @@ data class WallTemplateCreated(
     val name: String,
     /** The layout/copy config, always with brandId = null (templates are brand-neutral). */
     val config: WallConfig,
+    /**
+     * VWE-17: optional block layout saved alongside the flat config. When non-null the
+     * template was authored in the block editor; instantiating it also saves a
+     * [WallLayoutChanged] event on the new wall. Null means flat-config-only template.
+     * Default null preserves backward compatibility with existing serialised events.
+     */
+    val layout: WallLayout? = null,
     val actor: String,
     override val tags: Set<String> = setOf("wall-template:$templateId", "wall-templates"),
 ) : DomainEvent
