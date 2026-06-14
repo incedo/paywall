@@ -34,6 +34,8 @@ import nl.incedo.paywall.screens.ContentGateWall
 import nl.incedo.paywall.screens.MeterNudgeBanner
 import nl.incedo.paywall.screens.PricingWall
 import nl.incedo.paywall.screens.RegistrationWallScreen
+import nl.incedo.paywall.screens.WallLayoutRenderer
+import nl.incedo.paywall.screens.toWallLayout
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
 import nl.incedo.paywall.ui.CrmDivider
@@ -376,9 +378,9 @@ private fun PreviewPanel(
                             }
                             // Meter-warning nudge (PW-23) — 1 article remaining
                             gateContext == 3 -> MeterNudgeBanner(definition)
-                            // Normal paywall
+                            // Normal paywall — render via WallLayoutRenderer (VWE-01/05)
                             definition.type == WallType.Hard -> PricingWall(definition)
-                            else -> ContentGateWall(definition)
+                            else -> ContentGateWall(definition)  // ContentGateWall delegates to WallLayoutRenderer internally
                         }
                     }
                 }
