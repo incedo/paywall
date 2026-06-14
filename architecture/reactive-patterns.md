@@ -548,8 +548,8 @@ frontend/                                # Platform-specific entry points
 - [x] commonMain state holders compile
 - [x] wasmJs entry point renders App
 - [x] jvm (desktop) entry point opens window
-- [ ] android entry point starts activity
-- [ ] ios entry point creates view controller
+- [ ] android entry point starts activity — deferred (no frontend/android module yet)
+- [ ] ios entry point creates view controller — deferred (no frontend/ios module yet)
 
 ### 9c. Integration
 - [x] Screen composable collects state and dispatches intents
