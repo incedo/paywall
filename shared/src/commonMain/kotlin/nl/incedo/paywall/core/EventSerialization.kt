@@ -41,6 +41,16 @@ import nl.incedo.paywall.walls.WallConfigChanged
 import nl.incedo.paywall.walls.WallCreated
 import nl.incedo.paywall.walls.WallPublished
 import nl.incedo.paywall.walls.WallTemplateCreated
+import nl.incedo.paywall.storybook.StoryRegistered
+import nl.incedo.paywall.storybook.StoryArchived
+import nl.incedo.paywall.storybook.StoryMetadataUpdated
+import nl.incedo.paywall.storybook.ScenarioRegistered
+import nl.incedo.paywall.storybook.ScenarioArchived
+import nl.incedo.paywall.storybook.ControlSchemaRegistered
+import nl.incedo.paywall.storybook.ControlAdded
+import nl.incedo.paywall.storybook.ControlRemoved
+import nl.incedo.paywall.storybook.ControlDefaultChanged
+import nl.incedo.paywall.storybook.ControlSchemaArchived
 
 /**
  * Polymorphic registration of every domain event, shared by all event-store
@@ -87,6 +97,16 @@ val paywallSerializersModule = SerializersModule {
         subclass(WallPublished::class)
         subclass(WallTemplateCreated::class)
         subclass(MailSent::class)
+        subclass(StoryRegistered::class)
+        subclass(StoryArchived::class)
+        subclass(StoryMetadataUpdated::class)
+        subclass(ScenarioRegistered::class)
+        subclass(ScenarioArchived::class)
+        subclass(ControlSchemaRegistered::class)
+        subclass(ControlAdded::class)
+        subclass(ControlRemoved::class)
+        subclass(ControlDefaultChanged::class)
+        subclass(ControlSchemaArchived::class)
     }
 }
 

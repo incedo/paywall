@@ -16,8 +16,10 @@ import io.ktor.server.request.path
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.ktor.server.routing.put
 import io.ktor.server.routing.routing
 import java.time.YearMonth
 import java.time.ZoneId
@@ -136,6 +138,45 @@ import nl.incedo.paywall.experiments.KILL_SWITCH_TAG
 import nl.incedo.paywall.experiments.VariantKilled
 import nl.incedo.paywall.experiments.VariantRestored
 import nl.incedo.paywall.notifications.MailSent
+import nl.incedo.paywall.api.AddControlRequest
+import nl.incedo.paywall.api.ChangeControlDefaultRequest
+import nl.incedo.paywall.api.ControlSchemaResponse
+import nl.incedo.paywall.api.RegisterControlSchemaRequest
+import nl.incedo.paywall.api.RegisterScenarioRequest
+import nl.incedo.paywall.api.RegisterStoryRequest
+import nl.incedo.paywall.api.ScenarioResponse
+import nl.incedo.paywall.api.StoryResponse
+import nl.incedo.paywall.api.toResponse
+import nl.incedo.paywall.storybook.ControlAdded
+import nl.incedo.paywall.storybook.ControlDefaultChanged
+import nl.incedo.paywall.storybook.ControlId
+import nl.incedo.paywall.storybook.ControlKey
+import nl.incedo.paywall.storybook.ControlRemoved
+import nl.incedo.paywall.storybook.ControlSchemaDecisionModel
+import nl.incedo.paywall.storybook.ControlSchemaId
+import nl.incedo.paywall.storybook.ControlSchemaRegistered
+import nl.incedo.paywall.storybook.ControlType
+import nl.incedo.paywall.storybook.ScenarioArchived
+import nl.incedo.paywall.storybook.ScenarioDecision
+import nl.incedo.paywall.storybook.ScenarioId
+import nl.incedo.paywall.storybook.ScenarioKey
+import nl.incedo.paywall.storybook.ScenarioLifecycle
+import nl.incedo.paywall.storybook.ScenarioRegistered
+import nl.incedo.paywall.storybook.ScenarioType
+import nl.incedo.paywall.storybook.StoryArchived
+import nl.incedo.paywall.storybook.StoryDecision
+import nl.incedo.paywall.storybook.StoryId
+import nl.incedo.paywall.storybook.StoryKey
+import nl.incedo.paywall.storybook.StoryKeyUniquenessDecision
+import nl.incedo.paywall.storybook.StoryLifecycle
+import nl.incedo.paywall.storybook.StoryRegistered
+import nl.incedo.paywall.storybook.StoryType
+import nl.incedo.paywall.storybook.controlSchemaTag
+import nl.incedo.paywall.storybook.controlTag
+import nl.incedo.paywall.storybook.scenarioKeyTag
+import nl.incedo.paywall.storybook.scenarioTag
+import nl.incedo.paywall.storybook.storyKeyTag
+import nl.incedo.paywall.storybook.storyTag
 
 /**
  * Default experiment (EX-02): the four strategies of Doc 1 at equal weight.
@@ -2267,6 +2308,249 @@ fun Application.module(
             val response = byPartner.map { (partnerId, cidrs) -> IpAllowlistEntry(partnerId, cidrs.sorted()) }
             call.respond(response)
         }
+        // ── Storybook API (SB-01 – SB-15) ─────────────────────────────────────────
+        // Story → Scenario → ControlSchema — the three BCs of the interactive docs layer.
+
+        post("/api/v1/storybook/stories") {
+            val req = call.receive<RegisterStoryRequest>()
+            if (req.storyId.isBlank() || req.storyKey.isBlank() || req.title.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId, storyKey, and title are required"))
+                return@post
+            }
+            val storyType = runCatching { StoryType.valueOf(req.type.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "type must be one of ${StoryType.entries.joinToString()}"))
+                return@post
+            }
+            val lifecycle = runCatching { StoryLifecycle.valueOf(req.lifecycle.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "lifecycle must be one of ${StoryLifecycle.entries.joinToString()}"))
+                return@post
+            }
+            // BR-3: storyKey must be globally unique
+            val keyEvents = eventStore.query(EventQuery(setOf(storyKeyTag(StoryKey(req.storyKey))))).events
+            if (StoryKeyUniquenessDecision().also { it.applyAll(keyEvents) }.isTaken(req.storyKey)) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "storyKey '${req.storyKey}' is already in use (BR-3)"))
+                return@post
+            }
+            val storyId = StoryId(req.storyId)
+            if (StoryDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(storyTag(storyId)))).events) }.exists) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "story '${req.storyId}' already exists"))
+                return@post
+            }
+            eventStore.append(listOf(StoryRegistered(
+                storyId = storyId, storyKey = StoryKey(req.storyKey), title = req.title,
+                type = storyType, groupId = req.groupId, owner = req.owner,
+                renderContractRef = req.renderContractRef, lifecycle = lifecycle,
+                coverageScope = req.coverageScope, registeredAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Created, StoryResponse(req.storyId, req.storyKey, req.title, storyType.name, req.groupId, lifecycle.name))
+        }
+
+        get("/api/v1/storybook/stories") {
+            val events = eventStore.query(EventQuery(setOf("stories"))).events
+            val byId = mutableMapOf<String, StoryRegistered>()
+            val archived = mutableSetOf<String>()
+            events.forEach { when (it) {
+                is StoryRegistered -> byId[it.storyId.value] = it
+                is StoryArchived -> archived += it.storyId.value
+                else -> Unit
+            } }
+            call.respond(byId.values.filter { it.storyId.value !in archived }.sortedBy { it.storyId.value }
+                .map { StoryResponse(it.storyId.value, it.storyKey.value, it.title, it.type.name, it.groupId, it.lifecycle.name) })
+        }
+
+        get("/api/v1/storybook/stories/{storyId}") {
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val decision = StoryDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(storyTag(StoryId(sid))))).events) }
+            if (!decision.exists || decision.archived) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "story not found")); return@get
+            }
+            call.respond(StoryResponse(sid, decision.storyKey, decision.title, decision.storyType, decision.groupId, decision.lifecycle.name))
+        }
+
+        post("/api/v1/storybook/stories/{storyId}/scenarios") {
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val storyId = StoryId(sid)
+            val story = StoryDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(storyTag(storyId)))).events) }
+            if (!story.exists || story.archived) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "story not found")); return@post
+            }
+            val req = call.receive<RegisterScenarioRequest>()
+            if (req.scenarioId.isBlank() || req.scenarioKey.isBlank() || req.title.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scenarioId, scenarioKey, and title are required"))
+                return@post
+            }
+            val scenarioType = runCatching { ScenarioType.valueOf(req.type.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "type must be one of ${ScenarioType.entries.joinToString()}"))
+                return@post
+            }
+            val scenarioLifecycle = runCatching { ScenarioLifecycle.valueOf(req.lifecycle.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "lifecycle must be one of ${ScenarioLifecycle.entries.joinToString()}"))
+                return@post
+            }
+            // BR-4: scenarioKey unique within story
+            val keyTag = scenarioKeyTag(storyId, ScenarioKey(req.scenarioKey))
+            if (eventStore.query(EventQuery(setOf(keyTag))).events.filterIsInstance<ScenarioRegistered>().isNotEmpty()) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "scenarioKey '${req.scenarioKey}' already in use for this story (BR-4)"))
+                return@post
+            }
+            val scenarioId = ScenarioId(req.scenarioId)
+            if (eventStore.query(EventQuery(setOf(scenarioTag(scenarioId)))).events.filterIsInstance<ScenarioRegistered>().isNotEmpty()) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "scenario '${req.scenarioId}' already exists"))
+                return@post
+            }
+            eventStore.append(listOf(ScenarioRegistered(
+                scenarioId = scenarioId, storyId = storyId, scenarioKey = ScenarioKey(req.scenarioKey),
+                title = req.title, type = scenarioType, lifecycle = scenarioLifecycle,
+                registeredAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Created, ScenarioResponse(req.scenarioId, sid, req.scenarioKey, req.title, scenarioType.name, scenarioLifecycle.name))
+        }
+
+        get("/api/v1/storybook/stories/{storyId}/scenarios") {
+            val sid = call.parameters["storyId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "storyId required"))
+            val storyId = StoryId(sid)
+            val events = eventStore.query(EventQuery(setOf(storyTag(storyId)))).events
+            val byId = mutableMapOf<String, ScenarioRegistered>()
+            val archived = mutableSetOf<String>()
+            events.forEach { when (it) {
+                is ScenarioRegistered -> byId[it.scenarioId.value] = it
+                is ScenarioArchived -> archived += it.scenarioId.value
+                else -> Unit
+            } }
+            call.respond(byId.values.filter { it.scenarioId.value !in archived }.sortedBy { it.scenarioId.value }
+                .map { ScenarioResponse(it.scenarioId.value, sid, it.scenarioKey.value, it.title, it.type.name, it.lifecycle.name) })
+        }
+
+        post("/api/v1/storybook/scenarios/{scenarioId}/control-schema") {
+            val scenId = call.parameters["scenarioId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scenarioId required"))
+            val scenarioId = ScenarioId(scenId)
+            // BR-2: scenario must exist and not be archived
+            val scenario = ScenarioDecision().also { it.applyAll(eventStore.query(EventQuery(setOf(scenarioTag(scenarioId)))).events) }
+            if (!scenario.exists || scenario.archived) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "scenario not found or archived (BR-2)")); return@post
+            }
+            val req = call.receive<RegisterControlSchemaRequest>()
+            if (req.schemaId.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "schemaId is required")); return@post
+            }
+            val schemaId = ControlSchemaId(req.schemaId)
+            if (eventStore.query(EventQuery(setOf(controlSchemaTag(schemaId)))).events.filterIsInstance<ControlSchemaRegistered>().isNotEmpty()) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "control schema '${req.schemaId}' already exists")); return@post
+            }
+            eventStore.append(listOf(ControlSchemaRegistered(
+                schemaId = schemaId, scenarioId = scenarioId, lifecycle = req.lifecycle,
+                registeredAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Created, ControlSchemaResponse(req.schemaId, scenId, req.lifecycle, emptyList()))
+        }
+
+        get("/api/v1/storybook/scenarios/{scenarioId}/controls") {
+            val scenId = call.parameters["scenarioId"]?.takeIf { it.isNotBlank() }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "scenarioId required"))
+            val scenarioId = ScenarioId(scenId)
+            val scenEvents = eventStore.query(EventQuery(setOf(scenarioTag(scenarioId)))).events
+            val schema = scenEvents.filterIsInstance<ControlSchemaRegistered>().firstOrNull()
+                ?: return@get call.respond(HttpStatusCode.NotFound, mapOf("error" to "no control schema for this scenario"))
+            val controlEvents = eventStore.query(EventQuery(setOf(controlSchemaTag(schema.schemaId)))).events
+            val decision = ControlSchemaDecisionModel().also { it.applyAll(controlEvents) }
+            call.respond(ControlSchemaResponse(
+                schemaId = schema.schemaId.value, scenarioId = scenId,
+                lifecycle = if (decision.archived) "ARCHIVED" else "ACTIVE",
+                controls = decision.activeControls().map { it.toResponse() },
+            ))
+        }
+
+        post("/api/v1/storybook/control-schemas/{schemaId}/controls") {
+            val schId = call.parameters["schemaId"]?.takeIf { it.isNotBlank() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "schemaId required"))
+            val schemaId = ControlSchemaId(schId)
+            val schemaEvents = eventStore.query(EventQuery(setOf(controlSchemaTag(schemaId)))).events
+            val schema = ControlSchemaDecisionModel().also { it.applyAll(schemaEvents) }
+            if (!schema.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "control schema not found (BR-1)")); return@post
+            }
+            if (schema.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "control schema is archived (BR-11)")); return@post
+            }
+            val req = call.receive<AddControlRequest>()
+            if (req.controlId.isBlank() || req.key.isBlank() || req.label.isBlank() || req.bindingRef.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "controlId, key, label, and bindingRef are required"))
+                return@post
+            }
+            val controlType = runCatching { ControlType.valueOf(req.type.uppercase()) }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "type must be one of ${ControlType.entries.joinToString()}"))
+                return@post
+            }
+            if (schema.isKeyTaken(req.key)) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "control key '${req.key}' already in use (BR-4)")); return@post
+            }
+            val controlId = ControlId(req.controlId)
+            if (schema.isActive(req.controlId)) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "control '${req.controlId}' already exists")); return@post
+            }
+            eventStore.append(listOf(ControlAdded(
+                schemaId = schemaId, controlId = controlId, key = ControlKey(req.key),
+                label = req.label, type = controlType, defaultValue = req.defaultValue,
+                bindingRef = req.bindingRef, optionsRef = req.optionsRef,
+                validationRules = req.validationRules, addedAtEpochMs = System.currentTimeMillis(),
+                tags = setOf(controlSchemaTag(schemaId), controlTag(controlId), scenarioTag(ScenarioId(schema.scenarioId))),
+            )), condition = null)
+            call.respond(HttpStatusCode.Created, mapOf("controlId" to req.controlId, "key" to req.key))
+        }
+
+        put("/api/v1/storybook/control-schemas/{schemaId}/controls/{controlId}/default") {
+            val schId = call.parameters["schemaId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "schemaId required"))
+            val ctrlId = call.parameters["controlId"]?.takeIf { it.isNotBlank() }
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "controlId required"))
+            val schemaId = ControlSchemaId(schId)
+            val schemaEvents = eventStore.query(EventQuery(setOf(controlSchemaTag(schemaId)))).events
+            val schema = ControlSchemaDecisionModel().also { it.applyAll(schemaEvents) }
+            if (!schema.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "control schema not found")); return@put
+            }
+            if (schema.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "control schema is archived (BR-11)")); return@put
+            }
+            if (!schema.isActive(ctrlId)) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "control not found or removed")); return@put
+            }
+            val req = call.receive<ChangeControlDefaultRequest>()
+            eventStore.append(listOf(ControlDefaultChanged(
+                schemaId = schemaId, controlId = ControlId(ctrlId),
+                newDefaultValue = req.defaultValue, changedAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ControlDefaultChanged"))
+        }
+
+        delete("/api/v1/storybook/control-schemas/{schemaId}/controls/{controlId}") {
+            val schId = call.parameters["schemaId"]?.takeIf { it.isNotBlank() }
+                ?: return@delete call.respond(HttpStatusCode.BadRequest, mapOf("error" to "schemaId required"))
+            val ctrlId = call.parameters["controlId"]?.takeIf { it.isNotBlank() }
+                ?: return@delete call.respond(HttpStatusCode.BadRequest, mapOf("error" to "controlId required"))
+            val schemaId = ControlSchemaId(schId)
+            val schemaEvents = eventStore.query(EventQuery(setOf(controlSchemaTag(schemaId)))).events
+            val schema = ControlSchemaDecisionModel().also { it.applyAll(schemaEvents) }
+            if (!schema.exists) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "control schema not found")); return@delete
+            }
+            if (schema.archived) {
+                call.respond(HttpStatusCode.Conflict, mapOf("error" to "control schema is archived (BR-11)")); return@delete
+            }
+            if (!schema.isActive(ctrlId)) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "control not found or already removed")); return@delete
+            }
+            eventStore.append(listOf(ControlRemoved(
+                schemaId = schemaId, controlId = ControlId(ctrlId),
+                removedAtEpochMs = System.currentTimeMillis(),
+            )), condition = null)
+            call.respond(HttpStatusCode.Accepted, mapOf("recorded" to "ControlRemoved"))
+        }
+
         // PA-01: get partner summary (for admin console).
         get("/api/v1/admin/partners/{partnerId}") {
             call.requireStaff(jwtValidator, StaffRole.VIEWER) ?: return@get
