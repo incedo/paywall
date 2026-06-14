@@ -996,7 +996,7 @@ kotlin {
 - [x] CrmRadio: selection within group, single-select enforcement
 - [x] CrmSwitch: toggle animation, disabled state, label
 - [x] CrmTextArea: multi-line input, character counter at maxLength
-- [ ] CrmDatePicker: date selection, popover/sheet per platform — not yet implemented
+- [x] CrmDatePicker: calendar popup with month nav + day grid (ui/DatePickerComponent.kt); value format "YYYY-MM-DD"
 - [x] All inputs meet 48dp minimum touch target (CrmTheme.focus.minTouchTarget)
 
 ### 11d. Feedback Component Tests
@@ -1012,7 +1012,7 @@ kotlin {
 - [x] CrmDrawer: slides in from side, scrim behind, click-outside dismisses
 - [x] CrmMenu: fade+slide-in below anchor, destructive item support, escape closes
 - [x] CrmBottomSheet: slides up, drag handle, scrim click dismisses
-- [ ] CrmPopover: arrow pointing to anchor — not yet implemented
+- [x] CrmPopover: Popup wrapper with shadow + border (ui/SelectComponents.kt); arrow decoration deferred
 
 ### 11f. Navigation Component Tests
 > **Implemented 2026-06-14** (ui/NavigationComponents.kt).
