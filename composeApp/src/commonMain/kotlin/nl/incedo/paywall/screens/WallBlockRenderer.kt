@@ -33,6 +33,7 @@ import nl.incedo.paywall.walls.PriceDisplay
 import nl.incedo.paywall.walls.SocialProof
 import nl.incedo.paywall.walls.WallBlock
 import nl.incedo.paywall.walls.WallLayout
+import nl.incedo.paywall.walls.resolvedText
 import nl.incedo.paywall.walls.toDefaultLayout
 
 /**
@@ -43,11 +44,23 @@ import nl.incedo.paywall.walls.toDefaultLayout
  * Adjacent [CtaButton] blocks are grouped into a Row for correct visual treatment.
  * [meterUsed]/[meterLimit] feed the optional [MeterIndicator] block (PW-22/23).
  */
+/**
+ * VWE-01/04/05: renders a [WallLayout] by mapping each block to a CrmTheme-tokened
+ * composable. This is the single renderer used by both the live preview in the
+ * designer and the public gate — no rendering drift, no-JS preserved (BP-01).
+ *
+ * Adjacent [CtaButton] blocks are grouped into a Row for correct visual treatment.
+ * [meterUsed]/[meterLimit] feed the optional [MeterIndicator] block (PW-22/23).
+ * [locale] (VWE-04/ADM-15): when non-null, text-bearing blocks resolve locale
+ * overrides from their [WallBlock.textOverrides] map before falling back to the
+ * default text.
+ */
 @Composable
 fun WallLayoutRenderer(
     layout: WallLayout,
     meterUsed: Int = 0,
     meterLimit: Int = 5,
+    locale: String? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -66,9 +79,9 @@ fun WallLayoutRenderer(
                     ctaGroup += blocks[i] as CtaButton
                     i++
                 }
-                CtaButtonRow(ctaGroup)
+                CtaButtonRow(ctaGroup, locale)
             } else {
-                RenderBlock(block, meterUsed, meterLimit)
+                RenderBlock(block, meterUsed, meterLimit, locale)
                 i++
             }
         }
@@ -76,27 +89,28 @@ fun WallLayoutRenderer(
 }
 
 @Composable
-private fun CtaButtonRow(buttons: List<CtaButton>) {
+private fun CtaButtonRow(buttons: List<CtaButton>, locale: String?) {
     Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md)) {
         buttons.forEach { btn ->
+            val label = btn.resolvedText(locale)
             when (btn.role) {
-                CtaRole.PRIMARY -> CrmPrimaryButton(btn.label)
-                CtaRole.SECONDARY -> CrmSecondaryButton(btn.label)
+                CtaRole.PRIMARY -> CrmPrimaryButton(label)
+                CtaRole.SECONDARY -> CrmSecondaryButton(label)
             }
         }
     }
 }
 
 @Composable
-private fun RenderBlock(block: WallBlock, meterUsed: Int, meterLimit: Int) {
+private fun RenderBlock(block: WallBlock, meterUsed: Int, meterLimit: Int, locale: String?) {
     when (block) {
         is Headline -> CrmText(
-            block.text,
+            block.resolvedText(locale),
             style = CrmTheme.typography.h3,
             color = CrmTheme.colors.onBackground,
         )
         is BodyCopy -> CrmText(
-            block.text,
+            block.resolvedText(locale),
             color = CrmTheme.colors.onSurfaceVariant,
         )
         is PriceDisplay -> CrmText(
@@ -104,11 +118,14 @@ private fun RenderBlock(block: WallBlock, meterUsed: Int, meterLimit: Int) {
             style = CrmTheme.typography.h3,
             color = CrmTheme.colors.primary,
         )
-        is CtaButton -> when (block.role) {
-            CtaRole.PRIMARY -> CrmPrimaryButton(block.label)
-            CtaRole.SECONDARY -> CrmSecondaryButton(block.label)
+        is CtaButton -> {
+            val label = block.resolvedText(locale)
+            when (block.role) {
+                CtaRole.PRIMARY -> CrmPrimaryButton(label)
+                CtaRole.SECONDARY -> CrmSecondaryButton(label)
+            }
         }
-        is LoginLink -> CrmTextButton(block.label)
+        is LoginLink -> CrmTextButton(block.resolvedText(locale))
         is ImageBlock -> {
             // Image URL rendered as a placeholder until async image loading is wired in
             Box(
@@ -120,7 +137,7 @@ private fun RenderBlock(block: WallBlock, meterUsed: Int, meterLimit: Int) {
             }
         }
         is LegalText -> CrmText(
-            block.text,
+            block.resolvedText(locale),
             style = CrmTheme.typography.caption,
             color = CrmTheme.colors.onSurfaceVariant,
         )
@@ -132,7 +149,7 @@ private fun RenderBlock(block: WallBlock, meterUsed: Int, meterLimit: Int) {
             modifier = Modifier.widthIn(max = 320.dp),
         )
         is SocialProof -> CrmText(
-            block.text,
+            block.resolvedText(locale),
             style = CrmTheme.typography.bodySmall,
             color = CrmTheme.colors.onSurfaceVariant,
         )

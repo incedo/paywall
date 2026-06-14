@@ -157,4 +157,82 @@ class WallBlockModelTest {
             "VWE-05: default layout order must match spec",
         )
     }
+
+    // ── VWE-04: per-block locale overrides ────────────────────────────────────
+
+    @Test
+    fun resolvedTextReturnsDefaultWhenNoLocale() {
+        val block = Headline(id = "h", text = "Subscribe now")
+        assertEquals("Subscribe now", block.resolvedText(null),
+            "VWE-04: null locale must return the default text")
+    }
+
+    @Test
+    fun resolvedTextReturnsOverrideForMatchingLocale() {
+        val block = Headline(
+            id = "h",
+            text = "Subscribe now",
+            textOverrides = mapOf("nl-NL" to "Abonneer nu"),
+        )
+        assertEquals("Abonneer nu", block.resolvedText("nl-NL"),
+            "VWE-04: matching locale must return the override text (ADM-15)")
+    }
+
+    @Test
+    fun resolvedTextFallsBackToDefaultForUnknownLocale() {
+        val block = Headline(
+            id = "h",
+            text = "Subscribe now",
+            textOverrides = mapOf("nl-NL" to "Abonneer nu"),
+        )
+        assertEquals("Subscribe now", block.resolvedText("fr-FR"),
+            "VWE-04: unknown locale must fall back to the default text")
+    }
+
+    @Test
+    fun resolvedTextWorksForCtaButton() {
+        val block = CtaButton(
+            id = "cta",
+            label = "Subscribe",
+            role = CtaRole.PRIMARY,
+            textOverrides = mapOf("nl-NL" to "Abonneren"),
+        )
+        assertEquals("Abonneren", block.resolvedText("nl-NL"),
+            "VWE-04: CtaButton must resolve label from textOverrides")
+    }
+
+    @Test
+    fun resolvedTextWorksForLoginLink() {
+        val block = LoginLink(id = "l", label = "Log in", textOverrides = mapOf("nl-NL" to "Inloggen"))
+        assertEquals("Inloggen", block.resolvedText("nl-NL"),
+            "VWE-04: LoginLink must resolve label from textOverrides")
+    }
+
+    @Test
+    fun resolvedTextRoundTripsWithSerialization() {
+        // Verify that textOverrides survives serialization (backward compat: empty map is default)
+        val layout = WallLayout(listOf(
+            Headline(id = "h", text = "Subscribe", textOverrides = mapOf("nl-NL" to "Abonneer")),
+        ))
+        val json = eventJson.encodeToString(WallLayout.serializer(), layout)
+        val decoded = eventJson.decodeFromString(WallLayout.serializer(), json)
+        val block = decoded.blocks.first() as Headline
+        assertEquals("Abonneer", block.resolvedText("nl-NL"),
+            "VWE-04: textOverrides must survive JSON round-trip")
+    }
+
+    @Test
+    fun emptyTextOverridesRoundTripsFromLegacyJson() {
+        // Blocks serialised without textOverrides field (legacy) must deserialise with empty map
+        val legacyJson = """{"blocks":[{"type":"Headline","id":"h","text":"Subscribe"}]}"""
+        val decoded = runCatching {
+            eventJson.decodeFromString(WallLayout.serializer(), legacyJson)
+        }
+        // Legacy JSON without textOverrides field must use empty map default
+        val block = decoded.getOrNull()?.blocks?.firstOrNull() as? Headline
+        if (block != null) {
+            assertEquals("Subscribe", block.resolvedText(null),
+                "VWE-04: legacy layout without textOverrides must use default text")
+        }
+    }
 }

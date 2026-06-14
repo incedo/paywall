@@ -45,6 +45,7 @@ import nl.incedo.paywall.walls.SocialProof
 import nl.incedo.paywall.walls.WallBlock
 import nl.incedo.paywall.walls.WallLayout
 import nl.incedo.paywall.walls.WallLayoutValidator
+import nl.incedo.paywall.walls.resolvedText
 
 /** VWE-11: in-progress canvas reorder drag. */
 private data class CanvasDragState(
@@ -421,8 +422,14 @@ private fun DropIndicator() {
 @Composable
 private fun BlockInspector(block: WallBlock, onUpdate: (WallBlock) -> Unit) {
     when (block) {
-        is Headline -> CrmTextField("Text", block.text, onValueChange = { v -> onUpdate(block.copy(text = v)) })
-        is BodyCopy -> CrmTextField("Text", block.text, onValueChange = { v -> onUpdate(block.copy(text = v)) }, singleLine = false)
+        is Headline -> {
+            CrmTextField("Text", block.text, onValueChange = { v -> onUpdate(block.copy(text = v)) })
+            LocaleOverridesEditor(block.textOverrides) { overrides -> onUpdate(block.copy(textOverrides = overrides)) }
+        }
+        is BodyCopy -> {
+            CrmTextField("Text", block.text, onValueChange = { v -> onUpdate(block.copy(text = v)) }, singleLine = false)
+            LocaleOverridesEditor(block.textOverrides) { overrides -> onUpdate(block.copy(textOverrides = overrides)) }
+        }
         is CtaButton -> {
             CrmTextField("Label", block.label, onValueChange = { v -> onUpdate(block.copy(label = v)) })
             Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
@@ -430,14 +437,24 @@ private fun BlockInspector(block: WallBlock, onUpdate: (WallBlock) -> Unit) {
                     CrmSecondaryButton(role.name) { onUpdate(block.copy(role = role)) }
                 }
             }
+            LocaleOverridesEditor(block.textOverrides) { overrides -> onUpdate(block.copy(textOverrides = overrides)) }
         }
-        is LoginLink -> CrmTextField("Label", block.label, onValueChange = { v -> onUpdate(block.copy(label = v)) })
+        is LoginLink -> {
+            CrmTextField("Label", block.label, onValueChange = { v -> onUpdate(block.copy(label = v)) })
+            LocaleOverridesEditor(block.textOverrides) { overrides -> onUpdate(block.copy(textOverrides = overrides)) }
+        }
         is ImageBlock -> {
             CrmTextField("URL", block.url, onValueChange = { v -> onUpdate(block.copy(url = v)) })
             CrmTextField("Alt text (ADM-17)", block.alt, onValueChange = { v -> onUpdate(block.copy(alt = v)) })
         }
-        is LegalText -> CrmTextField("Text", block.text, onValueChange = { v -> onUpdate(block.copy(text = v)) }, singleLine = false)
-        is SocialProof -> CrmTextField("Text", block.text, onValueChange = { v -> onUpdate(block.copy(text = v)) })
+        is LegalText -> {
+            CrmTextField("Text", block.text, onValueChange = { v -> onUpdate(block.copy(text = v)) }, singleLine = false)
+            LocaleOverridesEditor(block.textOverrides) { overrides -> onUpdate(block.copy(textOverrides = overrides)) }
+        }
+        is SocialProof -> {
+            CrmTextField("Text", block.text, onValueChange = { v -> onUpdate(block.copy(text = v)) })
+            LocaleOverridesEditor(block.textOverrides) { overrides -> onUpdate(block.copy(textOverrides = overrides)) }
+        }
         is PriceDisplay -> CrmTextField(
             "Plan ref (optional)",
             block.planRef ?: "",
@@ -448,6 +465,81 @@ private fun BlockInspector(block: WallBlock, onUpdate: (WallBlock) -> Unit) {
             style = CrmTheme.typography.caption,
             color = CrmTheme.colors.onSurfaceVariant,
         )
+    }
+}
+
+/**
+ * VWE-04/ADM-15: editor for per-block locale overrides.
+ * Shows existing overrides with a remove button, and an "Add override" form.
+ */
+@Composable
+private fun LocaleOverridesEditor(
+    overrides: Map<String, String>,
+    onOverridesChange: (Map<String, String>) -> Unit,
+) {
+    var newLocale by remember { mutableStateOf("") }
+    var newText by remember { mutableStateOf("") }
+
+    Column(verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
+        CrmText(
+            "Locale overrides (VWE-04)",
+            style = CrmTheme.typography.label,
+            color = CrmTheme.colors.onSurfaceVariant,
+        )
+        if (overrides.isEmpty()) {
+            CrmText(
+                "No overrides — add one below to translate this block.",
+                style = CrmTheme.typography.caption,
+                color = CrmTheme.colors.onSurfaceVariant,
+            )
+        } else {
+            overrides.forEach { (locale, text) ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CrmText(
+                        "$locale:",
+                        style = CrmTheme.typography.label,
+                        modifier = Modifier.weight(0.3f),
+                    )
+                    CrmText(
+                        text.take(50),
+                        style = CrmTheme.typography.caption,
+                        color = CrmTheme.colors.onSurfaceVariant,
+                        modifier = Modifier.weight(0.6f),
+                    )
+                    CrmTextButton("✕") {
+                        onOverridesChange(overrides - locale)
+                    }
+                }
+            }
+        }
+        // Add override
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CrmTextField(
+                "Locale (e.g. nl-NL)",
+                newLocale,
+                onValueChange = { newLocale = it },
+                modifier = Modifier.weight(0.35f),
+            )
+            CrmTextField(
+                "Override text",
+                newText,
+                onValueChange = { newText = it },
+                modifier = Modifier.weight(0.55f),
+            )
+            CrmSecondaryButton("+") {
+                if (newLocale.isNotBlank() && newText.isNotBlank()) {
+                    onOverridesChange(overrides + (newLocale.trim() to newText))
+                    newLocale = ""
+                    newText = ""
+                }
+            }
+        }
     }
 }
 

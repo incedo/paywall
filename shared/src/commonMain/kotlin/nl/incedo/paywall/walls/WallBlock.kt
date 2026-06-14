@@ -10,6 +10,11 @@ import kotlinx.serialization.Serializable
  * Each block carries a stable [id] so the editor can track selection and reorder state
  * without reordering entire objects. IDs for blocks projected from a flat [WallConfig]
  * are deterministic (see [WallConfig.toDefaultLayout]).
+ *
+ * VWE-04: text-bearing blocks carry a [textOverrides] map (locale code → translated text)
+ * so the renderer can pick the brand locale, falling back to the default text. The field
+ * defaults to an empty map so existing serialised layouts (without the field) round-trip
+ * without modification.
  */
 @Serializable
 sealed interface WallBlock {
@@ -19,12 +24,22 @@ sealed interface WallBlock {
 /** A primary or secondary heading — the value proposition headline. */
 @Serializable
 @SerialName("Headline")
-data class Headline(override val id: String, val text: String) : WallBlock
+data class Headline(
+    override val id: String,
+    val text: String,
+    /** VWE-04: locale code → translated text; renderer picks by locale, falls back to [text]. */
+    val textOverrides: Map<String, String> = emptyMap(),
+) : WallBlock
 
 /** Body copy beneath the headline — further elaborates the value proposition. */
 @Serializable
 @SerialName("BodyCopy")
-data class BodyCopy(override val id: String, val text: String) : WallBlock
+data class BodyCopy(
+    override val id: String,
+    val text: String,
+    /** VWE-04: locale code → translated text. */
+    val textOverrides: Map<String, String> = emptyMap(),
+) : WallBlock
 
 /**
  * Renders the plan price from the CEP at render time.
@@ -37,12 +52,23 @@ data class PriceDisplay(override val id: String, val planRef: String? = null) : 
 /** A call-to-action button. [role] controls visual treatment and semantic ranking. */
 @Serializable
 @SerialName("CtaButton")
-data class CtaButton(override val id: String, val label: String, val role: CtaRole) : WallBlock
+data class CtaButton(
+    override val id: String,
+    val label: String,
+    val role: CtaRole,
+    /** VWE-04: locale code → translated label. */
+    val textOverrides: Map<String, String> = emptyMap(),
+) : WallBlock
 
 /** A "Log in" or "I already subscribe" link — lower emphasis than a CtaButton. */
 @Serializable
 @SerialName("LoginLink")
-data class LoginLink(override val id: String, val label: String = "Log in") : WallBlock
+data class LoginLink(
+    override val id: String,
+    val label: String = "Log in",
+    /** VWE-04: locale code → translated label. */
+    val textOverrides: Map<String, String> = emptyMap(),
+) : WallBlock
 
 /** An illustration or brand image. [alt] is the WCAG 2.1 alt text (ADM-17). */
 @Serializable
@@ -52,7 +78,12 @@ data class ImageBlock(override val id: String, val url: String, val alt: String 
 /** Disclaimer / legal text. VWE-02: MUST follow the CTAs. */
 @Serializable
 @SerialName("LegalText")
-data class LegalText(override val id: String, val text: String) : WallBlock
+data class LegalText(
+    override val id: String,
+    val text: String,
+    /** VWE-04: locale code → translated text. */
+    val textOverrides: Map<String, String> = emptyMap(),
+) : WallBlock
 
 /**
  * AC-14: explicit GDPR cookie-consent step before the subscription gate.
@@ -70,7 +101,12 @@ data class MeterIndicator(override val id: String) : WallBlock
 /** Social proof text (subscriber counts, editorial endorsements, etc.). */
 @Serializable
 @SerialName("SocialProof")
-data class SocialProof(override val id: String, val text: String) : WallBlock
+data class SocialProof(
+    override val id: String,
+    val text: String,
+    /** VWE-04: locale code → translated text. */
+    val textOverrides: Map<String, String> = emptyMap(),
+) : WallBlock
 
 enum class CtaRole { PRIMARY, SECONDARY }
 
@@ -80,6 +116,36 @@ enum class CtaRole { PRIMARY, SECONDARY }
  */
 @Serializable
 data class WallLayout(val blocks: List<WallBlock>)
+
+/**
+ * VWE-04: resolve the display text for a text-bearing block.
+ * Returns the [locale] override if one exists, otherwise the block's default text.
+ * Returns an empty string for non-text blocks (PriceDisplay, ConsentBlock, MeterIndicator, ImageBlock).
+ */
+fun WallBlock.resolvedText(locale: String?): String = when {
+    locale == null -> defaultText()
+    else -> textOverridesMap()[locale] ?: defaultText()
+}
+
+private fun WallBlock.textOverridesMap(): Map<String, String> = when (this) {
+    is Headline -> textOverrides
+    is BodyCopy -> textOverrides
+    is CtaButton -> textOverrides
+    is LoginLink -> textOverrides
+    is LegalText -> textOverrides
+    is SocialProof -> textOverrides
+    else -> emptyMap()
+}
+
+private fun WallBlock.defaultText(): String = when (this) {
+    is Headline -> text
+    is BodyCopy -> text
+    is CtaButton -> label
+    is LoginLink -> label
+    is LegalText -> text
+    is SocialProof -> text
+    else -> ""
+}
 
 /**
  * VWE-05: deterministic back-compat projection from a flat [WallConfig] to a
