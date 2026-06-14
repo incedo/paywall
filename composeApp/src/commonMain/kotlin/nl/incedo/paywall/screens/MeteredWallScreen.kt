@@ -14,6 +14,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.unit.dp
 import nl.incedo.paywall.model.WallDefinition
 import nl.incedo.paywall.model.WallType
+import nl.incedo.paywall.walls.WallLayout
 import nl.incedo.paywall.theme.CrmTheme
 import nl.incedo.paywall.ui.CrmCard
 import nl.incedo.paywall.ui.CrmDivider
@@ -41,8 +42,13 @@ private val invoices = listOf(
  * metered, freemium and dynamic strategies; the gate copy comes from the
  * structured [WallDefinition] (ADM-11), strategy context from the type.
  */
+/**
+ * VWE-15: [layout] is supplied by the block editor preview so the live block
+ * layout is reflected without a round-trip through [WallDefinition]; null falls
+ * back to [WallDefinition.toWallLayout] as before.
+ */
 @Composable
-fun ContentGateWall(definition: WallDefinition) {
+fun ContentGateWall(definition: WallDefinition, layout: WallLayout? = null) {
     val freeLimit = 3
 
     Column(
@@ -89,7 +95,7 @@ fun ContentGateWall(definition: WallDefinition) {
                 }
             }
 
-            GateCard(definition, used = freeLimit, limit = freeLimit)
+            GateCard(definition, used = freeLimit, limit = freeLimit, layout = layout)
         }
     }
 }
@@ -115,16 +121,16 @@ private fun InvoiceRow(invoice: Invoice, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun GateCard(definition: WallDefinition, used: Int, limit: Int) {
+private fun GateCard(definition: WallDefinition, used: Int, limit: Int, layout: WallLayout? = null) {
     CrmCard(borderColor = CrmTheme.colors.primary) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.xl),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.md),
         ) {
-            // VWE-01/05: render via WallLayout so preview and public gate share one renderer
+            // VWE-01/04/05/15: layout from block editor when available; falls back to toWallLayout()
             WallLayoutRenderer(
-                layout = definition.toWallLayout(),
+                layout = layout ?: definition.toWallLayout(),
                 meterUsed = used,
                 meterLimit = limit,
             )

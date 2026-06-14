@@ -113,6 +113,8 @@ fun WallDesignerScreen(
             }
             PreviewPanel(
                 definition = definition,
+                // VWE-15: pass block editor layout so preview recomposes live (VWE-11)
+                blockEditorLayout = if (blockEditorMode) blockLayout else null,
                 mobilePreview = mobilePreview,
                 onPreviewDeviceChange = { mobilePreview = it },
                 visitorContext = visitorContext,
@@ -318,6 +320,8 @@ private fun ConfigPanel(
 @Composable
 private fun PreviewPanel(
     definition: WallDefinition,
+    /** VWE-15/11: non-null when block editor is active; preview recomposes live on layout change. */
+    blockEditorLayout: WallLayout? = null,
     mobilePreview: Boolean,
     onPreviewDeviceChange: (Boolean) -> Unit,
     visitorContext: Int,
@@ -410,9 +414,14 @@ private fun PreviewPanel(
                             }
                             // Meter-warning nudge (PW-23) — 1 article remaining
                             gateContext == 3 -> MeterNudgeBanner(definition)
-                            // Normal paywall — render via WallLayoutRenderer (VWE-01/05)
+                            // Normal paywall — block editor layout overrides the flat-config rendering (VWE-15/11)
+                            definition.type == WallType.Hard && blockEditorLayout != null ->
+                                CrmCard { Column(
+                                    modifier = Modifier.fillMaxWidth().padding(CrmTheme.spacing.xl),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) { WallLayoutRenderer(blockEditorLayout) } }
                             definition.type == WallType.Hard -> PricingWall(definition)
-                            else -> ContentGateWall(definition)  // ContentGateWall delegates to WallLayoutRenderer internally
+                            else -> ContentGateWall(definition, layout = blockEditorLayout)
                         }
                     }
                 }
