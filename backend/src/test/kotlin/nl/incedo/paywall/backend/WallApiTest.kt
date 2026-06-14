@@ -161,4 +161,19 @@ class WallApiTest {
         }
         assertEquals(HttpStatusCode.BadRequest, resp.status)
     }
+
+    // ── ADM-13: version history ─────────────────────────────────────────────
+
+    @Test
+    fun wallHistoryReturnsVersionSummaries() = apiTest { client ->
+        save(client, "wall-hist", draft())
+        save(client, "wall-hist", draft().copy(title = "Revised title", expectedVersion = 1))
+        client.post("/api/v1/walls/wall-hist/publish") { contentType(ContentType.Application.Json) }
+        val resp = client.get("/api/v1/walls/wall-hist/history")
+        assertEquals(HttpStatusCode.OK, resp.status)
+        val history = resp.body<List<nl.incedo.paywall.api.WallVersionSummary>>()
+        assertEquals(2, history.size, "ADM-13: history newest-first, one entry per version")
+        assertEquals("published", history[0].status)
+        assertEquals("draft", history[1].status)
+    }
 }

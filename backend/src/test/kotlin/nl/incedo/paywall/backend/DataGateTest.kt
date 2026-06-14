@@ -120,4 +120,15 @@ class DataGateTest {
             .filterIsInstance<GrantIssued>()
         assertEquals("data_gate", grants.first().grantedBy, "DG-02: grantedBy must be data_gate")
     }
+
+    @Test
+    fun dataGateBlankFieldsReturnsBadRequest() = apiTest { client, _ ->
+        val body = """{"subjectId":"","purposeId":"","completionId":""}""".toByteArray()
+        val resp = client.post("/api/v1/integration/data-gate-completion") {
+            header(WebhookVerifier.SIGNATURE_HEADER, sign(body))
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status, "DG-02: blank required fields must be rejected")
+    }
 }

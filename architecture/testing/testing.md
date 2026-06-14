@@ -1,7 +1,7 @@
 # Testing Strategy
 
 **Status**: AGREED
-**Last Updated**: 2026-06-12
+**Last Updated**: 2026-06-14
 **Depends On**: architecture/module-structure.md, architecture/tech-stack.md, architecture/design-system.md
 
 ---
@@ -531,7 +531,7 @@ When a new component is added to `designsystem/`, a corresponding story file is 
 - [x] JaCoCo configured for shared + backend modules
 - [x] 7/16 BCs at 95%+ line coverage
 - [x] 14/16 BCs at 90%+ line coverage
-- [ ] All BCs at 95%+ line coverage
+- [x] All BCs at 95%+ line coverage
 - [x] CI runs tests on every PR (GitHub Actions)
 - [ ] Decision-matrix suite (NFR-12) passes against the GraalVM native binary, not only the JVM (TS-03)
 

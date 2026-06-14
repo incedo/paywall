@@ -150,4 +150,20 @@ class CepAsyncOfferTest {
             "API-08: duplicate push must not store a second OfferTriggered",
         )
     }
+
+    // ── UP-02a: channel filter ────────────────────────────────────────────────
+
+    @Test
+    fun offerPushedToWrongChannelIsSuppressed() = apiTest { client ->
+        // Offer is restricted to "email" but pushed to "chat" — must be suppressed (UP-02a).
+        val resp = client.post("/api/v1/integration/cep-offers") {
+            contentType(ContentType.Application.Json)
+            setBody(emailOffer.copy(
+                offerId = "offer-ch-mismatch",
+                channel = "chat",
+                channels = setOf("email"),
+            ))
+        }
+        assertEquals(HttpStatusCode.UnprocessableEntity, resp.status, "UP-02a: channel mismatch must suppress")
+    }
 }
