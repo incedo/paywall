@@ -78,6 +78,10 @@ private data class PaletteDragState(
 fun BlockEditorPanel(
     layout: WallLayout,
     onLayoutChange: (WallLayout) -> Unit,
+    canUndo: Boolean = false,
+    canRedo: Boolean = false,
+    onUndo: () -> Unit = {},
+    onRedo: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var selectedId by remember { mutableStateOf<String?>(null) }
@@ -102,7 +106,18 @@ fun BlockEditorPanel(
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.lg)) {
 
-        CrmText("Block editor", style = CrmTheme.typography.h3)
+        // VWE-18: undo/redo controls in the panel header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CrmText("Block editor", style = CrmTheme.typography.h3)
+            Row(horizontalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xs)) {
+                CrmTextButton("↩") { if (canUndo) onUndo() }
+                CrmTextButton("↪") { if (canRedo) onRedo() }
+            }
+        }
 
         // ── Constraint violations ──────────────────────────────────────────────
         if (violations.isNotEmpty()) {

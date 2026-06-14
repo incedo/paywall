@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -73,7 +74,22 @@ fun WallDesignerScreen(
     var history by remember { mutableStateOf<List<WallVersionSummary>>(emptyList()) }
     // VWE-12/14: block editor mode — starts from back-compat projection of the current definition
     var blockEditorMode by remember { mutableStateOf(false) }
+    // VWE-18: per-session undo/redo history (max 50 snapshots; resets when definition changes)
+    val layoutHistory = remember(definition) { mutableStateListOf(definition.toWallLayout()) }
+    var historyPointer by remember(definition) { mutableStateOf(0) }
     var blockLayout by remember(definition) { mutableStateOf(definition.toWallLayout()) }
+    val canUndo = historyPointer > 0
+    val canRedo = historyPointer < layoutHistory.lastIndex
+    fun pushLayout(newLayout: WallLayout) {
+        // Truncate any redo history above the current pointer
+        while (layoutHistory.size > historyPointer + 1) layoutHistory.removeLast()
+        layoutHistory.add(newLayout)
+        if (layoutHistory.size > 50) { layoutHistory.removeAt(0); historyPointer = maxOf(0, historyPointer - 1) }
+        historyPointer = layoutHistory.lastIndex
+        blockLayout = newLayout
+    }
+    fun undo() { if (canUndo) { historyPointer--; blockLayout = layoutHistory[historyPointer] } }
+    fun redo() { if (canRedo) { historyPointer++; blockLayout = layoutHistory[historyPointer] } }
     val layoutForPreview: WallLayout = if (blockEditorMode) blockLayout else definition.toWallLayout()
     val layoutHasViolations = blockEditorMode && WallLayoutValidator.validate(blockLayout).isNotEmpty()
     // VWE-16: block publish when any block has WCAG 2.1 AA violations (ADM-17)
@@ -102,7 +118,11 @@ fun WallDesignerScreen(
                 if (blockEditorMode) {
                     BlockEditorPanel(
                         layout = blockLayout,
-                        onLayoutChange = { blockLayout = it },
+                        onLayoutChange = ::pushLayout,
+                        canUndo = canUndo,
+                        canRedo = canRedo,
+                        onUndo = ::undo,
+                        onRedo = ::redo,
                     )
                 } else {
                     ConfigPanel(
