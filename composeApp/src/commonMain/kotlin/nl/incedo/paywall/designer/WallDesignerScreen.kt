@@ -76,12 +76,14 @@ fun WallDesignerScreen(
     var blockLayout by remember(definition) { mutableStateOf(definition.toWallLayout()) }
     val layoutForPreview: WallLayout = if (blockEditorMode) blockLayout else definition.toWallLayout()
     val layoutHasViolations = blockEditorMode && WallLayoutValidator.validate(blockLayout).isNotEmpty()
+    // VWE-16: block publish when any block has WCAG 2.1 AA violations (ADM-17)
+    val layoutHasA11yViolations = blockEditorMode && blockLayout.blocks.any { blockAccessibilityLint(it).isNotEmpty() }
 
     LaunchedEffect(wallName) { history = runCatching { onLoadHistory() }.getOrDefault(emptyList()) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         DesignerToolbar(wallName, wallStatus, onBack, onSaveDraft, onPublish,
-            publishBlocked = layoutHasViolations)
+            publishBlocked = layoutHasViolations || layoutHasA11yViolations)
         CrmDivider()
         Row(modifier = Modifier.fillMaxWidth()) {
             // VWE-12/14: left panel toggles between flat form (legacy) and block editor

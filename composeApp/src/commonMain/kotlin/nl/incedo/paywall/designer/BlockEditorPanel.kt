@@ -266,6 +266,24 @@ fun BlockEditorPanel(
                             modifier = Modifier.padding(start = CrmTheme.spacing.sm),
                         )
                     }
+                    // VWE-16: per-block accessibility lint (ADM-17 WCAG 2.1 AA)
+                    val lintViolations = blockAccessibilityLint(block)
+                    if (lintViolations.isNotEmpty()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = CrmTheme.spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(CrmTheme.spacing.xxs),
+                        ) {
+                            lintViolations.forEach { msg ->
+                                CrmText(
+                                    "⚠ $msg",
+                                    style = CrmTheme.typography.caption,
+                                    color = CrmTheme.colors.warning,
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // Drop indicator after last block
@@ -485,6 +503,31 @@ private fun insertAt(list: List<WallBlock>, index: Int, block: WallBlock): List<
     val mutable = list.toMutableList()
     mutable.add(index.coerceIn(0, mutable.size), block)
     return mutable
+}
+
+/**
+ * VWE-16 (ADM-17): WCAG 2.1 AA accessibility checks for a single block.
+ * Returns a list of human-readable violation messages; empty = no issues.
+ * Checked inline in the block editor and used by [WallDesignerScreen] to gate publish.
+ */
+internal fun blockAccessibilityLint(block: WallBlock): List<String> = buildList {
+    when (block) {
+        is ImageBlock -> if (block.alt.isBlank())
+            add("Missing alt text — add a description or mark as decorative (WCAG 1.1.1).")
+        is CtaButton -> if (block.label.length > 40)
+            add("CTA label is very long (${block.label.length} chars) — may truncate on small viewports (WCAG 2.5.3).")
+        is LoginLink -> if (block.label.length > 40)
+            add("Login link label is very long (${block.label.length} chars) — may truncate on small viewports (WCAG 2.5.3).")
+        is Headline -> if (block.text.isBlank())
+            add("Headline text is empty — screen readers need a meaningful heading (WCAG 1.3.1).")
+        is BodyCopy -> if (block.text.isBlank())
+            add("Body copy text is empty — provide meaningful content for assistive technology (WCAG 1.3.1).")
+        is LegalText -> if (block.text.isBlank())
+            add("Legal text is empty — fill in content or remove the block (WCAG 1.3.1).")
+        is SocialProof -> if (block.text.isBlank())
+            add("Social proof text is empty — fill in content or remove the block (WCAG 1.3.1).")
+        else -> {}
+    }
 }
 
 private fun calcDropIdx(
